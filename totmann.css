@@ -1,0 +1,30 @@
+/*
+ * totmannschalter – web stylesheet
+ *
+ * Project: https://github.com/MacSteini/totmannschalter
+ * Licence: MIT (see LICENCE)
+ *
+ * Responsive, centered layout styles for web endpoint pages.
+ */
+
+:root{color-scheme:light;--bg:#f3f5f9;--surface:#ffffff;--text:#111827;--muted:#4b5563;--border:#d1d5db;--accent:#0f766e;--accent_hover:#115e59;}
+*{box-sizing:border-box;}
+html,body{height:100%;}
+body{margin:0;min-height:100dvh;display:grid;place-items:center;padding:clamp(12px,3vw,36px);background:radial-gradient(1200px 800px at 15% -10%,#e8f3ff 0%,transparent 55%),radial-gradient(900px 700px at 100% 0%,#eef7f2 0%,transparent 50%),var(--bg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;color:var(--text);font-weight:400;line-height:1.45;}
+.dm_shell{width:min(760px,100%);}
+.dm_card{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:clamp(18px,2.6vw,32px);box-shadow:0 10px 32px rgba(15,23,42,.08);}
+h1{margin:0 0 .55em 0;font-size:clamp(1.4rem,1.1rem + 1.2vw,2rem);font-weight:700;line-height:1.2;letter-spacing:-.01em;}
+h2{margin:1.2em 0 .55em 0;font-size:clamp(1.1rem,.98rem + .6vw,1.35rem);font-weight:600;}
+p,li{font-size:clamp(.98rem,.92rem + .25vw,1.08rem);font-weight:400;}
+p{margin:.45em 0 .75em 0;color:var(--muted);}
+ul{margin:.35em 0 0 1.15em;padding:0;}
+li{margin:.45em 0;}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;padding:.12em .42em;word-break:break-word;}
+form{margin-top:1rem;}
+button{appearance:none;border:1px solid var(--accent);background:var(--accent);color:#fff;font:inherit;font-weight:600;padding:.72rem 1.05rem;border-radius:10px;min-height:44px;cursor:pointer;}
+button:hover{background:var(--accent_hover);border-color:var(--accent_hover);}
+button:focus-visible{outline:3px solid #99f6e4;outline-offset:2px;}
+.dm_note{font-size:clamp(.9rem,.85rem + .22vw,1rem);color:var(--muted);}
+@media (max-width:480px){body{padding:12px;}.dm_card{border-radius:12px;padding:16px;}h1{font-size:clamp(1.25rem,1.02rem + 1vw,1.55rem);}button{width:100%;}}
+@media (min-width:481px) and (max-width:768px){.dm_shell{width:min(700px,100%);}.dm_card{padding:clamp(18px,3.5vw,26px);}}
+@media (min-width:1024px){.dm_shell{width:min(820px,92vw);}}

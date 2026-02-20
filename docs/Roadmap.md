@@ -1,0 +1,32 @@
+# totmannschalter – Roadmap
+This document lists planned next steps.
+## Scope and intent
+- No ETA commitments.
+- Order is intentionally flexible and may change based on implementation complexity and real-world feedback.
+- Focus remains on operational reliability and predictable behaviour.
+## Planned items
+### Per-recipient custom emails
+- Support individual message content per recipient instead of one shared escalation body.
+- Goal: better role-based communication and clearer recipient-specific instructions.
+### Mail priority headers
+- Add configurable priority headers for mail types (for example CONFIRM, ACK, ESCALATION).
+- Goal: improve inbox handling and client-side prioritisation where supported.
+### TXT or HTML output mode
+- Add a config option to send plain text or HTML mail format.
+- Default remains plain text.
+### Encrypted final recipient messages
+- Add optional encryption for final recipient emails to reduce unauthorised access risk in transit/storage and allow sensitive content usage.
+- Scope includes key handling strategy and operational recovery expectations.
+### Optional "2-of-n" secret reconstruction mode
+- Add an option where recipient emails contain separate secret fragments and at least 2 of n recipients must combine them.
+- Example use cases: split password-vault access data or split seed phrase components.
+- Dependency: requires per-recipient custom email support first.
+### Additional implementation languages
+- Evaluate and provide alternative implementations beside PHP to improve accessibility and adoption.
+- Goal: preserve feature parity and operational semantics across implementations.
+### Ratelimit directory cleanup (file-based mode)
+- Add periodic cleanup for stale entries in `ratelimit/` to keep directory size bounded over time.
+- Dependency: should be implemented before SQLite migration, or can be skipped if SQLite migration is started immediately.
+### Ratelimit storage migration to SQLite
+- Replace the file-based `ratelimit/` directory approach with a SQLite-backed rate-limit store.
+- Goal: improve concurrency handling, reduce file-IO overhead, and simplify operational cleanup/inspection.

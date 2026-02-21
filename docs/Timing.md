@@ -44,20 +44,20 @@ How it applies:
 For deterministic tests after larger timing changes, delete the runtime files (`state_file`, `lock_file`, `log_file_name`) and initialise once.
 ## Recommended presets
 ### Production preset (sane defaults, low noise)
-This is conservative and human-friendly:
-- Cycle: **14 days**
-- Confirm window: **3 days**
+This is conservative and human-friendly while keeping escalation below one week:
+- Cycle: **1 day**
+- Confirm window: **2 days**
 - Reminder: **every 12 hours** during the window
-- Grace: **6 hours** after deadline
-- Escalation threshold: **3 missed cycles** before notifying others
+- Grace: **4 hours** after deadline
+- Escalation threshold: **2 missed cycles** before notifying others
 - ACK reminders: **every 12 hours**, up to **25** times (safety cap)
 ```php
 // Cycle timing (production)
-'check_interval_seconds' => 60 * 60 * 24 * 14, // 14 days
-'confirm_window_seconds' => 60 * 60 * 24 * 3, // 3 days
+'check_interval_seconds' => 60 * 60 * 24 * 1, // 1 day
+'confirm_window_seconds' => 60 * 60 * 24 * 2, // 2 days
 'remind_every_seconds' => 60 * 60 * 12, // 12 hours
-'escalate_grace_seconds' => 60 * 60 * 6, // 6 hours
-'missed_cycles_before_fire' => 3, // 3 missed cycles before escalation
+'escalate_grace_seconds' => 60 * 60 * 4, // 4 hours
+'missed_cycles_before_fire' => 2, // 2 missed cycles before escalation
 
 // ACK (production)
 'escalate_ack_enabled' => true,
@@ -65,8 +65,26 @@ This is conservative and human-friendly:
 'escalate_ack_max_reminds' => 25,
 ```
 **What this means in practice**
-- You only start receiving reminders every two weeks, then you have three days to confirm
-- If you miss once, escalation still does not trigger – it takes three misses (by design). After each miss, the script starts a new cycle immediately (so the cadence shifts)
+- You start receiving reminders one day after cycle start and then have two days to confirm
+- If you miss once, escalation still does not trigger – it takes two misses (by design). After each miss, the script starts a new cycle immediately (so the cadence shifts)
+- Worst-case time from last confirm to first escalation: **6 days 8 hours**
+### Worked example with production preset
+Assume script initialisation at **1 January 2026, 09:00** and no confirmation clicks.
+
+Cycle 1:
+- `cycle_start_at`: 01.01.2026 09:00
+- `next_check_at`: 02.01.2026 09:00
+- Reminders to `to_self`: 02.01. 09:00, 02.01. 21:00, 03.01. 09:00, 03.01. 21:00
+- `deadline_at`: 04.01.2026 09:00
+- `fireAt`: 04.01.2026 13:00 (`deadline + 4h`)
+- Result: `missed_cycles = 1`, no escalation, next cycle starts at 04.01.2026 13:00
+
+Cycle 2:
+- `next_check_at`: 05.01.2026 13:00
+- Reminders to `to_self`: 05.01. 13:00, 06.01. 01:00, 06.01. 13:00, 07.01. 01:00
+- `deadline_at`: 07.01.2026 13:00
+- `fireAt`: 07.01.2026 17:00
+- Result: `missed_cycles = 2` -> first escalation mail to `to_recipients` at/after 07.01.2026 17:00
 ### Test preset (fast, but still “realistic”)
 This is designed to test the whole flow quickly without mail-bombing:
 - Cycle: **5 minutes**

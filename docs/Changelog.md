@@ -17,4 +17,4 @@ This project uses semantic versioning:
 - Built-in abuse protection for web requests (rate limit, fail-open strategy).
 - Read-only preflight checks for deployment readiness, including optional web-user permission validation.
 - Configurable logging output modes and runtime safety guards for clock/state edge cases.
-- Documentation delivered as dedicated guides in `docs/` for installation, operations, web, timing, mail, troubleshooting, and release planning.
+- Documentation delivered as dedicated guides for installation, operations, web, timing, mail, troubleshooting, and release planning.

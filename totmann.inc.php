@@ -66,20 +66,20 @@ return [
 //       It just checks whether a boundary has been reached.
 
 // Length of a cycle (when the next confirmation window starts).
-'check_interval_seconds' => 60 * 60 * 24 * 14, // fortnightly
+'check_interval_seconds' => 60 * 60 * 24 * 1, // daily
 
 // Length of the confirmation window once it opens (time you have to click confirm).
-'confirm_window_seconds' => 60 * 60 * 24 * 3, // 3 days
+'confirm_window_seconds' => 60 * 60 * 24 * 2, // 2 days
 
 // Reminder frequency while the confirmation window is open.
 'remind_every_seconds' => 60 * 60 * 12, // every 12 hours
 
 // Additional grace period after the deadline before escalation is even considered.
-'escalate_grace_seconds' => 60 * 60 * 6, // 6 hours
+'escalate_grace_seconds' => 60 * 60 * 4, // 4 hours
 
 // Extra safety: require N missed cycles before escalation actually triggers.
 // Note: if a cycle is missed and the threshold is not yet met, the tick starts a new cycle immediately (after deadline+grace) and carries missed_cycles forward.
-'missed_cycles_before_fire' => 3,
+'missed_cycles_before_fire' => 2,
 
 // --- Recipient receipt acknowledgement (ACK) ---
 //

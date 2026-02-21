@@ -62,9 +62,9 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 	```
 	The `rm` line uses the filenames shown in the template config; if you changed them in `totmann.inc.php`, adapt this command.
 8. Install + enable `systemd` unit/timer:
-	Follow [docs/Systemd.md](docs/Systemd.md "systemd").
+	Follow the instructions in [systemd](docs/Systemd.md "systemd").
 9. Run smoke/E2E test with short timings:
-	Follow [docs/Installation.md](docs/Installation.md "Installation guide") “Smoke test” and [docs/Timing.md](docs/Timing.md "Timing model and presets") checklist.
+	Follow the “Smoke test” in the [installation guide](docs/Installation.md "Installation guide") and the checklist in [Timing](docs/Timing.md "Timing model and presets").
 10. During live testing, monitor script decisions in real time:
 	```sh
 	tail -f /var/lib/totmann/totmann.log

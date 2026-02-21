@@ -22,7 +22,7 @@ Suggestions:
 - Avoid repeating identical subject/body too often (especially during tests).
 - Use an ASCII-only display name in `mail_from` (some filters dislike “unusual” symbols even if technically valid).
 - Consider adding a stable plain-text footer (what this is and why the recipient gets it) so content looks less “automated”.
-- For tests: use the provided test preset in `docs/Timing.md` (fast but avoids “mail flooding”).
+- For tests: use the provided test preset in [Timing](Timing.md "Timing model and presets") (fast but avoids “mail flooding”).
 
 Optional:
 - Add a `List-Unsubscribe` header (`mailto:`) if you want to be extra deliverability-friendly (not required, but sometimes helps).

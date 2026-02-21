@@ -22,15 +22,15 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 1. Identify your real PHP runtime identity (`<WEB_USER>:<WEB_GROUP>`):
 	[Installation guide](docs/Installation.md "Installation guide"), section “Before you start”.
 2. Create state dir + place files:
-```sh
-sudo mkdir -p /var/lib/totmann
-sudo cp totmann.inc.php totmann-tick.php totmann-lib.php /var/lib/totmann/
-# Place the web endpoint in your webroot (example):
-# sudo cp totmann.php /var/www/html/totmann/totmann.php
-# Optional but recommended for styled web pages:
-# sudo cp totmann.css /var/www/html/totmann/totmann.css
-```
-If you changed `lib_file`, `web_file`, or `web_css_file` in `totmann.inc.php`, copy/rename files accordingly.
+	```sh
+	sudo mkdir -p /var/lib/totmann
+	sudo cp totmann.inc.php totmann-tick.php totmann-lib.php /var/lib/totmann/
+	# Place the web endpoint in your webroot (example):
+	# sudo cp totmann.php /var/www/html/totmann/totmann.php
+	# Optional but recommended for styled web pages:
+	# sudo cp totmann.css /var/www/html/totmann/totmann.css
+	```
+	If you changed `lib_file`, `web_file`, or `web_css_file` in `totmann.inc.php`, copy/rename files accordingly.
 3. Set minimum config in `/var/lib/totmann/totmann.inc.php`:
 	- `base_url` (real HTTPS base URL without endpoint filename; `web_file` is appended automatically)
 	- `hmac_secret_hex` (example: `openssl rand -hex 32`)
@@ -40,36 +40,36 @@ If you changed `lib_file`, `web_file`, or `web_css_file` in `totmann.inc.php`, c
 	- Logging target via `log_mode`: `none`, `syslog`, `file`, `both` (recommended: `both`)
 	- Use the test preset from [Timing](docs/Timing.md "Timing model and presets")
 4. Set permissions:
-```sh
-sudo chown -R root:<WEB_GROUP> /var/lib/totmann
-sudo find /var/lib/totmann -type d -exec chmod 2770 {} \;
-sudo find /var/lib/totmann -type f -exec chmod 0660 {} \;
-```
+	```sh
+	sudo chown -R root:<WEB_GROUP> /var/lib/totmann
+	sudo find /var/lib/totmann -type d -exec chmod 2770 {} \;
+	sudo find /var/lib/totmann -type f -exec chmod 0660 {} \;
+	```
 5. Ensure web runtime can resolve the same state dir:
 	- Prefer ENV `TOTMANN_STATE_DIR=/var/lib/totmann` in your PHP runtime.
 	- `totmann.php` in this repo ships with `define('TOTMANN_STATE_DIR', '/var/lib/totmann')` enabled by default. Adjust this value if your state dir differs.
 6. Run preflight in deployed state dir:
-```sh
-cd /var/lib/totmann
-php totmann-tick.php check
-php totmann-tick.php check --web-user=<WEB_USER>
-```
-Preflight now validates timing/interval values strictly (integer type + minimum bounds) and reports warning-level hints for suspicious but allowed combinations (e. g., `confirm_window_seconds > check_interval_seconds`).
+	```sh
+	cd /var/lib/totmann
+	php totmann-tick.php check
+	php totmann-tick.php check --web-user=<WEB_USER>
+	```
+	Preflight now validates timing/interval values strictly (integer type + minimum bounds) and reports warning-level hints for suspicious but allowed combinations (e. g., `confirm_window_seconds > check_interval_seconds`).
 7. Clean initialise once:
-```sh
-sudo rm -f /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totmann/totmann.log
-sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totmann-tick.php tick'
-```
-The `rm` line uses the filenames shown in the template config; if you changed them in `totmann.inc.php`, adapt this command.
+	```sh
+	sudo rm -f /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totmann/totmann.log
+	sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totmann-tick.php tick'
+	```
+	The `rm` line uses the filenames shown in the template config; if you changed them in `totmann.inc.php`, adapt this command.
 8. Install + enable `systemd` unit/timer:
 	Follow [docs/Systemd.md](docs/Systemd.md "systemd").
 9. Run smoke/E2E test with short timings:
 	Follow [docs/Installation.md](docs/Installation.md "Installation guide") “Smoke test” and [docs/Timing.md](docs/Timing.md "Timing model and presets") checklist.
 10. During live testing, monitor script decisions in real time:
-```sh
-tail -f /var/lib/totmann/totmann.log
-```
-If you changed `log_file_name` or `log_file`, use that effective path instead. If `log_mode` is `syslog` or `none`, use `journalctl` instead of `tail`.
+	```sh
+	tail -f /var/lib/totmann/totmann.log
+	```
+	If you changed `log_file_name` or `log_file`, use that effective path instead. If `log_mode` is `syslog` or `none`, use `journalctl` instead of `tail`.
 ## Terms
 - ENV: environment variable (e. g., `TOTMANN_STATE_DIR`).
 - GET/POST: HTTP request methods (GET shows the confirm page; POST performs the confirmation).

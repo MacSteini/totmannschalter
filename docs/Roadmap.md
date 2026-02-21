@@ -24,6 +24,10 @@ This document lists planned next steps.
 ### Additional implementation languages
 - Evaluate and provide alternative implementations beside PHP to improve accessibility and adoption.
 - Goal: preserve feature parity and operational semantics across implementations.
+### Active-passive dual-server mail failover
+- Add an optional two-server mode where both nodes run the script and exchange a heartbeat, but only the active node sends emails.
+- If heartbeat loss is detected, the standby node takes over mail delivery automatically until the primary path is healthy again.
+- Scope includes shared configuration/state strategy, split-brain prevention, takeover timing, and safe failback behaviour.
 ### Ratelimit directory cleanup (file-based mode)
 - Add periodic cleanup for stale entries in `ratelimit/` to keep directory size bounded over time.
 - Dependency: should be implemented before SQLite migration, or can be skipped if SQLite migration is started immediately.

@@ -12,7 +12,16 @@ This project uses semantic versioning:
 - Reminder mails to `to_self` are now always sent individually (one mail per recipient).
 - Escalation mails remain per recipient (individual delivery), not as one shared recipient list.
 - `check` reports `FAIL` for invalid recipient IDs and missing message mappings; runtime delivery remains fail-safe and falls back to `subject_escalate` + `body_escalate`.
-- Internal split: `totmann-tick.php` is now a runner-only entrypoint; helper declarations were consolidated into `lib_file` (template default: `totmann-lib.php`) to satisfy strict file side-effect linting.
+- Internal split: `totmann-tick.php` is now a runner-only entrypoint; helper declarations moved into `lib_file` (template default: `totmann-lib.php`) to meet strict file side-effect linting.
+## v1.0.1
+- Updated timing defaults to more realistic escalation behaviour:
+	- `check_interval_seconds`: 1 day
+	- `confirm_window_seconds`: 2 days
+	- `remind_every_seconds`: 12 hours
+	- `escalate_grace_seconds`: 4 hours
+	- `missed_cycles_before_fire`: 2
+- Added a worked timing example and clarified default-interval behaviour in `docs/Timing.md`.
+- Refined wording and cross-reference text in `README.md` and `docs/Mail.md`.
 ## v1.0.0 – stable
 - Initial stable release.
 - Complete cycle engine with reminders, confirmation windows, grace handling, and escalation after repeated misses.

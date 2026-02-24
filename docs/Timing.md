@@ -156,7 +156,4 @@ After deadline + grace:
 	- **Scenario B (no confirm):** wait past deadline+grace → escalation mail arrives + ACK reminders follow
 	- **Scenario C (ACK):** click ACK link → ACK reminders stop immediately
 
-> Tip:
-> When testing deliverability, do not use tiny intervals (seconds)
-> Google, Microsoft, and others treat rapid identical emails as suspicious
-> The test preset above stays short but avoids “mail flooding”.
+> **Tip**: When testing deliverability, do not use tiny intervals (seconds). Google, Microsoft, and others treat rapid identical emails as suspicious. The test preset above stays short but avoids “mail flooding”.

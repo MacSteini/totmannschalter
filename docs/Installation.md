@@ -6,7 +6,7 @@
 ## Install order (recommended)
 1. Identify `<WEB_USER>:<WEB_GROUP>` first.
 2. Create state directory and place files.
-3. Set minimum `totmann.inc.php` values.
+3. Set required `totmann.inc.php` values.
 4. Fix ownership/permissions.
 5. Run preflight checks.
 6. Clean initialise once.
@@ -19,6 +19,7 @@ In `/var/lib/totmann`:
 - `totmann.inc.php`
 - your configured `lib_file` (template default: `totmann-lib.php`)
 - `totmann-tick.php`
+- your configured `mail_file` (template default: `totmann-messages.php`)
 
 Runtime files created automatically (as needed) in `/var/lib/totmann`:
 - `totmann.json`
@@ -31,14 +32,14 @@ In your webroot:
 - your configured `web_file` (template default: `totmann.php`)
 - optional stylesheet for web pages: your configured `web_css_file` (template default: `totmann.css`)
 ## Before you start: identify the real web identity
-**This is the most important step**: you must find the actual user and group that execute your configured web endpoint file (`web_file`). On Debian/Ubuntu with PHP-FPM, the pool configuration is usually the source of truth.
+**This is the most important step**: you must find the actual user and group that execute your configured web endpoint file (`web_file`). On Debian/Ubuntu with PHP-FPM, the pool configuration is the source of truth.
 
 List configured pool users/groups:
 ```sh
 sudo grep -R --line-number "^\s*user\s*=" /etc/php/*/fpm/pool.d
 sudo grep -R --line-number "^\s*group\s*=" /etc/php/*/fpm/pool.d
 ```
-If you have multiple pools, determine which pool serves your site (vhost). Use one of these methods if you are unsure:
+If you have more than one pool, determine which pool serves your site (vhost). Use one of these methods if you are unsure:
 
 `systemd` services:
 ```sh
@@ -51,7 +52,7 @@ Look at listening sockets:
 sudo ss -lptn | egrep -i ':(80|443)\b|php-fpm|nginx|apache'
 sudo ss -lx | egrep -i 'php.*fpm|fpm\.sock'
 ```
-nginx and php-fpm sockets: find the pool socket used by your vhost:
+nginx and PHP-FPM sockets: find the pool socket used by your vhost:
 ```sh
 sudo grep -R --line-number "fastcgi_pass" /etc/nginx | head -n 50
 ```
@@ -68,9 +69,9 @@ From here on:
 sudo mkdir -p /var/lib/totmann
 ```
 ## Place the files
-- Copy `totmann.inc.php`, your configured `lib_file`, and `totmann-tick.php` to `/var/lib/totmann`:
+- Copy `totmann.inc.php`, your configured `lib_file`, `totmann-tick.php`, and your configured `mail_file` to `/var/lib/totmann`:
 ```sh
-sudo cp totmann.inc.php totmann-tick.php totmann-lib.php /var/lib/totmann/
+sudo cp totmann.inc.php totmann-tick.php totmann-lib.php totmann-messages.php /var/lib/totmann/
 ```
 - Place your configured `web_file` into your webroot (e. g., `/var/www/html/totmann/totmann.php`):
 ```sh
@@ -80,16 +81,21 @@ sudo cp totmann.php /var/www/html/totmann/totmann.php
 ```sh
 sudo cp totmann.css /var/www/html/totmann/totmann.css
 ```
-If you changed `lib_file`, `web_file`, or `web_css_file` from the template names, adjust these copy/rename commands accordingly.
+If you changed `lib_file`, `web_file`, `web_css_file`, or `mail_file` from the template names, adjust these copy/rename commands accordingly.
 - Ensure your PHP runtime sets ENV `TOTMANN_STATE_DIR=/var/lib/totmann` (see [web endpoint](Web.md "Web endpoint")).
-## Update `totmann.inc.php` (minimum required)
+## Update `totmann.inc.php` (required values)
 - `state_dir` should match the directory where you placed `totmann.inc.php` (recommended: `/var/lib/totmann`)
-- Runtime filenames (filenames only): `lib_file`, `web_file`, `state_file`, `lock_file`, `log_file_name`
+- Runtime filenames (filenames only): `lib_file`, `lock_file`, `log_file_name`, `mail_file`, `state_file`, `web_file`
 - Optional web stylesheet filename in webroot: `web_css_file` (empty disables link)
-- `base_url` must point to your real public HTTPS base URL (without endpoint filename); `web_file` is appended automatically
-- `log_mode` should be set explicitly: `none`, `syslog`, `file`, `both` (recommended: `both`)
+- `base_url` must point to your real public HTTPS base URL (without endpoint filename); the script appends `web_file` automatically
+- set `log_mode` explicitly: `none`, `syslog`, `file`, `both` (recommended: `both`)
 - `hmac_secret_hex` (e. g., `openssl rand -hex 32`)
-- `to_self` and `to_recipients` (for testing: only your own addresses)
+- `to_self`
+- `to_recipients` as recipient entries in this format:
+	- `[address]`
+	- `[address, id]` (ID rule: `^[a-z0-9_-]+$`, 1..100 chars)
+- `body_escalate` as mandatory fallback escalation body
+- `mail_file` as optional external mapping file (`id => ['subject' => ..., 'body' => ...]`)
 ## Preflight check (recommended before enabling timer)
 Run the built-in preflight in your deployed state dir:
 ```sh
@@ -105,17 +111,19 @@ Exit codes:
 
 `--web-user` is optional but recommended. It validates (read-only) whether the actual PHP runtime user can likely read config and create/update lock/state files based on POSIX mode bits.
 
+If `check` reports invalid recipient IDs, missing ID mappings, or file-load issues in `mail_file`, the result is `FAIL`. Runtime delivery remains fail-safe: escalation mails are still sent and affected recipients receive `subject_escalate` + `body_escalate`.
+
 Timing/interval config is also validated in preflight and at runtime:
-- required integer values must be numeric and within valid minimum bounds
-- suspicious but allowed relations are emitted as warnings (e. g., `confirm_window_seconds > check_interval_seconds`)
+- required integer values must be numeric and within valid bounds
+- preflight emits warnings for suspicious but allowed relations (e. g., `confirm_window_seconds > check_interval_seconds`)
 
 > Note:
 > The repository `totmann.inc.php` is a template by design.
-> The preflight should be run against the deployed config in your real state dir.
+> Run the preflight against the deployed config in your real state dir.
 
 ## Changing config without restarting systemd
-For `totmann.inc.php` changes (for example timing/interval values), you usually do not need to restart `totmann.timer` or `totmann.service`.
-The runtime reads config on each tick, so updates are picked up automatically.
+For `totmann.inc.php` changes (for example timing/interval values), you do not need to restart `totmann.timer` or `totmann.service`.
+The runtime reads config on each tick, so it picks up updates automatically.
 
 Only changes to unit files in `/etc/systemd/system/*.service` or `*.timer` require:
 ```sh
@@ -163,7 +171,7 @@ ls -la /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totm
 2. Ensure `totmann.timer` is active and wait for the reminder email.
 3. Open the link (`GET`): you should see a confirm button.
 4. Click Confirm (`POST`): page shows `Confirmed!`
-5. With random/invalid/stale: neutral page is shown
+5. With random/invalid/stale: the endpoint shows a neutral page
 
 For live debugging during the smoke test, keep this running in a second shell:
 ```sh

@@ -1,7 +1,5 @@
 <?php
 
-declare(strict_types=1);
-
 /**
  * totmannschalter – configuration template
  *
@@ -11,12 +9,14 @@ declare(strict_types=1);
  * Template defaults for runtime filenames, timing, mail, logging, and web behaviour.
  */
 
+declare(strict_types=1);
+
 return [
 // Public base URL (must be HTTPS, WITHOUT endpoint filename).
 // Runtime links are built as: <base_url>/<web_file>?a=...&id=...&sig=...
 'base_url' => 'https://example.com/totmann',
 
-// State directory on disk (holds totmann.inc.php, totmann-tick.php, your configured lib_file, and runtime files).
+// State directory on disk (holds totmann.inc.php, totmann-tick.php, your configured lib_file, your configured mail_file, and runtime files).
 // NOTE: Entry points do NOT use this value to locate the directory. They resolve it via:
 // - totmann-tick.php: ENV TOTMANN_STATE_DIR (or __DIR__)
 // - totmann.php (web endpoint): ENV TOTMANN_STATE_DIR (or define('TOTMANN_STATE_DIR', ...))
@@ -26,10 +26,11 @@ return [
 // Runtime file names inside state_dir (filenames only, no paths).
 // These keys are required by the runtime; invalid/missing values fail bootstrap.
 'lib_file' => 'totmann-lib.php',
-'web_file' => 'totmann.php',
-'state_file' => 'totmann.json',
 'lock_file' => 'totmann.lock',
 'log_file_name' => 'totmann.log',
+'mail_file' => 'totmann-messages.php',
+'state_file' => 'totmann.json',
+'web_file' => 'totmann.php',
 
 // Optional stylesheet filename in the webroot (same folder as web_file).
 // Empty string disables stylesheet linking from the web endpoint.
@@ -56,11 +57,11 @@ return [
 // Behaviour:
 // 1) Before next_check_at: nothing happens.
 // 2) From next_check_at (inclusive) until deadline_at (exclusive):
-//		- reminder emails are sent every remind_every_seconds (to_self).
+//      - reminder emails are sent every remind_every_seconds (to_self).
 // 3) At/after (deadline_at + grace):
-//		- if you did NOT confirm during this cycle, the cycle counts as "missed".
-//		- only after missed_cycles_before_fire missed cycles: escalation triggers.
-//		- escalation email goes to to_recipients.
+//      - if you did NOT confirm during this cycle, the cycle counts as "missed".
+//      - only after missed_cycles_before_fire missed cycles: escalation triggers.
+//      - escalation email goes to to_recipients.
 //
 // NOTE: The systemd timer can tick every minute without changing these time windows.
 //       It just checks whether a boundary has been reached.
@@ -138,10 +139,14 @@ return [
 ],
 
 // Escalation recipients (others).
+// Format:
+// - [address]
+// - [address, id]
+// `id` is optional and, if set, must match ^[a-z0-9_-]+$ (1..100 chars).
 'to_recipients' => [
-'Recipient 1 <recipient1@example.com>',
-'Recipient 2 <recipient2@example.com>',
-'Recipient 3 <recipient3@example.com>',
+['Recipient 1 <recipient1@example.com>'],
+['Jane Doe <recipient2@example.com>', 'jane-doe'],
+['John Doe <recipient3@example.com>', 'john_doe'],
 ],
 
 // Mail From + optional Reply-To.
@@ -164,6 +169,7 @@ return [
 // Placeholders (rendered as human-readable timestamps in `mail_timezone`; names kept for backwards compatibility):
 // - reminder: {CONFIRM_URL}, {DEADLINE_ISO}, {CYCLE_START_ISO}
 // - escalate: {LAST_CONFIRM_ISO}, {CYCLE_START_ISO}, {DEADLINE_ISO}, {ACK_URL}
+// Individual `mail_file` entries are subject/body pairs and use the same placeholders.
 'body_reminder' => <<<TXT
 Hi,
 

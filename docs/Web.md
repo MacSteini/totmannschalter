@@ -8,7 +8,7 @@ The web endpoint file (`web_file`, template default `totmann.php`) resolves the 
 
 In this repository version, the `define(...)` fallback is enabled in `totmann.php` by default. Adjust it to your actual state dir if needed.
 
-If neither exists, the endpoint returns a neutral page (the generic “Request received” response). There is intentionally no silent fallback to a local webroot state/config path.
+If neither exists, the endpoint returns a neutral page (the generic “Request received” response). The endpoint intentionally has no silent fallback to a local webroot state/config path.
 ## Optional stylesheet (`web_css_file`)
 `totmann.php` links the configured `web_css_file` from the same webroot folder as `web_file` (template default: `totmann.css`).
 

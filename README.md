@@ -1,44 +1,54 @@
 # totmannschalter
+![GitHub Release](https://img.shields.io/github/v/release/macsteini/totmannschalter?label=Release&color=red)
+![Static Badge](https://img.shields.io/badge/PHP_>=-v8.0.0-blue)
+[![Licence: MIT](https://img.shields.io/github/license/macsteini/totmannschalter)](https://gnu.org/licenses/mit)
+
 A fully self-hosted “dead man’s switch” for email: it sends periodic confirmation links from your own server, and if you don’t confirm within a defined window (plus grace), it escalates to predefined recipients. No third-party services, no vendor lock-in – just systemd, PHP, and sendmail on infrastructure you control.
 ## What this does
 - You regularly receive an email containing a **confirmation link**.
 - Confirmation is **two-step** (GET shows a button, POST confirms) to defeat mail link scanners.
-- The link is **HMAC-signed** (tamper-resistant), so the web endpoint (`totmann.php`) can validate requests **without** storing a history of issued links.
+- The link is **HMAC-signed** (tamper-resistant), so the web endpoint (`totmann.php`) can verify requests **without** storing a history of issued links.
 - You must open the link **within a configured time window**.
 - A successful confirmation **resets the cycle**.
-- If you do not confirm in time (plus grace), **escalation** is triggered using conservative logic.
+- The script sends reminder emails as one email per `to_self` recipient (no shared To list).
+- If you do not confirm in time (plus grace), the script triggers **escalation** using conservative logic.
+- The script sends escalation as one email per recipient (no shared To list), with optional recipient-specific plain-text subject/body pairs via external template IDs.
 - Escalation emails can include an optional **receipt acknowledgement (ACK)** link. Once **any** recipient acknowledges, further ACK reminders stop.
-- If an ACK reminder limit is configured, the script logs one final marker when the limit is reached and then stays quiet for this escalation state (until ACK or reset) to avoid irrelevant log noise.
+- If you configure an ACK reminder limit, the script logs one final marker when it reaches the limit and then stays quiet for this escalation state (until ACK or reset) to avoid irrelevant log noise.
 - Web requests without a valid current token always show a **neutral page** (stealth).
-- Rate limiting is enabled (**fail-open**) to reduce abuse without breaking functionality.
+- Rate limiting runs in **fail-open** mode to reduce abuse without breaking functionality.
 ## Requirements
 - Linux host with `systemd` (timer + oneshot service).
 - PHP 8.0+ (uses `str_contains()`).
 - A sendmail-compatible MTA (e. g., Postfix/Exim) available via `sendmail_path`.
 ## Quick start
 > One rule that matters:
-> The tick runs as `root`, but the web request does not. Therefore the state directory must be writable by both `root` and your real web user/group – and it must not be inside your webroot.
+> The tick runs as `root`, but the web request does not. This means the state directory must be writable by both `root` and your real web user/group – and it must not be inside your webroot.
 ## Installation (step-by-step, happy path)
 1. Identify your real PHP runtime identity (`<WEB_USER>:<WEB_GROUP>`):
 	[Installation guide](docs/Installation.md "Installation guide"), section “Before you start”.
 2. Create state dir + place files:
 	```sh
 	sudo mkdir -p /var/lib/totmann
-	sudo cp totmann.inc.php totmann-tick.php totmann-lib.php /var/lib/totmann/
+	sudo cp totmann.inc.php totmann-tick.php totmann-lib.php totmann-messages.php /var/lib/totmann/
 	# Place the web endpoint in your webroot (example):
 	# sudo cp totmann.php /var/www/html/totmann/totmann.php
 	# Optional but recommended for styled web pages:
 	# sudo cp totmann.css /var/www/html/totmann/totmann.css
 	```
-	If you changed `lib_file`, `web_file`, or `web_css_file` in `totmann.inc.php`, copy/rename files accordingly.
-3. Set minimum config in `/var/lib/totmann/totmann.inc.php`:
-	- `base_url` (real HTTPS base URL without endpoint filename; `web_file` is appended automatically)
+	If you changed `lib_file`, `web_file`, `web_css_file`, or `mail_file` in `totmann.inc.php`, copy/rename files accordingly.
+3. Set required config in `/var/lib/totmann/totmann.inc.php`:
+	- `base_url` (real HTTPS base URL without endpoint filename; the script appends `web_file` automatically)
 	- `hmac_secret_hex` (example: `openssl rand -hex 32`)
-	- `to_self`, `to_recipients` (for first test: only your own addresses)
-	- Runtime filenames: `lib_file`, `web_file`, `state_file`, `lock_file`, `log_file_name` (filenames only)
+	- `to_self`
+	- `to_recipients` as entries in format `[address]` or `[address, id]`
+	- `body_escalate` (mandatory fallback escalation body)
+	- `mail_file` (optional ID-to-subject/body map in external PHP file)
+	- Runtime filenames: `lib_file`, `lock_file`, `log_file_name`, `mail_file`, `state_file`, `web_file` (filenames only)
 	- Optional web stylesheet filename: `web_css_file` (same webroot folder as `web_file`; empty disables link)
 	- Logging target via `log_mode`: `none`, `syslog`, `file`, `both` (recommended: `both`)
 	- Use the test preset from [Timing](docs/Timing.md "Timing model and presets")
+	- Important fail-safe: if recipient ID mapping is invalid/missing, or template loading fails at runtime, escalation still sends with `subject_escalate` + `body_escalate`
 4. Set permissions:
 	```sh
 	sudo chown -R root:<WEB_GROUP> /var/lib/totmann
@@ -65,7 +75,7 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 	Follow the instructions in [systemd](docs/Systemd.md "systemd").
 9. Run smoke/E2E test with short timings:
 	Follow the “Smoke test” in the [installation guide](docs/Installation.md "Installation guide") and the checklist in [Timing](docs/Timing.md "Timing model and presets").
-10. During live testing, monitor script decisions in real time:
+10. During live testing, watch script decisions in real time:
 	```sh
 	tail -f /var/lib/totmann/totmann.log
 	```
@@ -100,4 +110,4 @@ Contributions are welcome! Please follow these steps:
 
 Please ensure all changes are well-documented and tested.
 ## Licence
-This project is licenced under the [MIT Licence](LICENCE "MIT Licence"). You are free to use, modify, and distribute this project in compliance with the licence terms.
+This project uses the [MIT Licence](LICENCE "MIT Licence"). You may use, change, and distribute it in compliance with the licence terms.

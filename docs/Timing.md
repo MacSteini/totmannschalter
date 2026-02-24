@@ -64,7 +64,7 @@ This is conservative and human-friendly while keeping escalation below one week:
 'escalate_ack_remind_every_seconds' => 60 * 60 * 12, // 12 hours
 'escalate_ack_max_reminds' => 25,
 ```
-**What this means in practice**
+### What this means in practice
 - You start receiving reminders one day after cycle start and then have two days to confirm
 - If you miss once, escalation still does not trigger – it takes two misses (by design). After each miss, the script starts a new cycle immediately (so the cadence shifts)
 - Worst-case time from last confirm to first escalation: **6 days 8 hours**

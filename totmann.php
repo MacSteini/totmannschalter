@@ -25,7 +25,7 @@ if ($v!=='') return $v;
 
 if (defined('TOTMANN_STATE_DIR')) {
 $v = rtrim((string)constant('TOTMANN_STATE_DIR'), '/');
-return $v!=='' ? $v : null;
+return $v;
 }
 
 return null;
@@ -197,10 +197,13 @@ else $stateDir = rtrim(dirname($configPath), '/');
 if ($stateDir==='') dm_render_neutral();
 $cfg['state_dir'] = $stateDir;
 
+$stateFile = '';
+$lockFile = '';
 try {
 $stateFile = dm_state_file($cfg);
 $lockFile = dm_lock_file($cfg);
 } catch (Throwable $e) { dm_render_neutral(); }
+if ($stateFile==='' || $lockFile==='') dm_render_neutral();
 
 $now = dm_now();
 $ip = dm_client_ip($cfg);

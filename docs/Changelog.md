@@ -1,10 +1,18 @@
 # totmannschalter – Changelog
-All notable changes to this project will be documented in this file.
+This file documents all notable changes to this project.
 
 This project uses semantic versioning:
 - MAJOR: breaking changes
 - MINOR: new features (backwards compatible)
 - PATCH: bugfixes/small improvements (backwards compatible)
+## v2.0.0
+- BREAKING: `to_recipients` now requires structured entries in the format `[address]` or `[address, id]`.
+- BREAKING: recipient-specific entries in `mail_file` are now structured subject/body pairs (`id => ['subject' => ..., 'body' => ...]`), and body placeholders include `{ACK_URL}`.
+- BREAKING: removed `ack_mail_default`; fallback now uses `subject_escalate` + `body_escalate`.
+- Reminder mails to `to_self` are now always sent individually (one mail per recipient).
+- Escalation mails remain per recipient (individual delivery), not as one shared recipient list.
+- `check` reports `FAIL` for invalid recipient IDs and missing message mappings; runtime delivery remains fail-safe and falls back to `subject_escalate` + `body_escalate`.
+- Internal split: `totmann-tick.php` is now a runner-only entrypoint; helper declarations were consolidated into `lib_file` (template default: `totmann-lib.php`) to satisfy strict file side-effect linting.
 ## v1.0.0 – stable
 - Initial stable release.
 - Complete cycle engine with reminders, confirmation windows, grace handling, and escalation after repeated misses.

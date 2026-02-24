@@ -4,7 +4,7 @@ You can create the unit and timer either:
 - **Option B:** manually with an editor (`nano`, `vi`, etc.)
 ## Option A (recommended): create files via terminal
 This avoids editor mistakes and creates the files exactly as shown.
-### Create the unit
+### Create the unit manually
 Replace `<WEB_GROUP>`:
 ```sh
 sudo tee /etc/systemd/system/totmann.service >/dev/null <<'EOF'
@@ -26,7 +26,7 @@ UMask=0007
 ReadWritePaths=/var/lib/totmann
 EOF
 ```
-### Create the timer
+### Create the timer manually
 ```sh
 sudo tee /etc/systemd/system/totmann.timer >/dev/null <<'EOF'
 [Unit]
@@ -107,7 +107,7 @@ Confirm that the `totmann.service` environment points to the same state director
 ```sh
 sudo systemctl show totmann.service -p Environment -p WorkingDirectory -p ExecStart -p UMask
 ```
-# Logs
+## Logs
 ```sh
 journalctl -u totmann.service -n 200 --no-pager
 tail -n 50 /var/lib/totmann/totmann.log

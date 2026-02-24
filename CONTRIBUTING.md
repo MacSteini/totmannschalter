@@ -1,5 +1,5 @@
 # Contribution guide
-Thanks for contributing. This guide defines the expected workflow for pull requests in this repository.
+This guide defines the expected workflow for pull requests in this repository.
 ## Scope
 - Contributions are welcome for bug fixes, documentation improvements, tests, and focused feature work.
 - For breaking changes or larger refactors, open an issue first and agree scope before implementation.

@@ -1,5 +1,5 @@
 # totmannschalter – `systemd` unit & timer
-You can create the unit and timer either:
+You can create the unit and timer in one of two ways:
 - **Option A (recommended):** via terminal (copy/paste, deterministic)
 - **Option B:** manually with an editor (`nano`, `vi`, etc.)
 ## Option A (recommended): create files via terminal
@@ -18,14 +18,13 @@ Group=<WEB_GROUP>
 Type=oneshot
 WorkingDirectory=/var/lib/totmann
 Environment=TOTMANN_STATE_DIR=/var/lib/totmann
-
-# Critical:
-# UMask=0007 ensures runtime files created by root become group-writable (0660).
 UMask=0007
 
+ProtectSystem=strict
 ReadWritePaths=/var/lib/totmann
 EOF
 ```
+> **Critical**: `UMask=0007` ensures runtime files created by root become group-writable (`0660`).
 ### Create the timer manually
 ```sh
 sudo tee /etc/systemd/system/totmann.timer >/dev/null <<'EOF'
@@ -43,7 +42,7 @@ WantedBy=timers.target
 EOF
 ```
 ## Option B: create files with an editor
-If you prefer doing it manually, create the files below and paste the contents.
+If you prefer doing it manually, create the files below and paste the contents exactly as shown.
 ### Create the unit
 Replace `<WEB_GROUP>`:
 ```sh
@@ -61,13 +60,12 @@ Group=<WEB_GROUP>
 Type=oneshot
 WorkingDirectory=/var/lib/totmann
 Environment=TOTMANN_STATE_DIR=/var/lib/totmann
-
-# Critical:
-# UMask=0007 ensures runtime files created by root become group-writable (0660).
 UMask=0007
 
+ProtectSystem=strict
 ReadWritePaths=/var/lib/totmann
 ```
+> **Critical**: `UMask=0007` ensures runtime files created by root become group-writable (`0660`).
 ### Create the timer
 ```sh
 sudo nano /etc/systemd/system/totmann.timer
@@ -118,6 +116,8 @@ Use according to `log_mode`:
 - `both` => both commands
 - `none` => only systemd unit status/events are visible (no script log lines)
 If you changed `log_file_name` or `log_file`, use that effective file log path for `tail`.
+
+The same `/var/lib/totmann` state directory should also contain your configured `l18n/` directory, because the web endpoint loads its public page texts from there.
 
 Live stream (useful during test runs):
 ```sh

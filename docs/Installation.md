@@ -1,32 +1,36 @@
 # totmannschalter – Installation
 ## Prerequisites
-- PHP 8.0+ (required).
+- PHP 8.0+.
 - `systemd` (service + timer).
-- `sendmail`-compatible MTA (e. g., Postfix/Exim) reachable via `sendmail_path`.
+- A sendmail-compatible MTA (e. g., Postfix/Exim) reachable via `sendmail_path`.
 ## Install order (recommended)
 1. Identify `<WEB_USER>:<WEB_GROUP>` first.
-2. Create state directory and place files.
+2. Create the state directory and place the files.
 3. Set required `totmann.inc.php` values.
-4. Fix ownership/permissions.
-5. Run preflight checks.
-6. Clean initialise once.
-7. Install and enable `systemd` timer.
-8. Run smoke test with short timings.
+4. Update `totmann-recipients.php`.
+5. Fix ownership/permissions.
+6. Run preflight checks.
+7. Clean initialise once.
+8. Install and enable the `systemd` timer.
+9. Run the smoke test with short timings.
 ## Layout (recommended)
 Recommended base directory (not under `/home`): `/var/lib/totmann`
 
 In `/var/lib/totmann`:
 - `totmann.inc.php`
 - your configured `lib_file` (template default: `totmann-lib.php`)
+- your configured `l18n_dir_name` directory (template default: `l18n/`)
+- your configured `recipients_file` (template default: `totmann-recipients.php`)
 - `totmann-tick.php`
-- your configured `mail_file` (template default: `totmann-messages.php`)
 
 Runtime files created automatically (as needed) in `/var/lib/totmann`:
 - `totmann.json`
 - `totmann.lock`
 - `ratelimit/`
 - `totmann.log`
-These names are configurable in `totmann.inc.php` via `state_file`, `lock_file`, `log_file_name`.
+
+Private download directory (outside webroot):
+- your configured `download_base_dir` (template default: `/var/lib/totmann/downloads`)
 
 In your webroot:
 - your configured `web_file` (template default: `totmann.php`)
@@ -67,11 +71,14 @@ From here on:
 ## Create the state directory
 ```sh
 sudo mkdir -p /var/lib/totmann
+sudo mkdir -p /var/lib/totmann/downloads
+sudo mkdir -p /var/lib/totmann/l18n
 ```
 ## Place the files
-- Copy `totmann.inc.php`, your configured `lib_file`, `totmann-tick.php`, and your configured `mail_file` to `/var/lib/totmann`:
+- Copy `totmann.inc.php`, your configured `lib_file`, your configured `recipients_file`, and `totmann-tick.php` to `/var/lib/totmann`:
 ```sh
-sudo cp totmann.inc.php totmann-tick.php totmann-lib.php totmann-messages.php /var/lib/totmann/
+sudo cp totmann.inc.php totmann-tick.php totmann-lib.php totmann-recipients.php /var/lib/totmann/
+sudo cp -R l18n /var/lib/totmann/
 ```
 - Place your configured `web_file` into your webroot (e. g., `/var/www/html/totmann/totmann.php`):
 ```sh
@@ -81,21 +88,136 @@ sudo cp totmann.php /var/www/html/totmann/totmann.php
 ```sh
 sudo cp totmann.css /var/www/html/totmann/totmann.css
 ```
-If you changed `lib_file`, `web_file`, `web_css_file`, or `mail_file` from the template names, adjust these copy/rename commands accordingly.
-- Ensure your PHP runtime sets ENV `TOTMANN_STATE_DIR=/var/lib/totmann` (see [web endpoint](Web.md "Web endpoint")).
+If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` from the template names, adjust these copy/rename commands accordingly.
 ## Update `totmann.inc.php` (required values)
 - `state_dir` should match the directory where you placed `totmann.inc.php` (recommended: `/var/lib/totmann`)
-- Runtime filenames (filenames only): `lib_file`, `lock_file`, `log_file_name`, `mail_file`, `state_file`, `web_file`
+- Runtime names (filenames/directories only): `lib_file`, `l18n_dir_name`, `lock_file`, `log_file_name`, `recipients_file`, `state_file`, `web_file`
+- `download_base_dir` should point to a private directory outside your webroot
+- `download_valid_days` sets one global validity period for all download links
+- `download_notice_single_use` controls the warning text rendered by `{DOWNLOAD_NOTICE}` and must be replaced with your own wording before real use
 - Optional web stylesheet filename in webroot: `web_css_file` (empty disables link)
-- `base_url` must point to your real public HTTPS base URL (without endpoint filename); the script appends `web_file` automatically
+- `base_url` must point to your real public HTTPS base URL (without endpoint filename); the runtime appends `web_file` automatically
 - set `log_mode` explicitly: `none`, `syslog`, `file`, `both` (recommended: `both`)
 - `hmac_secret_hex` (e. g., `openssl rand -hex 32`)
 - `to_self`
-- `to_recipients` as recipient entries in this format:
-	- `[address]`
-	- `[address, id]` (ID rule: `^[a-z0-9_-]+$`, 1..100 chars)
-- `body_escalate` as mandatory fallback escalation body
-- `mail_file` as optional external mapping file (`id => ['subject' => ..., 'body' => ...]`)
+- Public web pages follow the browser language from `Accept-Language`; fallback language is `en-US`
+- Public web timestamps stay in `mail_timezone`
+- If a locale directory/file is missing or unreadable, preflight reports it and the endpoint falls back to `en-US`
+## Update `totmann-recipients.php`
+`totmann-recipients.php` now contains exactly 3 flat top-level areas:
+- `$files`: file alias => relative path
+- `$messages`: message key => `subject` + `body`
+- `$recipients`: one flat recipient row per mailbox
+
+Recipient row format (fixed order):
+1. personal name used by `{RECIPIENT_NAME}`
+2. mailbox used for the actual `To:` header
+3. message key
+4. optional list of normal file aliases
+5. optional list of single-use file aliases
+
+Rules:
+- the first 3 values are always mandatory
+- field 2 may be:
+	- `recipient@example.com`
+	- `<recipient@example.com>`
+	- `Recipient Name <recipient@example.com>`
+- field 3 is mandatory and must always reference a valid message in `$messages`
+- field 4 is the normal/safe default
+- field 5 is only for the special case `single_use=true`
+- `single_use=false` stays the implicit default whenever field 5 is omitted
+- `download_valid_days` in `totmann.inc.php` controls one global validity period for all downloads
+
+Minimal example:
+```php
+$files = [
+    'letter' => 'shared/letter.pdf',
+];
+
+$messages = [
+    'default' => [
+        'subject' => '[totmannschalter] Escalation triggered',
+        'body' => <<<TXT
+Hello {RECIPIENT_NAME},
+
+{ACK_BLOCK}
+
+{DOWNLOAD_NOTICE}
+
+{DOWNLOAD_LINKS}
+TXT,
+    ],
+    'jane' => [
+        'subject' => '[totmannschalter] Escalation triggered for Jane',
+        'body' => <<<TXT
+Dear {RECIPIENT_NAME},
+
+{DOWNLOAD_NOTICE}
+
+{DOWNLOAD_LINKS}
+TXT,
+    ],
+];
+
+$recipients = [
+    ['Recipient 1', 'recipient1@example.com', 'default'],
+    ['Jane Doe', 'Jane Doe <recipient2@example.com>', 'jane', ['letter']],
+];
+
+return [
+    'files' => $files,
+    'messages' => $messages,
+    'recipients' => $recipients,
+];
+```
+
+Same file for two recipients:
+```php
+$files = [
+    'letter' => 'shared/letter.pdf',
+];
+
+$messages = [
+    'default' => [
+        'subject' => '[totmannschalter] Escalation triggered',
+        'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
+    ],
+];
+
+$recipients = [
+    ['Jane Doe', 'recipient2@example.com', 'default', ['letter']],
+    ['John Doe', 'recipient3@example.com', 'default', ['letter']],
+];
+```
+
+Result:
+- both recipients receive the same underlying file
+- both recipients still receive separate escalation mails
+- both recipients still receive separate signed download URLs
+## Download placeholders
+Use these placeholders in each message `body` inside `$messages`:
+- `{RECIPIENT_NAME}`
+- `{ACK_BLOCK}`
+- `{ACK_URL}` (advanced manual use only)
+- `{DOWNLOAD_LINKS}`
+- `{DOWNLOAD_NOTICE}`
+
+Behaviour:
+- `{RECIPIENT_NAME}` expands to field 1 from the matching recipient row
+- `{ACK_BLOCK}` expands to the full acknowledgement hint plus URL when ACK is enabled, otherwise it stays empty
+- `{ACK_URL}` expands only to the raw ACK URL and is intended for advanced custom bodies
+- `{DOWNLOAD_LINKS}` expands to raw URLs only, one URL per line
+- `{DOWNLOAD_NOTICE}` expands only if at least one included link uses `single_use=true`
+- `single_use=false` is the default
+- the repository default for `download_notice_single_use` is deliberately only a placeholder, not a finished production text
+- if you use `single_use=true`, keep `{DOWNLOAD_NOTICE}` in the mail body so recipients always see the warning
+
+Minimal example:
+```text
+{DOWNLOAD_NOTICE}
+
+{DOWNLOAD_LINKS}
+```
 ## Preflight check (recommended before enabling timer)
 Run the built-in preflight in your deployed state dir:
 ```sh
@@ -111,18 +233,21 @@ Exit codes:
 
 `--web-user` is optional but recommended. It validates (read-only) whether the actual PHP runtime user can likely read config and create/update lock/state files based on POSIX mode bits.
 
-If `check` reports invalid recipient IDs, missing ID mappings, or file-load issues in `mail_file`, the result is `FAIL`. Runtime delivery remains fail-safe: escalation mails are still sent and affected recipients receive `subject_escalate` + `body_escalate`.
-
-Timing/interval config is also validated in preflight and at runtime:
-- required integer values must be numeric and within valid bounds
-- preflight emits warnings for suspicious but allowed relations (e. g., `confirm_window_seconds > check_interval_seconds`)
-
-> Note:
-> The repository `totmann.inc.php` is a template by design.
-> Run the preflight against the deployed config in your real state dir.
-
-## Changing config without restarting systemd
-For `totmann.inc.php` changes (for example timing/interval values), you do not need to restart `totmann.timer` or `totmann.service`.
+What `check` now validates:
+- filenames in `totmann.inc.php`
+- `l18n_dir_name` plus the shipped locale files (`de-DE`, `en-GB`, `en-US`, `fr-FR`, `it-IT`, `es-ES`)
+- timing values
+- `to_self`
+- `recipients_file`
+- `download_base_dir`
+- `base_url`
+- `download_notice_single_use`
+- `mail_from`
+- `sendmail_path`
+- `log_mode`
+- `ip_mode` / trusted-proxy settings
+## Changing config without restarting `systemd`
+For `totmann.inc.php` changes (for example timing values), you do not need to restart `totmann.timer` or `totmann.service`.
 The runtime reads config on each tick, so it picks up updates automatically.
 
 Only changes to unit files in `/etc/systemd/system/*.service` or `*.timer` require:
@@ -130,7 +255,6 @@ Only changes to unit files in `/etc/systemd/system/*.service` or `*.timer` requi
 sudo systemctl daemon-reload
 sudo systemctl restart totmann.timer
 ```
-
 ## Permissions (critical)
 Do NOT use `root:root`. Use `root:<WEB_GROUP>` so the web identity can access secrets and runtime files.
 
@@ -150,7 +274,6 @@ sudo find /var/lib/totmann -type f -exec chmod 0660 {} \;
 ```
 > Why setgid matters: files created later by `root` will still land in group `<WEB_GROUP>`.
 > Why `0660` matters: the web identity must be able to write your configured state file.
-
 ## Clean initialise (ensures correct runtime perms)
 Delete any old runtime files, then initialise once.
 ```sh
@@ -167,21 +290,23 @@ Verify:
 ls -la /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totmann/totmann.log
 ```
 ## Smoke test (use only your own addresses)
-1. In `totmann.inc.php`, temporarily set short timings (minutes). [See timing](Timing.md "Timing").
-2. Ensure `totmann.timer` is active and wait for the reminder email.
-3. Open the link (`GET`): you should see a confirm button.
-4. Click Confirm (`POST`): page shows `Confirmed!`
-5. With random/invalid/stale: the endpoint shows a neutral page
+1. In `totmann.inc.php`, temporarily set short timings. See [Timing](Timing.md "Timing model and presets").
+2. Point `to_self` and all recipient addresses in `totmann-recipients.php` to your own mailboxes.
+3. Ensure `totmann.timer` is active and wait for the reminder email.
+4. Open the confirmation link (`GET`): you should see a confirm button.
+5. Click Confirm (`POST`): the page should show the localised confirmation-success page, e. g., “Thank you.” plus “The cycle has been reset…”.
+6. Test the escalation path by not confirming.
+7. If you use download links, test:
+	- a normal download
+	- `single_use=true`
+	- the same file for two different recipients
+	- an ACK reminder mail for the same escalation event (single-use must still remain single-use)
+8. With random/invalid/stale tokens: the endpoint should show a neutral page.
 
-For live debugging during the smoke test, keep this running in a second shell:
-```sh
-tail -f /var/lib/totmann/totmann.log
-```
-If you changed `log_file_name` or `log_file`, tail that effective path instead. If `log_mode` is `syslog` or `none`, use:
+For live debugging during the smoke test, keep one of these running in a second shell:
 ```sh
 journalctl -u totmann.service -f
 ```
-## Next step
-After smoke test passes:
-1. Switch from test preset to production preset in [Timing](Timing.md "Timing model and presets").
-2. Re-run `php totmann-tick.php check` and keep `totmann.timer` enabled.
+```sh
+tail -f /var/lib/totmann/totmann.log
+```

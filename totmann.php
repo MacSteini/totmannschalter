@@ -162,8 +162,8 @@ function dm_web_fallback_catalog(): array
             'page_error_code_label' => 'Reference code',
             'page_download_unavailable_title' => 'This URL is not valid.',
             'page_download_unavailable_heading' => 'This URL is not valid.',
-            'page_download_unavailable_body_1' => 'The link to this download has either expired or is no longer valid.',
-            'page_download_unavailable_body_2' => 'Please keep the original message and try again later if the link should still be valid…',
+            'page_download_unavailable_body_1' => 'The link to this download has expired, been used already, or is no longer valid.',
+            'page_download_unavailable_body_2' => 'Please keep the original message for reference.',
             'page_download_unavailable_body_3' => '',
             'detail_cycle_started' => 'The current cycle started on {datetime}.',
             'detail_last_confirm' => 'The last successful confirmation was recorded on {datetime}.',
@@ -821,10 +821,21 @@ try {
 
     $state['escalate_ack_at'] = $now;
     $state['escalate_ack_next_at'] = null;
+    $deliveryMap = $state['escalation_delivery'] ?? [];
+    if (is_array($deliveryMap)) {
+        foreach ($deliveryMap as $recipientKey => $delivery) {
+            if (!is_array($delivery)) {
+                continue;
+            }
+            $delivery['ack_next_at'] = null;
+            $deliveryMap[$recipientKey] = $delivery;
+        }
+        $state['escalation_delivery'] = $deliveryMap;
+    }
     $stateRoot = dm_state_with_runtime($stateRoot, $state);
     dm_state_save($stateFile, $stateRoot);
     dm_log($cfg, "ack: OK ip={$ip}");
-    dm_log($cfg, 'ack: escalation acknowledged; escalation-state logging paused until reset.');
+    dm_log($cfg, 'ack: escalation acknowledged; no further escalation mails will be sent for this event.');
     dm_render_ack_ok($ackHasDownloads);
 } catch (Throwable $e) {
     $err = ($a === 'ack') ? 'E_ACK_FAIL_' : 'E_CONFIRM_FAIL_';

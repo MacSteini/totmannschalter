@@ -93,8 +93,8 @@ If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `w
 - `state_dir` should match the directory where you placed `totmann.inc.php` (recommended: `/var/lib/totmann`)
 - Runtime names (filenames/directories only): `lib_file`, `l18n_dir_name`, `lock_file`, `log_file_name`, `recipients_file`, `state_file`, `web_file`
 - `download_base_dir` should point to a private directory outside your webroot
-- `download_valid_days` sets one global validity period for all download links
-- `download_notice_single_use` controls the warning text rendered by `{DOWNLOAD_NOTICE}` and must be replaced with your own wording before real use
+- `download_valid_days` sets one global validity period for all download links in the same escalation event
+- `download_notice_single_use` is your own warning text for single-use downloads and must be replaced before real use
 - Optional web stylesheet filename in webroot: `web_css_file` (empty disables link)
 - `base_url` must point to your real public HTTPS base URL (without endpoint filename); the runtime appends `web_file` automatically
 - set `log_mode` explicitly: `none`, `syslog`, `file`, `both` (recommended: `both`)
@@ -116,22 +116,30 @@ Recipient row format (fixed order):
 4. optional list of normal file aliases
 5. optional list of single-use file aliases
 
-Rules:
+Practical meaning:
 - the first 3 values are always mandatory
 - field 2 may be:
 	- `recipient@example.com`
 	- `<recipient@example.com>`
 	- `Recipient Name <recipient@example.com>`
 - field 3 is mandatory and must always reference a valid message in `$messages`
-- field 4 is the normal/safe default
-- field 5 is only for the special case `single_use=true`
-- `single_use=false` stays the implicit default whenever field 5 is omitted
+- field 4 is the normal/safe default for downloads
+- field 5 is the special case for single-use downloads
+- you never write `single_use=true` yourself in this file
+- if field 5 is omitted, everything stays on the safer normal-download default
 - `download_valid_days` in `totmann.inc.php` controls one global validity period for all downloads
 
-Minimal example:
+Happy-path editing order:
+1. Define each reusable file once in `$files`.
+2. Write each reusable escalation mail once in `$messages`.
+3. Assign one message key and optional file aliases in `$recipients`.
+
+Copy/paste example:
 ```php
 $files = [
     'letter' => 'shared/letter.pdf',
+    'contacts' => 'shared/contacts.txt',
+    'photos' => 'shared/family-photos.zip',
 ];
 
 $messages = [
@@ -152,6 +160,8 @@ TXT,
         'body' => <<<TXT
 Dear {RECIPIENT_NAME},
 
+{ACK_BLOCK}
+
 {DOWNLOAD_NOTICE}
 
 {DOWNLOAD_LINKS}
@@ -160,8 +170,17 @@ TXT,
 ];
 
 $recipients = [
+    // Simplest case: message only, no files.
     ['Recipient 1', 'recipient1@example.com', 'default'],
-    ['Jane Doe', 'Jane Doe <recipient2@example.com>', 'jane', ['letter']],
+
+    // Normal download: use field 4.
+    ['Jane Doe', 'Jane Doe <recipient2@example.com>', 'jane', ['letter', 'contacts']],
+
+    // Single-use download: use field 5.
+    ['John Doe', '<recipient3@example.com>', 'default', [], ['photos']],
+
+    // Mixed case: field 4 stays normal, field 5 becomes single-use.
+    ['Alex Example', 'alex@example.com', 'default', ['letter'], ['photos']],
 ];
 
 return [
@@ -170,6 +189,20 @@ return [
     'recipients' => $recipients,
 ];
 ```
+
+How to read those recipient rows:
+- `['Recipient 1', 'recipient1@example.com', 'default']`
+  - sends the `default` message
+  - no download links
+- `['Jane Doe', 'Jane Doe <recipient2@example.com>', 'jane', ['letter', 'contacts']]`
+  - sends the `jane` message
+  - adds 2 normal download links from field 4
+- `['John Doe', '<recipient3@example.com>', 'default', [], ['photos']]`
+  - sends the `default` message
+  - adds 1 single-use download link from field 5
+- `['Alex Example', 'alex@example.com', 'default', ['letter'], ['photos']]`
+  - sends the `default` message
+  - adds 1 normal link and 1 single-use link
 
 Same file for two recipients:
 ```php
@@ -205,12 +238,15 @@ Use these placeholders in each message `body` inside `$messages`:
 Behaviour:
 - `{RECIPIENT_NAME}` expands to field 1 from the matching recipient row
 - `{ACK_BLOCK}` expands to the full acknowledgement hint plus URL when ACK is enabled, otherwise it stays empty
+- keep `{ACK_BLOCK}` in any message that should let recipients confirm receipt
+- if you remove `{ACK_BLOCK}` from a message, that message will not show an ACK link even when ACK is enabled globally
 - `{ACK_URL}` expands only to the raw ACK URL and is intended for advanced custom bodies
 - `{DOWNLOAD_LINKS}` expands to raw URLs only, one URL per line
-- `{DOWNLOAD_NOTICE}` expands only if at least one included link uses `single_use=true`
-- `single_use=false` is the default
+- `{DOWNLOAD_NOTICE}` expands only if the current mail includes at least one field-5 file
+- field 4 is the default and behaves like `single_use=false`
+- field 5 is the single-use list
 - the repository default for `download_notice_single_use` is deliberately only a placeholder, not a finished production text
-- if you use `single_use=true`, keep `{DOWNLOAD_NOTICE}` in the mail body so recipients always see the warning
+- if you use field 5, keep `{DOWNLOAD_NOTICE}` in the mail body so recipients always see the warning
 
 Minimal example:
 ```text
@@ -218,6 +254,11 @@ Minimal example:
 
 {DOWNLOAD_LINKS}
 ```
+
+Practical rule:
+- If you only ever use field 4, `{DOWNLOAD_NOTICE}` always stays empty.
+- If you use field 5 anywhere in that message, `{DOWNLOAD_NOTICE}` becomes your warning text from `download_notice_single_use`.
+- Full detail for mail bodies, ACK, and downloads: see [Mail delivery notes](Mail.md "Mail delivery notes").
 ## Preflight check (recommended before enabling timer)
 Run the built-in preflight in your deployed state dir:
 ```sh
@@ -298,9 +339,9 @@ ls -la /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totm
 6. Test the escalation path by not confirming.
 7. If you use download links, test:
 	- a normal download
-	- `single_use=true`
+	- a single-use download from recipient field 5
 	- the same file for two different recipients
-	- an ACK reminder mail for the same escalation event (single-use must still remain single-use)
+	- an ACK reminder mail for the same escalation event (the single-use file must still remain single-use)
 8. With random/invalid/stale tokens: the endpoint should show a neutral page.
 
 For live debugging during the smoke test, keep one of these running in a second shell:

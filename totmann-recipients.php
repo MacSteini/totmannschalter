@@ -6,10 +6,15 @@
  * Project: https://github.com/MacSteini/totmannschalter
  * Licence: MIT (see LICENCE)
  *
- * This file is intentionally flat:
+ * This file is intentionally flat and operator-focused:
  * - `$files` defines each downloadable file once
  * - `$messages` defines reusable escalation subjects/bodies
  * - `$recipients` assigns one mailbox per row
+ *
+ * Practical order for editing this file:
+ * 1. define each reusable file once in `$files`
+ * 2. write each reusable mail in `$messages`
+ * 3. assign message keys and file aliases in `$recipients`
  *
  * Recipient row format (fixed order):
  * 1. personal name for mail text (`{RECIPIENT_NAME}`)
@@ -17,6 +22,12 @@
  * 3. message key
  * 4. optional list of normal file aliases
  * 5. optional list of single-use file aliases
+ *
+ * Practical meaning of fields 4 and 5:
+ * - field 4 = normal download links
+ * - field 5 = single-use download links
+ * - you never write `single_use=true` yourself in this file
+ * - if field 5 is omitted, everything stays on the safer normal-download default
  *
  * Field 2 accepts exactly these mailbox forms:
  * - `recipient@example.com`
@@ -42,6 +53,11 @@
  * - `{ACK_URL}`
  * - `{DOWNLOAD_NOTICE}`
  * - `{DOWNLOAD_LINKS}`
+ *
+ * Practical placeholder rules:
+ * - keep `{ACK_BLOCK}` in a message body if that recipient should be able to confirm receipt
+ * - omit `{ACK_BLOCK}` only if you intentionally do not want an ACK link in that message
+ * - keep `{DOWNLOAD_NOTICE}` in a message body if any recipient using that message may receive field-5 files
  *
  * IMPORTANT:
  * - The subjects and bodies below are examples only.
@@ -98,6 +114,8 @@ Hello {RECIPIENT_NAME},
 
 Please read the note below.
 
+{ACK_BLOCK}
+
 {DOWNLOAD_NOTICE}
 
 {DOWNLOAD_LINKS}
@@ -106,9 +124,18 @@ TXT,
 ];
 
 $recipients = [
+    // Simplest case: one recipient, one message, no download links.
     ['Recipient 1', 'recipient1@example.com', 'default'],
+
+    // Normal downloads only: put file aliases into field 4.
     ['Jane Doe', 'Jane Doe <recipient2@example.com>', 'jane', ['letter', 'contacts']],
-    ['John Doe', '<recipient3@example.com>', 'john', ['letter', 'photos']],
+
+    // Mixed case: field 4 stays normal, field 5 becomes single-use.
+    // Here `letter` can be downloaded normally, while `photos` is limited to one successful download.
+    ['John Doe', '<recipient3@example.com>', 'john', ['letter'], ['photos']],
+
+    // The same file can be assigned to another recipient by repeating the same alias.
+    ['Alex Example', 'alex@example.com', 'default', ['letter']],
 ];
 
 return [

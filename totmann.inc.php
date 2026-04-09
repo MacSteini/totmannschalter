@@ -51,13 +51,17 @@ return [
 // Keep this OUTSIDE your webroot.
 'download_base_dir' => '/var/lib/totmann/downloads',
 
-// Rendered when an escalation mail contains at least one `single_use=true` download link.
+// Rendered only when the current escalation mail includes at least one single-use file
+// from field 5 in totmann-recipients.php.
+// You do NOT switch single-use on here. You only write the warning text that should
+// appear through {DOWNLOAD_NOTICE} in the affected mail bodies.
 // Replace this placeholder text with your own warning in your own language/tone.
-// Use this in the message bodies inside `totmann-recipients.php` via {DOWNLOAD_NOTICE}.
 'download_notice_single_use' => '[YOUR SINGLE-USE DOWNLOAD WARNING GOES HERE – DO NOT FORGET TO TRANSLATE / ADAPT THIS TEXT]',
 
-// Validity period for every download link (days, counted from the first escalation mail
-// of that escalation event). This is global on purpose, so the recipient file stays simple.
+// Validity period for every download link (days).
+// This timer starts at the first escalation mail of that escalation event and then applies
+// to all later reminder URLs for the same recipient/file pair as well.
+// The setting is global on purpose, so totmann-recipients.php stays simple.
 'download_valid_days' => 180,
 
 // Download action rate limiting.
@@ -120,8 +124,10 @@ return [
 
 // --- Recipient receipt acknowledgement (ACK) ---
 //
-// If enabled, escalation emails include an ACK link.
-// Once ANY recipient clicks the ACK link, the web endpoint records escalate_ack_at and stops further ACK reminders.
+// If enabled, escalation emails can include an ACK link via {ACK_BLOCK} or {ACK_URL}
+// inside the message bodies in totmann-recipients.php.
+// Once ANY recipient clicks the ACK link, the web endpoint records escalate_ack_at and
+// stops all further escalation mails for that escalation event.
 //
 // ACK reminders:
 // - after escalation was sent, if not yet acknowledged, the same escalation email is re-sent

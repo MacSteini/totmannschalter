@@ -153,6 +153,6 @@ After deadline + grace:
 	- Scenario A, confirm: confirm within the window -> cycle resets, escalation never triggers
 	- Scenario B, no confirm: wait past deadline plus grace -> escalation mail arrives and ACK reminders follow
 	- Scenario C, ACK: click ACK link -> ACK reminders stop immediately
-	- Scenario D, downloads: test at least one normal download, one `single_use=true` download, and the same file for two different recipients
+	- Scenario D, downloads: test at least one normal download from recipient field 4, one single-use download from recipient field 5, and the same file for two different recipients
 
 > Tip: when testing deliverability, do not use tiny intervals in seconds. Google, Microsoft, and others treat rapid identical emails as suspicious.

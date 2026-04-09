@@ -79,20 +79,27 @@ cat /var/lib/totmann/totmann.json
 If `next_reminder_at` does not move forward, the tick likely failed before saving state. Check logs for an exception.
 
 After escalation ACK reminders hit the configured maximum, one final “limit reached” marker is expected, then recurring escalation status lines stop by design. This keeps logs focused on actionable events.
+
+If `escalate_ack_at` is already set, no further escalation mails are sent for that escalation event.
 ## Downloads do not work
 Check these points in order:
 1. the relevant file alias exists in `$files` inside `totmann-recipients.php`
 2. the recipient row really references that alias in field 4 or field 5
-3. the real file path in `$files` is relative to `download_base_dir`, not absolute
-4. the real file exists under `download_base_dir`
-5. `download_valid_days` in `totmann.inc.php` has not already expired the link
-6. `{DOWNLOAD_LINKS}` is present in the relevant escalation mail body
-7. if field 5 is used, remember that only the first successful download of that escalation event is allowed
-8. if `{DOWNLOAD_NOTICE}` is missing from the mail body, recipients may not realise the single-use risk
+3. you used the intended field:
+	- field 4 for normal downloads
+	- field 5 for single-use downloads
+4. the real file path in `$files` is relative to `download_base_dir`, not absolute
+5. the real file exists under `download_base_dir`
+6. `download_valid_days` in `totmann.inc.php` has not already expired the link
+7. `{DOWNLOAD_LINKS}` is present in the relevant escalation mail body
+8. if field 5 is used, remember that only the first successful download of that escalation event is allowed
+9. if `{DOWNLOAD_NOTICE}` is missing from the mail body, recipients may not realise the single-use risk
 
 If a recipient’s download aliases cannot be resolved, that recipient’s escalation mail is still sent without those links. Check logs for the underlying reason.
 
 Already issued valid download links still resolve even if an unrelated message or recipient row in `totmann-recipients.php` is later broken.
+
+If you are unsure how field 4, field 5, `{DOWNLOAD_LINKS}`, and `{DOWNLOAD_NOTICE}` work together, go back to [Mail delivery notes](Mail.md "Mail delivery notes").
 ## Website language is wrong or always English
 Check these points in order:
 1. `l18n/` was copied into your configured `state_dir`

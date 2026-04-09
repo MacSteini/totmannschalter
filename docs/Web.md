@@ -65,6 +65,7 @@ Confirmation links are deliberately two-step to defeat mail link scanners:
 ACK success pages follow the same locale selection as confirm pages.
 
 - The ACK success page always confirms that the message was marked as received.
+- Once any recipient acknowledges, no further escalation mails are sent for that escalation event.
 - It only shows the extra download reminder if that specific recipient’s escalation mail actually included at least one download link.
 ## Shared runtime state
 The runtime now uses only one state file: `state_file` (template default: `totmann.json`).
@@ -99,7 +100,9 @@ Rules:
 - if a file is defined for two recipients, the runtime still generates separate signed URLs per recipient
 - `{DOWNLOAD_LINKS}` expands to raw URLs only
 - `{DOWNLOAD_NOTICE}` is the dedicated mail placeholder for the single-use warning text
-- `single_use=true` applies to the whole escalation event for that recipient and link
+- field 4 in `totmann-recipients.php` creates normal links
+- field 5 in `totmann-recipients.php` creates single-use links
+- single-use applies to the whole escalation event for that recipient and link
 - ACK reminder mails do not create a fresh single-use allowance
 - download expiry is measured from the first escalation mail of that escalation event via the global `download_valid_days` setting
 - already issued valid download links still resolve even if an unrelated message or recipient row later breaks in `totmann-recipients.php`

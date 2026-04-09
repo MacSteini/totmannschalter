@@ -234,6 +234,7 @@ try {
     $cycleStart = (int)($state['cycle_start_at'] ?? 0);
     $confirmedThisCycle = ($lastConfirm >= $nextCheck);
     $ackEnabled = ($ackEnabledCfg && !empty($cfg['base_url']));
+    $ackComplete = !empty($state['escalate_ack_at']);
 
     if ($now >= $fireAt && !$confirmedThisCycle) {
         $eventAt = (int)($state['escalation_event_at'] ?? 0);
@@ -266,7 +267,7 @@ try {
         }
 
         $eventAt = (int)($state['escalation_event_at'] ?? 0);
-        if ($eventAt > 0) {
+        if ($eventAt > 0 && !$ackComplete) {
             $deliveryMap = $state['escalation_delivery'] ?? [];
             if (!is_array($deliveryMap)) {
                 $deliveryMap = [];
@@ -351,7 +352,7 @@ try {
     }
 
     $eventAt = (int)($state['escalation_event_at'] ?? 0);
-    if ($ackEnabled && $eventAt > 0 && empty($state['escalate_ack_at'])) {
+    if ($ackEnabled && $eventAt > 0 && !$ackComplete) {
         $deliveryMap = $state['escalation_delivery'] ?? [];
         if (!is_array($deliveryMap)) {
             $deliveryMap = [];

@@ -5,14 +5,16 @@ This project uses semantic versioning:
 - MAJOR: breaking changes
 - MINOR: new features (backwards compatible)
 - PATCH: bugfixes and small improvements (backwards compatible)
-## Unreleased
+## v3.0.0
 - Added browser-language website localisation via `Accept-Language` with starter locales `de-DE`, `en-GB`, `en-US`, `fr-FR`, `it-IT`, and `es-ES`.
 - Reworked public website text to a more empathetic tone for neutral pages, confirmation pages, ACK pages, generic errors, and download-unavailable responses.
 - ACK success pages now show the extra download reminder only for recipients whose escalation mail actually contained download links.
+- ACK now stops all further escalation mails for the current escalation event, including pending per-recipient retry deliveries.
 - Escalation delivery and ACK reminders now persist per recipient, so partial send failures no longer force duplicate re-sends to already successful recipients.
 - Already issued valid download links now stay usable even if an unrelated message or recipient row later breaks in `totmann-recipients.php`.
 - Added `{ACK_BLOCK}` as the preferred escalation-mail placeholder for the full acknowledgement hint plus URL; `{ACK_URL}` remains available for advanced custom mail bodies.
 - Added `l18n_dir_name` as the configurable runtime directory name for website locale files.
+- Reworked the operator-facing documentation and templates for enduser readability, including clearer field-4/field-5 download examples and ACK guidance.
 - BREAKING: `totmann-recipients.php` now uses 3 flat top-level sections (`$files`, `$messages`, `$recipients`) instead of the earlier PHP-DSL helper model.
 - BREAKING: escalation mail text no longer falls back to `subject_escalate` or `body_escalate` in `totmann.inc.php`; every recipient row must reference a valid message key in field 3.
 - Fixed mailbox-header serialisation so a single `To:` recipient with a display name containing a comma is emitted safely.

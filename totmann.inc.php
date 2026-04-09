@@ -6,35 +6,71 @@
  * Project: https://github.com/MacSteini/totmannschalter
  * Licence: MIT (see LICENCE)
  *
- * Template defaults for runtime filenames, timing, mail, logging, and web behaviour.
+ * Template defaults for runtime filenames, timing, mail, logging, web behaviour,
+ * and optional download links.
  */
 
 declare(strict_types=1);
 
 return [
 // Public base URL (must be HTTPS, WITHOUT endpoint filename).
-// Runtime links are built as: <base_url>/<web_file>?a=...&id=...&sig=...
+// Runtime links are built as: <base_url>/<web_file>?a=confirm|ack|download&...
 'base_url' => 'https://example.com/totmann',
 
-// State directory on disk (holds totmann.inc.php, totmann-tick.php, your configured lib_file, your configured mail_file, and runtime files).
+// State directory on disk (holds totmann.inc.php, totmann-tick.php,
+// your configured lib_file, your configured recipients_file, and runtime files).
 // NOTE: Entry points do NOT use this value to locate the directory. They resolve it via:
 // - totmann-tick.php: ENV TOTMANN_STATE_DIR (or __DIR__)
-// - totmann.php (web endpoint): ENV TOTMANN_STATE_DIR (or define('TOTMANN_STATE_DIR', ...))
+// - totmann.php: ENV TOTMANN_STATE_DIR (or define('TOTMANN_STATE_DIR', ...))
 // Keep this value aligned with TOTMANN_STATE_DIR purely for clarity.
 'state_dir' => '/var/lib/totmann',
 
-// Runtime file names inside state_dir (filenames only, no paths).
-// These keys are required by the runtime; invalid/missing values fail bootstrap.
+// Runtime file names (filenames only, no paths).
+// Files loaded from state_dir: lib_file, recipients_file, state_file, lock_file, log_file_name
+// Directory loaded from state_dir: l18n_dir_name
+// Files deployed in webroot: web_file, optional web_css_file
+// These keys are required by the runtime unless explicitly documented as optional;
+// invalid/missing values fail bootstrap.
 'lib_file' => 'totmann-lib.php',
+// Directory inside state_dir that contains the web-language files.
+// The web endpoint picks the best supported locale from the browser's Accept-Language
+// header, falls back to en-US, and still renders all timestamps in mail_timezone.
+'l18n_dir_name' => 'l18n',
 'lock_file' => 'totmann.lock',
 'log_file_name' => 'totmann.log',
-'mail_file' => 'totmann-messages.php',
+'recipients_file' => 'totmann-recipients.php',
 'state_file' => 'totmann.json',
 'web_file' => 'totmann.php',
 
 // Optional stylesheet filename in the webroot (same folder as web_file).
 // Empty string disables stylesheet linking from the web endpoint.
 'web_css_file' => 'totmann.css',
+
+// Private directory for downloadable files.
+// Files served through the `download` action must live inside this directory.
+// Keep this OUTSIDE your webroot.
+'download_base_dir' => '/var/lib/totmann/downloads',
+
+// Rendered when an escalation mail contains at least one `single_use=true` download link.
+// Replace this placeholder text with your own warning in your own language/tone.
+// Use this in the message bodies inside `totmann-recipients.php` via {DOWNLOAD_NOTICE}.
+'download_notice_single_use' => '[YOUR SINGLE-USE DOWNLOAD WARNING GOES HERE – DO NOT FORGET TO TRANSLATE / ADAPT THIS TEXT]',
+
+// Validity period for every download link (days, counted from the first escalation mail
+// of that escalation event). This is global on purpose, so the recipient file stays simple.
+'download_valid_days' => 180,
+
+// Download action rate limiting.
+// Confirm/ACK and download requests share one top-level ratelimit directory, but use
+// separate internal namespaces automatically.
+'download_rate_limit_enabled' => true,
+'download_rate_limit_max_requests' => 20,
+'download_rate_limit_window_seconds' => 60,
+
+// One-time download lease (seconds).
+// A valid download token is temporarily reserved while one request is in progress.
+// If the transfer does not complete, the lease expires and the token can be retried.
+'download_lease_seconds' => 300,
 
 // Shared secret for HMAC signing/verification.
 // - Must be hex-encoded bytes.
@@ -57,14 +93,14 @@ return [
 // Behaviour:
 // 1) Before next_check_at: nothing happens.
 // 2) From next_check_at (inclusive) until deadline_at (exclusive):
-//      - reminder emails are sent every remind_every_seconds (to_self).
+// - reminder emails are sent every remind_every_seconds (to_self).
 // 3) At/after (deadline_at + grace):
-//      - if you did NOT confirm during this cycle, the cycle counts as "missed".
-//      - only after missed_cycles_before_fire missed cycles: escalation triggers.
-//      - escalation email goes to to_recipients.
+// - if you did NOT confirm during this cycle, the cycle counts as "missed".
+// - only after missed_cycles_before_fire missed cycles: escalation triggers.
+// - escalation email goes to recipients from recipients_file.
 //
 // NOTE: The systemd timer can tick every minute without changing these time windows.
-//       It just checks whether a boundary has been reached.
+// It just checks whether a boundary has been reached.
 
 // Length of a cycle (when the next confirmation window starts).
 'check_interval_seconds' => 60 * 60 * 24 * 1, // daily
@@ -89,10 +125,10 @@ return [
 //
 // ACK reminders:
 // - after escalation was sent, if not yet acknowledged, the same escalation email is re-sent
-//   up to escalate_ack_max_reminds times, spaced by escalate_ack_remind_every_seconds.
+// up to escalate_ack_max_reminds times, spaced by escalate_ack_remind_every_seconds.
 // - escalate_ack_max_reminds counts only reminder re-sends (not the initial escalation mail).
 //
-// Note: ACK links are built from base_url + web_file (same endpoint as confirm links).
+// Note: ACK links are built from base_url + web_file (same endpoint as confirm and download links).
 'escalate_ack_enabled' => true,
 'escalate_ack_remind_every_seconds' => 60 * 60 * 12, // e. g., 12h between ACK reminder mails
 'escalate_ack_max_reminds' => 25, // safety cap for ACK reminder sends
@@ -101,7 +137,7 @@ return [
 //
 // If enabled, the web endpoint returns a neutral "request received" page for:
 // - invalid/missing token
-// - stale/non-current token (i. e., token that was validly signed but is not the current one in totmann.json)
+// - stale/non-current token (i. e., token that was validly signed but is not the current one in state)
 //
 // This avoids leaking whether a token exists / whether the system is active.
 'stealth_neutral_for_invalid' => true, // invalid/missing token => neutral
@@ -122,40 +158,30 @@ return [
 
 // --- IP handling for rate limiting and logging ---
 //
-// remote_addr = safest default (uses REMOTE_ADDR).
-// trusted_proxy = only if your reverse proxy is configured and you list it in trusted_proxies.
-// trusted_proxy_header is typically X-Forwarded-For.
+// `remote_addr` = safest default. Use this unless you really run totmann behind your own reverse proxy.
+// `trusted_proxy` = trust `trusted_proxy_header` only when REMOTE_ADDR belongs to one of `trusted_proxies`.
+// If you trust a header from an untrusted source, clients could spoof their IP for logging/rate limiting.
 'ip_mode' => 'remote_addr', // 'remote_addr' | 'trusted_proxy'
 'trusted_proxies' => ['127.0.0.1', '::1'],
 'trusted_proxy_header' => 'X-Forwarded-For',
 
-// Path to sendmail binary (varies by distro/setup)
+// Path to sendmail binary (varies by distro/setup).
 'sendmail_path' => '/usr/sbin/sendmail',
 
 // Reminder address(es) (you).
+// Each list entry must be exactly one mailbox string.
+// Do not put comma-separated mailbox lists into one entry.
 'to_self' => [
-'My Name <myname@example.com>',
-'Fallback Mail <fallback@example.com>',
-],
-
-// Escalation recipients (others).
-// Format:
-// - [address]
-// - [address, id]
-// `id` is optional and, if set, must match ^[a-z0-9_-]+$ (1..100 chars).
-'to_recipients' => [
-['Recipient 1 <recipient1@example.com>'],
-['Jane Doe <recipient2@example.com>', 'jane-doe'],
-['John Doe <recipient3@example.com>', 'john_doe'],
+    'My Name <myname@example.com>',
+    'Fallback Mail <fallback@example.com>',
 ],
 
 // Mail From + optional Reply-To.
 'mail_from' => 'totmannschalter <totmannschalter@example.com>',
 'reply_to' => 'My Name <myname@example.com>',
 
-// Subjects.
+// Reminder subject.
 'subject_reminder' => '[totmannschalter] Confirmation required',
-'subject_escalate' => '[totmannschalter] Escalation triggered',
 
 // Timezone for human-readable timestamps in emails.
 'mail_timezone' => 'Europe/London',
@@ -166,10 +192,9 @@ return [
 'mail_datetime_format' => 'l, j F Y, H:i:s e',
 
 // Mail body templates.
-// Placeholders (rendered as human-readable timestamps in `mail_timezone`; names kept for backwards compatibility):
+// Placeholders (rendered as human-readable timestamps in `mail_timezone`):
 // - reminder: {CONFIRM_URL}, {DEADLINE_ISO}, {CYCLE_START_ISO}
-// - escalate: {LAST_CONFIRM_ISO}, {CYCLE_START_ISO}, {DEADLINE_ISO}, {ACK_URL}
-// Individual `mail_file` entries are subject/body pairs and use the same placeholders.
+// Escalation mail bodies now live only in `totmann-recipients.php`.
 'body_reminder' => <<<TXT
 Hi,
 
@@ -182,26 +207,11 @@ Cycle started at: {CYCLE_START_ISO}
 Note: This email link may remain valid until the next cycle starts. If you confirm after the deadline, escalation logic may already have progressed.
 TXT,
 
-'body_escalate' => <<<TXT
-Hi,
-
-The totmannschalter did not receive confirmation in time.
-
-Last confirmation: {LAST_CONFIRM_ISO}
-Cycle started at: {CYCLE_START_ISO}
-Deadline was: {DEADLINE_ISO}
-
-Ack receipt by clicking:
-{ACK_URL}
-
-[YOUR PREDEFINED MESSAGE GOES HERE – DO NOT FORGET TO CHANGE THIS DEFAULT MESSAGE]
-TXT,
-
 // Logging target mode:
-// - 'none'   => no script logging (not recommended)
+// - 'none' => no script logging (not recommended)
 // - 'syslog' => syslog only
-// - 'file'   => file only (log_file / log_file_name)
-// - 'both'   => syslog + file
+// - 'file' => file only (log_file / log_file_name)
+// - 'both' => syslog + file
 'log_mode' => 'both',
 
 // Optional logging path override (absolute or relative path).

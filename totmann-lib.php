@@ -130,12 +130,66 @@ function dm_runtime_file_name(array $cfg, string $key): string
 }
 
 /**
+ * Validate a runtime directory name from config.
+ * Basename only, no traversal, no control chars.
+ */
+function dm_runtime_dir_name(array $cfg, string $key): string
+{
+    return dm_runtime_file_name($cfg, $key);
+}
+
+/**
  * Canonical runtime state file path.
  * Uses configurable `state_file`.
  */
 function dm_state_file(array $cfg): string
 {
     return dm_path($cfg, dm_runtime_file_name($cfg, 'state_file'));
+}
+
+/**
+ * Canonical runtime localisation directory path.
+ * Uses configurable `l18n_dir_name`.
+ */
+function dm_l18n_dir(array $cfg): string
+{
+    return dm_path($cfg, dm_runtime_dir_name($cfg, 'l18n_dir_name'));
+}
+
+/**
+ * Extract the runtime subtree from the shared state root.
+ */
+function dm_state_runtime(array $root): array
+{
+    $runtime = $root['runtime'] ?? [];
+    return is_array($runtime) ? $runtime : [];
+}
+
+/**
+ * Replace the runtime subtree inside the shared state root.
+ */
+function dm_state_with_runtime(array $root, array $runtime): array
+{
+    $root['runtime'] = $runtime;
+    return $root;
+}
+
+/**
+ * Extract the download subtree from the shared state root.
+ */
+function dm_state_downloads(array $root): array
+{
+    $downloads = $root['downloads'] ?? [];
+    return is_array($downloads) ? $downloads : [];
+}
+
+/**
+ * Replace the download subtree inside the shared state root.
+ */
+function dm_state_with_downloads(array $root, array $downloads): array
+{
+    $root['downloads'] = $downloads;
+    return $root;
 }
 
 /**
@@ -361,6 +415,7 @@ function dm_state_apply_cycle(array &$state, int $cycleStart, int $checkInterval
 function dm_state_reset_ack(array &$state): void
 {
     $state['escalate_ack_token'] = null;
+    $state['escalate_ack_recipients'] = [];
     $state['escalate_ack_at'] = null;
     $state['escalate_ack_sent_count'] = 0;
     $state['escalate_ack_next_at'] = null;
@@ -371,8 +426,54 @@ function dm_state_reset_ack(array &$state): void
  */
 function dm_state_clear_escalation(array &$state): void
 {
+    $state['escalation_event_at'] = null;
+    $state['escalation_delivery'] = [];
     $state['escalated_sent_at'] = null;
     dm_state_reset_ack($state);
+}
+
+/**
+ * Create the default per-recipient escalation delivery state.
+ *
+ * @return array{initial_sent_at: int|null, last_error: string|null, ack_remind_sent_count: int, ack_next_at: int|null}
+ */
+function dm_state_escalation_delivery_default(): array
+{
+    return [
+        'initial_sent_at' => null,
+        'last_error' => null,
+        'ack_remind_sent_count' => 0,
+        'ack_next_at' => null,
+    ];
+}
+
+/**
+ * Refresh the legacy summary ACK fields from per-recipient delivery state.
+ */
+function dm_state_refresh_ack_summary(array &$state): void
+{
+    $deliveryMap = $state['escalation_delivery'] ?? [];
+    if (!is_array($deliveryMap) || $deliveryMap === []) {
+        $state['escalate_ack_sent_count'] = 0;
+        $state['escalate_ack_next_at'] = null;
+        return;
+    }
+
+    $totalSent = 0;
+    $nextAt = null;
+    foreach ($deliveryMap as $delivery) {
+        if (!is_array($delivery)) {
+            continue;
+        }
+        $totalSent += max(0, (int)($delivery['ack_remind_sent_count'] ?? 0));
+        $candidate = (int)($delivery['ack_next_at'] ?? 0);
+        if ($candidate > 0 && ($nextAt === null || $candidate < $nextAt)) {
+            $nextAt = $candidate;
+        }
+    }
+
+    $state['escalate_ack_sent_count'] = $totalSent;
+    $state['escalate_ack_next_at'] = $nextAt;
 }
 
 /**
@@ -453,6 +554,68 @@ function dm_ack_url(array $cfg, array $token): string
 }
 
 /**
+ * Create a signed download token bound to recipient ID, link ID, escalation event, expiry, and nonce.
+ */
+function dm_download_token_make(array $cfg, string $recipientId, string $linkId, int $eventAt, int $expiresAt): array
+{
+    if (!dm_mail_id_valid($recipientId)) {
+        throw new RuntimeException("Invalid recipient download ID: {$recipientId}");
+    }
+    if (!dm_mail_id_valid($linkId)) {
+        throw new RuntimeException("Invalid download link ID: {$linkId}");
+    }
+    if ($eventAt < 1) {
+        throw new RuntimeException('Invalid download event timestamp');
+    }
+    if ($expiresAt < 1) {
+        throw new RuntimeException('Invalid download expiry timestamp');
+    }
+
+    $nonce = bin2hex(random_bytes(16));
+    $payload = $recipientId . "\n" . $linkId . "\n" . $eventAt . "\n" . $expiresAt . "\n" . $nonce;
+    $sig = hash_hmac('sha256', $payload, dm_secret_bin($cfg));
+
+    return [
+    'rid' => $recipientId,
+    'lid' => $linkId,
+    'evt' => $eventAt,
+    'exp' => $expiresAt,
+    'n' => $nonce,
+    'sig' => $sig,
+    ];
+}
+
+/**
+ * Verify download token format and signature.
+ */
+function dm_download_token_valid(array $cfg, string $recipientId, string $linkId, int $eventAt, int $expiresAt, string $nonce, string $sig): bool
+{
+    if (!dm_mail_id_valid($recipientId) || !dm_mail_id_valid($linkId)) {
+        return false;
+    }
+    if ($eventAt < 1 || $expiresAt < 1) {
+        return false;
+    }
+    if (!preg_match('/^[a-f0-9]{32}$/', $nonce) || !preg_match('/^[a-f0-9]{64}$/', $sig)) {
+        return false;
+    }
+
+    $payload = $recipientId . "\n" . $linkId . "\n" . $eventAt . "\n" . $expiresAt . "\n" . $nonce;
+    $expected = hash_hmac('sha256', $payload, dm_secret_bin($cfg));
+    return hash_equals($expected, $sig);
+}
+
+/**
+ * Create the public download URL for a token.
+ */
+function dm_download_url(array $cfg, array $token): string
+{
+    $base = rtrim(dm_endpoint_url($cfg), '?');
+    $q = http_build_query(['a' => 'download'] + $token);
+    return $base . (str_contains($base, '?') ? '&' : '?') . $q;
+}
+
+/**
  * Validate individual mail IDs.
  * Allowed: lowercase letters, digits, underscore, hyphen (1..100 chars).
  */
@@ -467,115 +630,358 @@ function dm_mail_id_valid(string $id): bool
 }
 
 /**
- * Parse escalation recipients for runtime delivery.
- *
- * Expected entry format:
- * - [0] => mailbox (required)
- * - [1] => individual mail ID (optional)
- *
- * Runtime is fail-safe:
- * - malformed IDs are ignored (fallback to `subject_escalate` + `body_escalate`)
- * - malformed recipient entries are skipped
+ * Validate relative download paths inside download_base_dir.
  */
-function dm_escalation_recipients_runtime(array $cfg): array
+function dm_download_rel_path_valid(string $path): bool
 {
-    $raw = $cfg['to_recipients'] ?? null;
-    if (!is_array($raw) || $raw === []) {
-        throw new RuntimeException('Invalid to_recipients: expected non-empty list of [address] or [address, id] entries');
+    $path = trim(str_replace('\\', '/', $path));
+    if ($path === '') {
+        return false;
     }
-
-    $out = [];
-
-    foreach ($raw as $entry) {
-        if (!is_array($entry) || !array_key_exists(0, $entry)) {
-            continue;
-        }
-
-        $address = trim(str_replace(["\r", "\n"], '', (string)$entry[0]));
-        if ($address === '') {
-            continue;
-        }
-
-        $mailbox = $address;
-        if (preg_match('/<([^>]+)>/', $address, $m)) {
-            $mailbox = trim($m[1]);
-        }
-
-        $isValid = (str_contains($mailbox, '@') && filter_var($mailbox, FILTER_VALIDATE_EMAIL) !== false);
-        if (!$isValid && str_contains($mailbox, '@')) {
-            $isValid = (bool)preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $mailbox);
-        }
-        if (!$isValid) {
-            continue;
-        }
-
-        $mailId = '';
-        if (array_key_exists(1, $entry) && (is_string($entry[1]) || is_numeric($entry[1]))) {
-            $candidate = trim(str_replace(["\r", "\n"], '', (string)$entry[1]));
-            if (dm_mail_id_valid($candidate)) {
-                $mailId = $candidate;
-            }
-        }
-
-        $out[] = ['address' => $address, 'mail_id' => $mailId];
+    if (str_starts_with($path, '/')) {
+        return false;
     }
-
-    if ($out === []) {
-        throw new RuntimeException('sendmail: empty/invalid recipient list');
+    if (str_contains($path, '..')) {
+        return false;
     }
-    return $out;
+    if ((bool)preg_match('/[[:cntrl:]]/', $path)) {
+        return false;
+    }
+    return true;
 }
 
 /**
- * Load individual message texts from external file.
+ * Extract the actual mailbox address from a supported mailbox field.
  *
- * The external file must return an array:
- * - id => ['subject' => string, 'body' => string]
+ * Supported forms:
+ * - recipient@example.com
+ * - <recipient@example.com>
+ * - Recipient Name <recipient@example.com>
  */
-function dm_individual_messages_load(array $cfg): array
+function dm_mailbox_extract_address(string $mailbox): string
 {
-    $fileNameRaw = trim((string)($cfg['mail_file'] ?? ''));
-    if ($fileNameRaw === '') {
-        return [];
+    $mailbox = trim(str_replace(["\r", "\n"], '', $mailbox));
+    if ($mailbox === '') {
+        return '';
+    }
+    if (preg_match('/^<([^>]+)>$/', $mailbox, $m)) {
+        return trim($m[1]);
+    }
+    if (preg_match('/^(.*)<([^>]+)>$/', $mailbox, $m)) {
+        return trim($m[2]);
+    }
+    return $mailbox;
+}
+
+/**
+ * Normalise one mailbox address for stable internal keys.
+ */
+function dm_mailbox_normalize_address(string $mailbox): string
+{
+    $addr = dm_mailbox_extract_address($mailbox);
+    if ($addr === '') {
+        return '';
     }
 
-    $fileName = dm_runtime_file_name(['mail_file' => $fileNameRaw], 'mail_file');
+    if (function_exists('idn_to_ascii') && str_contains($addr, '@')) {
+        [$local, $domain] = explode('@', $addr, 2);
+        $domain = trim($domain);
+        if ($domain !== '') {
+            $variant = defined('INTL_IDNA_VARIANT_UTS46') ? INTL_IDNA_VARIANT_UTS46 : 0;
+            $ascii = idn_to_ascii($domain, 0, $variant);
+            if (is_string($ascii) && $ascii !== '') {
+                $addr = $local . '@' . $ascii;
+            }
+        }
+    }
+
+    return strtolower(trim($addr));
+}
+
+/**
+ * Validate one mailbox field for one escalation recipient.
+ */
+function dm_mailbox_field_valid(string $mailbox): bool
+{
+    $addr = dm_mailbox_normalize_address($mailbox);
+    if ($addr === '') {
+        return false;
+    }
+
+    $isValid = (str_contains($addr, '@') && filter_var($addr, FILTER_VALIDATE_EMAIL) !== false);
+    if (!$isValid && str_contains($addr, '@')) {
+        $isValid = (bool)preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $addr);
+    }
+    return $isValid;
+}
+
+/**
+ * Derive a stable internal recipient key from the normalised mailbox address.
+ */
+function dm_recipient_runtime_key(string $mailbox): string
+{
+    $addr = dm_mailbox_normalize_address($mailbox);
+    if ($addr === '') {
+        throw new RuntimeException('Cannot derive recipient key from empty mailbox');
+    }
+    return 'r_' . substr(hash('sha256', $addr), 0, 32);
+}
+
+/**
+ * Derive a stable internal download key from one recipient key and one file alias.
+ */
+function dm_download_runtime_key(string $recipientKey, string $alias): string
+{
+    if (!dm_mail_id_valid($recipientKey) || !dm_mail_id_valid($alias)) {
+        throw new RuntimeException("Cannot derive download key from recipient '{$recipientKey}' and alias '{$alias}'");
+    }
+    return 'd_' . substr(hash('sha256', $recipientKey . "\n" . $alias), 0, 32);
+}
+
+/**
+ * Read the global download validity period in days.
+ */
+function dm_download_valid_days(array $cfg): int
+{
+    $raw = $cfg['download_valid_days'] ?? 180;
+    if (is_int($raw)) {
+        $days = $raw;
+    } elseif (is_string($raw) && preg_match('/^\d+$/', trim($raw))) {
+        $days = (int)trim($raw);
+    } else {
+        throw new RuntimeException('Invalid download_valid_days: expected positive integer');
+    }
+    if ($days < 1) {
+        throw new RuntimeException('Invalid download_valid_days: must be >= 1');
+    }
+    return $days;
+}
+
+/**
+ * Parse the unified recipient file and optionally skip invalid recipient rows.
+ *
+ * Top-level `files`/`messages`/`recipients` structure errors remain fatal because
+ * the file is not usable at all in that state. Recipient-row errors can be
+ * collected so runtime delivery can skip only the broken recipients.
+ *
+ * @return array{recipients: array<int, array<string, mixed>>, errors: array<int, string>}
+ */
+function dm_recipients_parse(array $cfg, bool $skipInvalidRecipients): array
+{
+    $fileName = dm_runtime_file_name($cfg, 'recipients_file');
     $path = dm_path($cfg, $fileName);
 
     if (!is_file($path) || !is_readable($path)) {
-        throw new RuntimeException("mail_file missing/unreadable: {$path}");
-    }
-    $data = require $path;
-    if (!is_array($data)) {
-        throw new RuntimeException("mail_file must return an array: {$path}");
+        throw new RuntimeException("recipients_file missing/unreadable: {$path}");
     }
 
-    $out = [];
-    foreach ($data as $id => $entry) {
-        if (!is_string($id) || !dm_mail_id_valid($id)) {
+    $data = require $path;
+    if (!is_array($data)) {
+        throw new RuntimeException("recipients_file must return an array: {$path}");
+    }
+
+    $files = $data['files'] ?? null;
+    $messages = $data['messages'] ?? null;
+    $rows = $data['recipients'] ?? null;
+    if (!is_array($files) || !is_array($messages) || !is_array($rows)) {
+        throw new RuntimeException('recipients_file must return files/messages/recipients arrays');
+    }
+
+    $errors = [];
+    $cleanFiles = [];
+    foreach ($files as $alias => $file) {
+        if (!is_string($alias) || !dm_mail_id_valid($alias)) {
+            $message = "recipients_file contains invalid file alias: {$alias}";
+            if (!$skipInvalidRecipients) {
+                throw new RuntimeException($message);
+            }
+            $errors[] = $message;
+            continue;
+        }
+        $file = trim((string)$file);
+        if (!dm_download_rel_path_valid($file)) {
+            $message = "recipients_file contains invalid file path for alias {$alias}: {$file}";
+            if (!$skipInvalidRecipients) {
+                throw new RuntimeException($message);
+            }
+            $errors[] = $message;
+            continue;
+        }
+        $cleanFiles[$alias] = str_replace('\\', '/', $file);
+    }
+
+    $cleanMessages = [];
+    foreach ($messages as $messageKey => $entry) {
+        if (!is_string($messageKey) || !dm_mail_id_valid($messageKey)) {
+            $message = "recipients_file contains invalid message key: {$messageKey}";
+            if (!$skipInvalidRecipients) {
+                throw new RuntimeException($message);
+            }
+            $errors[] = $message;
             continue;
         }
         if (!is_array($entry)) {
+            $message = "recipients_file contains invalid message entry for key {$messageKey}";
+            if (!$skipInvalidRecipients) {
+                throw new RuntimeException($message);
+            }
+            $errors[] = $message;
             continue;
         }
         $subject = $entry['subject'] ?? null;
         $body = $entry['body'] ?? null;
-        if (!is_string($subject) || !is_string($body)) {
+        if (!is_string($subject) || trim($subject) === '' || !is_string($body) || trim($body) === '') {
+            $message = "recipients_file message {$messageKey} must contain non-empty subject and body";
+            if (!$skipInvalidRecipients) {
+                throw new RuntimeException($message);
+            }
+            $errors[] = $message;
             continue;
         }
-        if (trim($subject) === '' || trim($body) === '') {
-            continue;
-        }
-        $out[$id] = ['subject' => $subject, 'body' => $body];
+        $cleanMessages[$messageKey] = ['subject' => $subject, 'body' => $body];
     }
-    return $out;
+
+    $out = [];
+    $seenRecipientKeys = [];
+    foreach ($rows as $index => $row) {
+        try {
+            if (!is_array($row) || array_values($row) !== $row) {
+                throw new RuntimeException("recipients_file recipient entry #{$index} must be a flat numeric array");
+            }
+            if (count($row) < 3) {
+                throw new RuntimeException("recipients_file recipient entry #{$index} must contain at least 3 values");
+            }
+
+            $name = trim((string)($row[0] ?? ''));
+            $address = trim(str_replace(["\r", "\n"], '', (string)($row[1] ?? '')));
+            $messageKey = trim((string)($row[2] ?? ''));
+            if ($name === '') {
+                throw new RuntimeException("recipients_file recipient entry #{$index} contains an empty personal name");
+            }
+            if ($address === '' || !dm_mailbox_field_valid($address)) {
+                throw new RuntimeException("recipients_file contains invalid mailbox in recipient entry #{$index}: {$address}");
+            }
+            if ($messageKey === '') {
+                throw new RuntimeException("recipients_file recipient entry #{$index} must reference a message key in field 3");
+            }
+            if (!isset($cleanMessages[$messageKey])) {
+                throw new RuntimeException("recipients_file references unknown message key '{$messageKey}' in recipient entry #{$index}");
+            }
+
+            $recipientKey = dm_recipient_runtime_key($address);
+            if (isset($seenRecipientKeys[$recipientKey])) {
+                throw new RuntimeException("recipients_file contains duplicate recipient mailbox in entry #{$index}: {$address}");
+            }
+
+            $normalAliases = $row[3] ?? [];
+            $singleUseAliases = $row[4] ?? [];
+            if (!is_array($normalAliases) || array_values($normalAliases) !== $normalAliases) {
+                throw new RuntimeException("recipients_file contains invalid normal file alias list for {$address}");
+            }
+            if (!is_array($singleUseAliases) || array_values($singleUseAliases) !== $singleUseAliases) {
+                throw new RuntimeException("recipients_file contains invalid single-use file alias list for {$address}");
+            }
+
+            $downloads = [];
+            $seenAliases = [];
+            foreach ($normalAliases as $alias) {
+                $alias = trim((string)$alias);
+                if (!isset($cleanFiles[$alias])) {
+                    $message = "recipients_file references unknown file alias '{$alias}' for {$address}";
+                    if (!$skipInvalidRecipients) {
+                        throw new RuntimeException($message);
+                    }
+                    $errors[] = $message;
+                    continue;
+                }
+                if (isset($seenAliases[$alias])) {
+                    $message = "recipients_file contains duplicate file alias '{$alias}' for {$address}";
+                    if (!$skipInvalidRecipients) {
+                        throw new RuntimeException($message);
+                    }
+                    $errors[] = $message;
+                    continue;
+                }
+                $downloads[] = [
+                    'alias' => $alias,
+                    'download_key' => dm_download_runtime_key($recipientKey, $alias),
+                    'file' => $cleanFiles[$alias],
+                    'single_use' => false,
+                ];
+                $seenAliases[$alias] = true;
+            }
+            foreach ($singleUseAliases as $alias) {
+                $alias = trim((string)$alias);
+                if (!isset($cleanFiles[$alias])) {
+                    $message = "recipients_file references unknown single-use file alias '{$alias}' for {$address}";
+                    if (!$skipInvalidRecipients) {
+                        throw new RuntimeException($message);
+                    }
+                    $errors[] = $message;
+                    continue;
+                }
+                if (isset($seenAliases[$alias])) {
+                    $message = "recipients_file contains file alias '{$alias}' in both normal and single-use lists for {$address}";
+                    if (!$skipInvalidRecipients) {
+                        throw new RuntimeException($message);
+                    }
+                    $errors[] = $message;
+                    continue;
+                }
+                $downloads[] = [
+                    'alias' => $alias,
+                    'download_key' => dm_download_runtime_key($recipientKey, $alias),
+                    'file' => $cleanFiles[$alias],
+                    'single_use' => true,
+                ];
+                $seenAliases[$alias] = true;
+            }
+
+            $out[] = [
+                'name' => $name,
+                'address' => $address,
+                'recipient_key' => $recipientKey,
+                'message_key' => $messageKey,
+                'message' => $cleanMessages[$messageKey],
+                'downloads' => $downloads,
+            ];
+            $seenRecipientKeys[$recipientKey] = true;
+        } catch (Throwable $e) {
+            if (!$skipInvalidRecipients) {
+                throw $e;
+            }
+            $errors[] = $e->getMessage();
+        }
+    }
+
+    if ($out === []) {
+        throw new RuntimeException('recipients_file contains no valid recipient entries');
+    }
+
+    return ['recipients' => $out, 'errors' => $errors];
 }
 
 /**
- * Expand recipient config entries into individual mailbox entries.
- *
- * Input format:
- * - list of strings, each string may contain one or more comma-separated mailboxes
+ * Load the unified recipient file with strict validation.
+ */
+function dm_recipients_load(array $cfg): array
+{
+    $parsed = dm_recipients_parse($cfg, false);
+    return $parsed['recipients'];
+}
+
+/**
+ * Parse escalation recipients for runtime delivery from the unified recipient file.
+ */
+function dm_escalation_recipients_runtime(array $cfg, array &$errors = []): array
+{
+    $parsed = dm_recipients_parse($cfg, true);
+    $errors = $parsed['errors'];
+    return $parsed['recipients'];
+}
+
+/**
+ * Validate a recipient list where each entry is exactly one mailbox string.
  *
  * Output:
  * - list of unique, valid mailbox entries (display names preserved)
@@ -591,66 +997,175 @@ function dm_recipient_entries_runtime(array $list): array
             continue;
         }
 
-        $parts = array_map('trim', explode(',', $rawEntry));
-        foreach ($parts as $part) {
-            $part = str_replace(["\r", "\n"], '', $part);
-            if ($part === '') {
-                continue;
-            }
+        $part = $rawEntry;
+        $addr = $part;
+        if (preg_match('/<([^>]+)>/', $part, $m)) {
+            $addr = trim($m[1]);
+        }
+        $addr = trim($addr);
 
-            $addr = $part;
-            if (preg_match('/<([^>]+)>/', $part, $m)) {
-                $addr = trim($m[1]);
-            }
-            $addr = trim($addr);
-
-            if (function_exists('idn_to_ascii') && str_contains($addr, '@')) {
-                [$local, $domain] = explode('@', $addr, 2);
-                $domain = trim($domain);
-                if ($domain !== '') {
-                    $variant = defined('INTL_IDNA_VARIANT_UTS46') ? INTL_IDNA_VARIANT_UTS46 : 0;
-                    $ascii = idn_to_ascii($domain, 0, $variant);
-                    if (is_string($ascii) && $ascii !== '') {
-                        $addr = $local . '@' . $ascii;
-                    }
+        if (function_exists('idn_to_ascii') && str_contains($addr, '@')) {
+            [$local, $domain] = explode('@', $addr, 2);
+            $domain = trim($domain);
+            if ($domain !== '') {
+                $variant = defined('INTL_IDNA_VARIANT_UTS46') ? INTL_IDNA_VARIANT_UTS46 : 0;
+                $ascii = idn_to_ascii($domain, 0, $variant);
+                if (is_string($ascii) && $ascii !== '') {
+                    $addr = $local . '@' . $ascii;
                 }
             }
-
-            $isValid = (str_contains($addr, '@') && filter_var($addr, FILTER_VALIDATE_EMAIL) !== false);
-            if (!$isValid && str_contains($addr, '@')) {
-                $isValid = (bool)preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $addr);
-            }
-            if (!$isValid) {
-                continue;
-            }
-
-            $key = strtolower($addr);
-            if (isset($seen[$key])) {
-                continue;
-            }
-            $seen[$key] = true;
-            $out[] = $part;
         }
+
+        $isValid = (str_contains($addr, '@') && filter_var($addr, FILTER_VALIDATE_EMAIL) !== false);
+        if (!$isValid && str_contains($addr, '@')) {
+            $isValid = (bool)preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $addr);
+        }
+        if (!$isValid) {
+            continue;
+        }
+
+        $key = strtolower($addr);
+        if (isset($seen[$key])) {
+            continue;
+        }
+        $seen[$key] = true;
+        $out[] = $part;
     }
 
     return $out;
 }
 
 /**
- * Resolve escalation template text for one recipient.
- *
- * If recipient ID has no mapping, fallback to standard escalation config.
+ * Resolve escalation subject/body for one recipient.
  */
-function dm_escalate_message_for_recipient(array $cfg, string $mailId, array $templates): array
+function dm_escalate_message_for_recipient(array $recipient): array
 {
-    $fallback = [
-    'subject' => (string)($cfg['subject_escalate'] ?? ''),
-    'body' => (string)($cfg['body_escalate'] ?? ''),
-    ];
-    if ($mailId !== '' && array_key_exists($mailId, $templates)) {
-        return (array)$templates[$mailId];
+    $message = $recipient['message'] ?? null;
+    if (!is_array($message)) {
+        throw new RuntimeException('Recipient message is missing');
     }
-    return $fallback;
+
+    $subject = $message['subject'] ?? null;
+    $body = $message['body'] ?? null;
+    if (!is_string($subject) || trim($subject) === '' || !is_string($body) || trim($body) === '') {
+        throw new RuntimeException('Recipient message is incomplete');
+    }
+
+    return ['subject' => $subject, 'body' => $body];
+}
+
+/**
+ * Build concrete download link data for one recipient.
+ *
+ * `eventAt` identifies the current escalation event.
+ * It stays stable across ACK reminder mails, so `single_use=true` applies to the
+ * whole escalation event rather than to one individual URL.
+ */
+function dm_download_links_for_recipient(array $cfg, array $recipient, int $eventAt, int $sentAt): array
+{
+    $mailId = (string)($recipient['recipient_key'] ?? '');
+    $downloads = $recipient['downloads'] ?? [];
+    if ($mailId === '' || !is_array($downloads) || $downloads === []) {
+        return [];
+    }
+
+    $out = [];
+    $expiresAfter = dm_download_valid_days($cfg) * 86400;
+    foreach ($downloads as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $linkId = (string)($entry['download_key'] ?? '');
+        $singleUse = !empty($entry['single_use']);
+        if (!dm_mail_id_valid($mailId) || !dm_mail_id_valid($linkId) || $eventAt < 1 || $expiresAfter < 1) {
+            continue;
+        }
+        $expiresAt = $eventAt + $expiresAfter;
+        if ($sentAt > $expiresAt) {
+            continue;
+        }
+
+        $token = dm_download_token_make($cfg, $mailId, $linkId, $eventAt, $expiresAt);
+        $out[] = [
+            'id' => $linkId,
+            'alias' => (string)($entry['alias'] ?? ''),
+            'url' => dm_download_url($cfg, $token),
+            'expires_at' => $token['exp'],
+            'event_at' => $token['evt'],
+            'single_use' => $singleUse,
+        ];
+    }
+
+    return $out;
+}
+
+/**
+ * Render the optional ACK block used in escalation mail templates.
+ */
+function dm_render_ack_block(string $ackUrl, bool $ackEnabled): string
+{
+    if (!$ackEnabled || trim($ackUrl) === '') {
+        return '';
+    }
+
+    return "Please click this link to acknowledge receipt:\n" . trim($ackUrl);
+}
+
+/**
+ * Return true if at least one rendered download link is single-use.
+ */
+function dm_download_links_require_notice(array $links): bool
+{
+    foreach ($links as $entry) {
+        if (is_array($entry) && !empty($entry['single_use'])) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+/**
+ * Render the optional single-use warning block.
+ *
+ * The text itself is configurable so operators can phrase it in their own language.
+ */
+function dm_render_download_notice(array $cfg, array $links): string
+{
+    if (!dm_download_links_require_notice($links)) {
+        return '';
+    }
+
+    return trim((string)($cfg['download_notice_single_use'] ?? ''));
+}
+
+/**
+ * Render download links as one optional plain-text block.
+ *
+ * Output is intentionally language-neutral:
+ * - one raw URL per line
+ * - no heading
+ * - no generated human text around the links
+ */
+function dm_render_download_links_block(array $links): string
+{
+    if ($links === []) {
+        return '';
+    }
+
+    $lines = [];
+    foreach ($links as $entry) {
+        if (!is_array($entry)) {
+            continue;
+        }
+        $url = trim((string)($entry['url'] ?? ''));
+        if ($url === '') {
+            continue;
+        }
+        $lines[] = $url;
+    }
+
+    return implode("\n", $lines);
 }
 
 /**
@@ -660,17 +1175,24 @@ function dm_escalate_message_for_recipient(array $cfg, string $mailId, array $te
  * - {LAST_CONFIRM_ISO}
  * - {CYCLE_START_ISO}
  * - {DEADLINE_ISO}
+ * - {RECIPIENT_NAME}
+ * - {ACK_BLOCK}
  * - {ACK_URL}
+ * - {DOWNLOAD_NOTICE}
+ * - {DOWNLOAD_LINKS}
  */
-function dm_render_escalate_template(array $cfg, string $tpl, int $lastConfirm, int $cycleStart, int $deadline, string $ackUrl, bool $ackEnabled): string
+function dm_render_escalate_template(array $cfg, string $tpl, int $lastConfirm, int $cycleStart, int $deadline, string $recipientName, string $ackUrl, bool $ackEnabled, string $downloadNotice = '', string $downloadLinks = '', string $ackBlock = ''): string
 {
-
     if (!$ackEnabled) {
-        $tpl = str_replace(["Ack receipt by clicking:\n{ACK_URL}\n\n", "Ack receipt by clicking:\r\n{ACK_URL}\r\n\r\n"], ["", ""], $tpl);
+        $tpl = str_replace('{ACK_BLOCK}', '', $tpl);
         $tpl = str_replace('{ACK_URL}', '', $tpl);
     }
 
-    return str_replace(['{LAST_CONFIRM_ISO}', '{CYCLE_START_ISO}', '{DEADLINE_ISO}', '{ACK_URL}'], [dm_mail_dt_or_never($cfg, $lastConfirm), dm_mail_dt($cfg, $cycleStart), dm_mail_dt($cfg, $deadline), $ackUrl], $tpl);
+    return str_replace(
+        ['{LAST_CONFIRM_ISO}', '{CYCLE_START_ISO}', '{DEADLINE_ISO}', '{RECIPIENT_NAME}', '{ACK_BLOCK}', '{ACK_URL}', '{DOWNLOAD_NOTICE}', '{DOWNLOAD_LINKS}'],
+        [dm_mail_dt_or_never($cfg, $lastConfirm), dm_mail_dt($cfg, $cycleStart), dm_mail_dt($cfg, $deadline), $recipientName, $ackBlock, $ackUrl, $downloadNotice, $downloadLinks],
+        $tpl
+    );
 }
 
 /**
@@ -755,7 +1277,11 @@ function dm_hdr_mailbox(string $raw): string
         $name = str_replace(["\r", "\n"], '', $name);
         $addr = str_replace(["\r", "\n"], '', $addr);
         if ($name !== '') {
-            $name = dm_hdr_encode($name);
+            if (preg_match('/^[\x00-\x7F]*$/', $name)) {
+                $name = '"' . addcslashes($name, "\\\"") . '"';
+            } else {
+                $name = dm_hdr_encode($name);
+            }
         }
         return ($name !== '' ? $name . ' ' : '') . '<' . $addr . '>';
     }
@@ -794,43 +1320,32 @@ function dm_send_mail(array $cfg, array $to, string $subject, string $body): voi
             continue;
         }
 
-    // Allow comma-separated lists in one entry (store each mailbox separately for header encoding)
-        $parts = array_map('trim', explode(',', $raw));
-        foreach ($parts as $part) {
-            $part = str_replace(["\r", "\n"], '', $part);
-            if ($part === '') {
-                continue;
-            }
-            $toHeader[] = $part;
+        $toHeader[] = $raw;
 
-        // Extract addr from "Name <addr>"
-            $addr = $part;
-            if (preg_match('/<([^>]+)>/', $part, $m)) {
-                $addr = trim($m[1]);
-            }
-            $addr = trim($addr);
+        $addr = $raw;
+        if (preg_match('/<([^>]+)>/', $raw, $m)) {
+            $addr = trim($m[1]);
+        }
+        $addr = trim($addr);
 
-        // Optional: IDN domain normalisation if intl is installed
-            if (function_exists('idn_to_ascii') && str_contains($addr, '@')) {
-                [$local, $domain] = explode('@', $addr, 2);
-                $domain = trim($domain);
-                if ($domain !== '') {
-                    $variant = defined('INTL_IDNA_VARIANT_UTS46') ? INTL_IDNA_VARIANT_UTS46 : 0;
-                    $ascii = idn_to_ascii($domain, 0, $variant);
-                    if (is_string($ascii) && $ascii !== '') {
-                        $addr = $local . '@' . $ascii;
-                    }
+        if (function_exists('idn_to_ascii') && str_contains($addr, '@')) {
+            [$local, $domain] = explode('@', $addr, 2);
+            $domain = trim($domain);
+            if ($domain !== '') {
+                $variant = defined('INTL_IDNA_VARIANT_UTS46') ? INTL_IDNA_VARIANT_UTS46 : 0;
+                $ascii = idn_to_ascii($domain, 0, $variant);
+                if (is_string($ascii) && $ascii !== '') {
+                    $addr = $local . '@' . $ascii;
                 }
             }
+        }
 
-        // Validate mailbox for argv (must be ASCII mailbox)
-            $isValid = (str_contains($addr, '@') && filter_var($addr, FILTER_VALIDATE_EMAIL) !== false);
-            if (!$isValid && str_contains($addr, '@')) {
-                $isValid = (bool)preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $addr);
-            }
-            if ($isValid) {
-                $addArgv($addr);
-            }
+        $isValid = (str_contains($addr, '@') && filter_var($addr, FILTER_VALIDATE_EMAIL) !== false);
+        if (!$isValid && str_contains($addr, '@')) {
+            $isValid = (bool)preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $addr);
+        }
+        if ($isValid) {
+            $addArgv($addr);
         }
     }
 
@@ -987,6 +1502,12 @@ function dm_rate_limit_check(array $cfg, string $ip, int $now): bool
         return true;
     }
 
+    $namespace = trim((string)($cfg['rate_limit_namespace'] ?? 'web'));
+    if ($namespace === '') {
+        $namespace = 'web';
+    }
+    $dir = rtrim($dir, '/') . '/' . $namespace;
+
     $max = max(1, (int)($cfg['rate_limit_max_requests'] ?? 30));
     $win = max(1, (int)($cfg['rate_limit_window_seconds'] ?? 60));
 
@@ -1047,6 +1568,329 @@ function dm_rate_limit_check(array $cfg, string $ip, int $now): bool
         flock($fh, LOCK_UN);
         fclose($fh);
     }
+}
+
+/**
+ * Download endpoint rate limit wrapper with dedicated defaults.
+ *
+ * Both web and download requests share one rate-limit root, but use separate
+ * internal namespaces.
+ */
+function dm_download_rate_limit_check(array $cfg, string $ip, int $now): bool
+{
+    $derived = $cfg;
+    $derived['rate_limit_enabled'] = !empty($cfg['download_rate_limit_enabled']);
+
+    $baseDir = $cfg['rate_limit_dir'] ?? null;
+    if (!is_string($baseDir) || trim($baseDir) === '') {
+        $baseDir = dm_path($cfg, 'ratelimit');
+    }
+
+    $derived['rate_limit_dir'] = rtrim(trim((string)$baseDir), '/');
+    $derived['rate_limit_namespace'] = 'download';
+    $derived['rate_limit_max_requests'] = (int)($cfg['download_rate_limit_max_requests'] ?? 20);
+    $derived['rate_limit_window_seconds'] = (int)($cfg['download_rate_limit_window_seconds'] ?? 60);
+    return dm_rate_limit_check($derived, $ip, $now);
+}
+
+/**
+ * Resolve and validate download base directory.
+ */
+function dm_download_base_dir(array $cfg): string
+{
+    $dir = rtrim((string)($cfg['download_base_dir'] ?? ''), '/');
+    if ($dir === '') {
+        throw new RuntimeException('Missing config key: download_base_dir');
+    }
+    if (!str_starts_with($dir, '/')) {
+        throw new RuntimeException('download_base_dir must be an absolute path');
+    }
+    $real = realpath($dir);
+    if ($real === false || !is_dir($real) || !is_readable($real)) {
+        throw new RuntimeException("download_base_dir missing/unreadable: {$dir}");
+    }
+    return rtrim($real, '/');
+}
+
+/**
+ * Resolve a configured relative download path against download_base_dir.
+ */
+function dm_download_resolve_file(array $cfg, string $relativePath): string
+{
+    if (!dm_download_rel_path_valid($relativePath)) {
+        throw new RuntimeException("Invalid download file path: {$relativePath}");
+    }
+
+    $baseDir = dm_download_base_dir($cfg);
+    $candidate = $baseDir . '/' . ltrim(str_replace('\\', '/', $relativePath), '/');
+    $real = realpath($candidate);
+    if ($real === false || !is_file($real) || !is_readable($real)) {
+        throw new RuntimeException("Download file missing/unreadable: {$relativePath}");
+    }
+
+    $basePrefix = $baseDir . '/';
+    if (!str_starts_with($real, $basePrefix)) {
+        throw new RuntimeException("Download file escapes download_base_dir: {$relativePath}");
+    }
+
+    return $real;
+}
+
+/**
+ * Deterministic state key for one logical download in one escalation event.
+ */
+function dm_download_state_key(string $recipientId, string $linkId, int $eventAt): string
+{
+    return hash('sha256', $recipientId . "\n" . $linkId . "\n" . $eventAt);
+}
+
+/**
+ * Remove expired leases from download state.
+ */
+function dm_download_state_cleanup(array &$state, int $now): void
+{
+    $entries = (array)($state['entries'] ?? []);
+    $clean = [];
+    foreach ($entries as $key => $entry) {
+        if (!is_string($key) || !is_array($entry)) {
+            continue;
+        }
+        $consumedAt = (int)($entry['consumed_at'] ?? 0);
+        $leaseUntil = (int)($entry['lease_until'] ?? 0);
+        $expiresAt = (int)($entry['expires_at'] ?? 0);
+        if ($expiresAt > $now && ($consumedAt > 0 || $leaseUntil > $now)) {
+            $clean[$key] = [
+            'lease_until' => $leaseUntil,
+            'consumed_at' => $consumedAt,
+            'expires_at' => $expiresAt,
+            ];
+        }
+    }
+    $state['entries'] = $clean;
+}
+
+/**
+ * Acquire a temporary lease for a one-time download token.
+ */
+function dm_download_state_acquire_lease(array &$state, string $key, int $now, int $leaseSeconds, bool $singleUse, int $expiresAt): string
+{
+    dm_download_state_cleanup($state, $now);
+    if (!$singleUse) {
+        return 'ready';
+    }
+
+    $entries = (array)($state['entries'] ?? []);
+    $entry = (array)($entries[$key] ?? []);
+    if ((int)($entry['consumed_at'] ?? 0) > 0) {
+        return 'consumed';
+    }
+    if ((int)($entry['lease_until'] ?? 0) > $now) {
+        return 'leased';
+    }
+
+    $entries[$key] = [
+    'lease_until' => $now + max(1, $leaseSeconds),
+    'consumed_at' => 0,
+    'expires_at' => $expiresAt,
+    ];
+    $state['entries'] = $entries;
+    return 'ready';
+}
+
+/**
+ * Release a temporary lease after a failed transfer attempt.
+ */
+function dm_download_state_release_lease(array &$state, string $key): void
+{
+    $entries = (array)($state['entries'] ?? []);
+    if (!isset($entries[$key]) || !is_array($entries[$key])) {
+        return;
+    }
+    if ((int)($entries[$key]['consumed_at'] ?? 0) > 0) {
+        return;
+    }
+    unset($entries[$key]);
+    $state['entries'] = $entries;
+}
+
+/**
+ * Mark a one-time download token as consumed after a completed transfer.
+ */
+function dm_download_state_mark_consumed(array &$state, string $key, int $now, bool $singleUse, int $expiresAt): void
+{
+    if (!$singleUse) {
+        return;
+    }
+
+    $entries = (array)($state['entries'] ?? []);
+    $entries[$key] = [
+    'lease_until' => 0,
+    'consumed_at' => $now,
+    'expires_at' => $expiresAt,
+    ];
+    $state['entries'] = $entries;
+}
+
+/**
+ * Find one configured recipient by internal recipient key.
+ */
+function dm_recipient_by_key(array $recipients, string $recipientKey): ?array
+{
+    foreach ($recipients as $recipient) {
+        if (is_array($recipient) && (string)($recipient['recipient_key'] ?? '') === $recipientKey) {
+            return $recipient;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Return the configured download definition for one recipient/download pair.
+ */
+function dm_download_definition_get(array $recipients, string $recipientKey, string $downloadKey): ?array
+{
+    $recipient = dm_recipient_by_key($recipients, $recipientKey);
+    if (!is_array($recipient)) {
+        return null;
+    }
+
+    $downloads = $recipient['downloads'] ?? [];
+    if (!is_array($downloads)) {
+        return null;
+    }
+
+    foreach ($downloads as $entry) {
+        if (is_array($entry) && (string)($entry['download_key'] ?? '') === $downloadKey) {
+            return $entry;
+        }
+    }
+    return null;
+}
+
+/**
+ * Load only the parts of recipients_file needed for download resolution.
+ *
+ * This path is intentionally tolerant: unrelated broken message or recipient rows must not
+ * invalidate already issued download links for a valid recipient/download pair.
+ *
+ * @return array<int, array<string, mixed>>
+ */
+function dm_download_recipients_runtime(array $cfg): array
+{
+    $fileName = dm_runtime_file_name($cfg, 'recipients_file');
+    $path = dm_path($cfg, $fileName);
+
+    if (!is_file($path) || !is_readable($path)) {
+        throw new RuntimeException("recipients_file missing/unreadable: {$path}");
+    }
+
+    $data = require $path;
+    if (!is_array($data)) {
+        throw new RuntimeException("recipients_file must return an array: {$path}");
+    }
+
+    $files = $data['files'] ?? null;
+    $rows = $data['recipients'] ?? null;
+    if (!is_array($files) || !is_array($rows)) {
+        throw new RuntimeException('recipients_file must return files/messages/recipients arrays');
+    }
+
+    $cleanFiles = [];
+    foreach ($files as $alias => $file) {
+        if (!is_string($alias) || !dm_mail_id_valid($alias)) {
+            continue;
+        }
+        $file = trim((string)$file);
+        if (!dm_download_rel_path_valid($file)) {
+            continue;
+        }
+        $cleanFiles[$alias] = str_replace('\\', '/', $file);
+    }
+
+    $out = [];
+    $seenRecipientKeys = [];
+    foreach ($rows as $row) {
+        if (!is_array($row) || array_values($row) !== $row || count($row) < 2) {
+            continue;
+        }
+
+        $name = trim((string)($row[0] ?? ''));
+        $address = trim(str_replace(["\r", "\n"], '', (string)($row[1] ?? '')));
+        if ($name === '' || $address === '' || !dm_mailbox_field_valid($address)) {
+            continue;
+        }
+
+        $recipientKey = dm_recipient_runtime_key($address);
+        if (isset($seenRecipientKeys[$recipientKey])) {
+            continue;
+        }
+
+        $normalAliases = $row[3] ?? [];
+        $singleUseAliases = $row[4] ?? [];
+        if (!is_array($normalAliases) || array_values($normalAliases) !== $normalAliases) {
+            $normalAliases = [];
+        }
+        if (!is_array($singleUseAliases) || array_values($singleUseAliases) !== $singleUseAliases) {
+            $singleUseAliases = [];
+        }
+
+        $downloads = [];
+        $seenAliases = [];
+        foreach ($normalAliases as $alias) {
+            $alias = trim((string)$alias);
+            if (!isset($cleanFiles[$alias]) || isset($seenAliases[$alias])) {
+                continue;
+            }
+            $downloads[] = [
+                'alias' => $alias,
+                'download_key' => dm_download_runtime_key($recipientKey, $alias),
+                'file' => $cleanFiles[$alias],
+                'single_use' => false,
+            ];
+            $seenAliases[$alias] = true;
+        }
+        foreach ($singleUseAliases as $alias) {
+            $alias = trim((string)$alias);
+            if (!isset($cleanFiles[$alias]) || isset($seenAliases[$alias])) {
+                continue;
+            }
+            $downloads[] = [
+                'alias' => $alias,
+                'download_key' => dm_download_runtime_key($recipientKey, $alias),
+                'file' => $cleanFiles[$alias],
+                'single_use' => true,
+            ];
+            $seenAliases[$alias] = true;
+        }
+
+        $out[] = [
+            'name' => $name,
+            'address' => $address,
+            'recipient_key' => $recipientKey,
+            'downloads' => $downloads,
+        ];
+        $seenRecipientKeys[$recipientKey] = true;
+    }
+
+    return $out;
+}
+
+/**
+ * Best-effort MIME type detection for downloads.
+ */
+function dm_download_content_type(string $path): string
+{
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        if ($finfo !== false) {
+            $type = finfo_file($finfo, $path);
+            if (is_string($type) && trim($type) !== '') {
+                return $type;
+            }
+        }
+    }
+    return 'application/octet-stream';
 }
 
 
@@ -1112,8 +1956,13 @@ function dm_validate_runtime_config(array $cfg): array
     $remindEvery = dm_cfg_int_required($cfg, 'remind_every_seconds', 1);
     $escalateGrace = dm_cfg_int_required($cfg, 'escalate_grace_seconds', 0);
     $missedCyclesBeforeFire = dm_cfg_int_required($cfg, 'missed_cycles_before_fire', 1);
+    $downloadValidDays = dm_cfg_int_required($cfg, 'download_valid_days', 1);
+    $downloadLeaseSeconds = dm_cfg_int_required($cfg, 'download_lease_seconds', 1);
+    $downloadRateLimitMax = dm_cfg_int_required($cfg, 'download_rate_limit_max_requests', 1);
+    $downloadRateLimitWindow = dm_cfg_int_required($cfg, 'download_rate_limit_window_seconds', 1);
 
     $ackEnabled = !empty($cfg['escalate_ack_enabled']);
+    $downloadRateLimitEnabled = !empty($cfg['download_rate_limit_enabled']);
     $ackRemindEvery = 60;
     $ackMaxReminds = 0;
     if ($ackEnabled) {
@@ -1130,6 +1979,12 @@ function dm_validate_runtime_config(array $cfg): array
     if ($remindEvery > $confirmWindow) {
         $warnings[] = 'remind_every_seconds is greater than confirm_window_seconds; only limited reminders may occur per cycle.';
     }
+    if ($downloadLeaseSeconds < 60) {
+        $warnings[] = 'download_lease_seconds is below 60; interrupted downloads may become hard to retry.';
+    }
+    if ($downloadValidDays < 7) {
+        $warnings[] = 'download_valid_days is below 7; recipients may lose access to files sooner than expected.';
+    }
 
     return [
     'check_interval_seconds' => $checkInterval,
@@ -1137,9 +1992,14 @@ function dm_validate_runtime_config(array $cfg): array
     'remind_every_seconds' => $remindEvery,
     'escalate_grace_seconds' => $escalateGrace,
     'missed_cycles_before_fire' => $missedCyclesBeforeFire,
+    'download_valid_days' => $downloadValidDays,
     'ack_enabled' => $ackEnabled,
     'escalate_ack_remind_every_seconds' => $ackRemindEvery,
     'escalate_ack_max_reminds' => $ackMaxReminds,
+    'download_rate_limit_enabled' => $downloadRateLimitEnabled,
+    'download_rate_limit_max_requests' => $downloadRateLimitMax,
+    'download_rate_limit_window_seconds' => $downloadRateLimitWindow,
+    'download_lease_seconds' => $downloadLeaseSeconds,
     'warnings' => $warnings,
     ];
 }
@@ -1161,11 +2021,9 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
     $emit = static function (string $level, string $msg) use (&$okCount, &$warnCount, &$failCount): void {
         if ($level === 'OK') {
             $okCount++;
-        }
-        if ($level === 'WARN') {
+        } elseif ($level === 'WARN') {
             $warnCount++;
-        }
-        if ($level === 'FAIL') {
+        } elseif ($level === 'FAIL') {
             $failCount++;
         }
         echo "[{$level}] {$msg}\n";
@@ -1197,15 +2055,18 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
     } else {
         if (!is_readable($stateDir)) {
             $fail("State directory is not readable for current user: {$stateDir}");
+        } else {
+            $ok("State directory readable: {$stateDir}");
         }
         if (!is_writable($stateDir)) {
             $warn("State directory is not writable for current user: {$stateDir}");
+        } else {
+            $ok("State directory writable: {$stateDir}");
         }
     }
 
     $configPath = $stateDir . '/totmann.inc.php';
     $tickPath = $stateDir . '/totmann-tick.php';
-
     foreach (['totmann.inc.php' => $configPath, 'totmann-tick.php' => $tickPath] as $name => $path) {
         if (is_file($path) && is_readable($path)) {
             $ok("Found {$name}: {$path}");
@@ -1215,13 +2076,6 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
     }
 
     $cfg = [];
-    $libFileName = 'totmann-lib.php';
-    $webFileName = 'totmann.php';
-    $stateFileName = 'totmann.json';
-    $lockFileName = 'totmann.lock';
-    $logFileName = 'totmann.log';
-    $mailFileName = 'totmann-messages.php';
-    $webCssFileName = 'totmann.css';
     if (is_file($configPath) && is_readable($configPath)) {
         try {
             $cfg = dm_bootstrap_load_config_raw($configPath);
@@ -1230,449 +2084,295 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
             $fail('Loading totmann.inc.php failed: ' . $e->getMessage());
         }
     }
+
+    if ($cfg === []) {
+        echo "Summary: {$okCount} OK, {$warnCount} WARN, {$failCount} FAIL\n";
+        echo "Result: NOT READY FOR GOLIVE\n";
+        return 2;
+    }
+
+    $runtimeFileName = static function (array $cfg, string $key, callable $fail): string {
+        $v = trim((string)($cfg[$key] ?? ''));
+        if ($v === '') {
+            $fail("{$key} is missing/empty.");
+            return '__invalid__';
+        }
+        if (str_contains($v, '/') || str_contains($v, '\\') || $v === '.' || $v === '..' || str_contains($v, '..') || preg_match('/[[:cntrl:]]/', $v)) {
+            $fail("{$key} must be a filename only: {$v}");
+            return '__invalid__';
+        }
+        return $v;
+    };
+
+    $optionalRuntimeFileName = static function (array $cfg, string $key, callable $fail): ?string {
+        if (!array_key_exists($key, $cfg)) {
+            return null;
+        }
+        $v = trim((string)$cfg[$key]);
+        if ($v === '') {
+            return null;
+        }
+        if (str_contains($v, '/') || str_contains($v, '\\') || $v === '.' || $v === '..' || str_contains($v, '..') || preg_match('/[[:cntrl:]]/', $v)) {
+            $fail("{$key} must be a filename only: {$v}");
+            return '__invalid__';
+        }
+        return $v;
+    };
+
+    $libFileName = $runtimeFileName($cfg, 'lib_file', $fail);
+    $l18nDirName = $runtimeFileName($cfg, 'l18n_dir_name', $fail);
+    $lockFileName = $runtimeFileName($cfg, 'lock_file', $fail);
+    $logFileName = $runtimeFileName($cfg, 'log_file_name', $fail);
+    $recipientsFileName = $runtimeFileName($cfg, 'recipients_file', $fail);
+    $stateFileName = $runtimeFileName($cfg, 'state_file', $fail);
+    $webFileName = $runtimeFileName($cfg, 'web_file', $fail);
+    $webCssFileName = $optionalRuntimeFileName($cfg, 'web_css_file', $fail);
+    if ($failCount === 0) {
+        $cssMsg = ($webCssFileName === null) ? 'css=disabled' : "css={$webCssFileName}";
+        $ok("Runtime filenames: lib={$libFileName}, l18n={$l18nDirName}, lock={$lockFileName}, log={$logFileName}, recipients={$recipientsFileName}, state={$stateFileName}, web={$webFileName}, {$cssMsg}");
+    }
+
     $libPath = $stateDir . '/' . $libFileName;
-    if ($cfg) {
-        $runtimeFileName = static function (array $cfg, string $key, callable $fail): string {
-            $v = trim((string)($cfg[$key] ?? ''));
-            if ($v === '') {
-                $fail("{$key} is missing/empty.");
-                return '__invalid__';
-            }
-            if (str_contains($v, '/') || str_contains($v, '\\')) {
-                $fail("{$key} must be a filename only (no slashes): {$v}");
-                return '__invalid__';
-            }
-            if ($v === '.' || $v === '..' || str_contains($v, '..') || preg_match('/[[:cntrl:]]/', $v)) {
-                $fail("{$key} contains invalid characters: {$v}");
-                return '__invalid__';
-            }
-            return $v;
-        };
-
-        $optionalRuntimeFileName = static function (array $cfg, string $key, callable $fail): ?string {
-            if (!array_key_exists($key, $cfg)) {
-                return null;
-            }
-            $v = trim((string)$cfg[$key]);
-            if ($v === '') {
-                return null;
-            }
-            if (str_contains($v, '/') || str_contains($v, '\\')) {
-                $fail("{$key} must be a filename only (no slashes): {$v}");
-                return '__invalid__';
-            }
-            if ($v === '.' || $v === '..' || str_contains($v, '..') || preg_match('/[[:cntrl:]]/', $v)) {
-                $fail("{$key} contains invalid characters: {$v}");
-                return '__invalid__';
-            }
-            return $v;
-        };
-
-        $libFileName = $runtimeFileName($cfg, 'lib_file', $fail);
-        $webFileName = $runtimeFileName($cfg, 'web_file', $fail);
-        $stateFileName = $runtimeFileName($cfg, 'state_file', $fail);
-        $lockFileName = $runtimeFileName($cfg, 'lock_file', $fail);
-        $logFileName = $runtimeFileName($cfg, 'log_file_name', $fail);
-        $mailFileName = $runtimeFileName($cfg, 'mail_file', $fail);
-        $webCssFileName = $optionalRuntimeFileName($cfg, 'web_css_file', $fail);
-        if ($failCount === 0) {
-            $cssMsg = ($webCssFileName === null) ? 'css=disabled' : "css={$webCssFileName}";
-            $ok("Runtime filenames: lib={$libFileName}, lock={$lockFileName}, log={$logFileName}, mail={$mailFileName}, state={$stateFileName}, web={$webFileName}, {$cssMsg}");
-        }
-        if ($webCssFileName === null) {
-            $ok('web_css_file empty: stylesheet link from web endpoint is disabled.');
-        }
-        $libPath = $stateDir . '/' . $libFileName;
-        $mailPath = $stateDir . '/' . $mailFileName;
-
-        if (is_file($libPath) && is_readable($libPath)) {
-            $ok("Found {$libFileName}: {$libPath}");
+    $l18nDirPath = $stateDir . '/' . $l18nDirName;
+    $recipientsPath = $stateDir . '/' . $recipientsFileName;
+    foreach ([$libFileName => $libPath, $recipientsFileName => $recipientsPath] as $name => $path) {
+        if (is_file($path) && is_readable($path)) {
+            $ok("Found {$name}: {$path}");
         } else {
-            $fail("Missing/unreadable {$libFileName}: {$libPath}");
+            $fail("Missing/unreadable {$name}: {$path}");
         }
-        if (is_file($mailPath) && is_readable($mailPath)) {
-            $ok("Found {$mailFileName}: {$mailPath}");
-        } else {
-            $fail("Missing/unreadable {$mailFileName}: {$mailPath}");
-        }
+    }
 
-        $configuredStateDir = rtrim((string)($cfg['state_dir'] ?? ''), '/');
-        if ($configuredStateDir === '') {
-            $warn('totmann.inc.php state_dir is empty.');
-        } elseif ($configuredStateDir !== $stateDir) {
-            $warn("totmann.inc.php state_dir ({$configuredStateDir}) differs from resolved state dir ({$stateDir}).");
-        } else {
-            $ok('totmann.inc.php state_dir matches resolved state dir.');
-        }
-
-        $secret = trim((string)($cfg['hmac_secret_hex'] ?? ''));
-        if ($secret === '') {
-            $fail('hmac_secret_hex is empty.');
-        } elseif (str_contains($secret, 'REPLACE_WITH')) {
-            $fail('hmac_secret_hex still contains placeholder text.');
-        } elseif (!preg_match('/^[a-f0-9]+$/i', $secret)) {
-            $fail('hmac_secret_hex must be hex-encoded.');
-        } elseif ((strlen($secret) % 2) !== 0) {
-            $fail('hmac_secret_hex length must be even.');
-        } elseif (strlen($secret) < 32) {
-            $fail('hmac_secret_hex must be at least 32 hex chars (16 bytes).');
-        } elseif (strlen($secret) < 64) {
-            $warn('hmac_secret_hex is valid but shorter than recommended 64 hex chars (32 bytes).');
-        } else {
-            $ok('hmac_secret_hex format/length looks good.');
-        }
-
-        $checkBaseUrl = static function (array $cfg, string $key, bool $required, bool $httpsOnly, bool $forbidPlaceholder, string $webFileName, callable $ok, callable $warn, callable $fail, callable $looksPlaceholder): void {
-            $url = trim((string)($cfg[$key] ?? ''));
-            if ($url === '') {
-                if ($required) {
-                    $fail("{$key} is empty.");
-                } else {
-                    $warn("{$key} is empty.");
-                }
-                return;
-            }
-            if ($forbidPlaceholder && $looksPlaceholder($url)) {
-                $fail("{$key} contains placeholder/local host value: {$url}");
-                return;
-            }
-            $parts = parse_url($url);
-            if (!is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
-                $fail("{$key} must be an absolute URL: {$url}");
-                return;
-            }
-            if ($httpsOnly && strtolower((string)$parts['scheme']) !== 'https') {
-                $fail("{$key} must use HTTPS for GoLive: {$url}");
-                return;
-            }
-            $path = (string)($parts['path'] ?? '');
-            $base = $path !== '' ? basename($path) : '';
-            if ($webFileName !== '__invalid__' && $base === $webFileName) {
-                $warn("{$key} currently includes web_file ({$webFileName}). Use only the base URL path; web_file is appended automatically.");
-            }
-            if (!empty($parts['query'])) {
-                $warn("{$key} should not include a query string; it is added automatically.");
-            }
-            $ok("{$key} looks valid.");
-        };
-
-        $checkBaseUrl($cfg, 'base_url', true, true, true, $webFileName, $ok, $warn, $fail, $looksPlaceholder);
-
-        try {
-            $validatedRuntimeCfg = dm_validate_runtime_config($cfg);
-            $ok('Runtime timing config validation passed.');
-            foreach ((array)($validatedRuntimeCfg['warnings'] ?? []) as $w) {
-                $warn('Runtime timing warning: ' . $w);
-            }
-        } catch (Throwable $e) {
-            $fail('Runtime timing config validation failed: ' . $e->getMessage());
-        }
-
-        $checkRecipients = static function (array $cfg, string $key, callable $ok, callable $warn, callable $fail, callable $looksPlaceholder): void {
-            $list = $cfg[$key] ?? null;
-            if (!is_array($list) || $list === []) {
-                $fail("{$key} must contain at least one mailbox.");
-                return;
-            }
-
-            $valid = 0;
-            $invalid = 0;
-            $placeholder = 0;
-
-            foreach ($list as $entry) {
-                $entry = trim((string)$entry);
-                if ($entry === '') {
-                    continue;
-                }
-                $parts = array_filter(array_map('trim', explode(',', $entry)), static fn(string $p): bool => $p !== '');
-                foreach ($parts as $part) {
-                    $addr = $part;
-                    if (preg_match('/<([^>]+)>/', $part, $m)) {
-                        $addr = trim($m[1]);
-                    }
-                    if ($addr === '' || !str_contains($addr, '@')) {
-                        $invalid++;
-                        continue;
-                    }
-                    if (filter_var($addr, FILTER_VALIDATE_EMAIL) === false) {
-                        $invalid++;
-                        continue;
-                    }
-                    $valid++;
-                    if ($looksPlaceholder($part) || $looksPlaceholder($addr)) {
-                        $placeholder++;
-                    }
-                }
-            }
-
-            if ($valid < 1) {
-                $fail("{$key} does not contain any valid mailbox.");
-                return;
-            }
-            if ($invalid > 0) {
-                $warn("{$key} contains {$invalid} malformed mailbox entr" . ($invalid === 1 ? 'y.' : 'ies.'));
-            }
-            if ($placeholder > 0) {
-                $fail("{$key} contains placeholder addresses (example.com/localhost).");
+    if (!is_dir($l18nDirPath)) {
+        $fail("Missing l18n directory: {$l18nDirPath}");
+    } elseif (!is_readable($l18nDirPath)) {
+        $fail("Unreadable l18n directory: {$l18nDirPath}");
+    } else {
+        $ok("Found l18n directory: {$l18nDirPath}");
+        foreach (['de-DE', 'en-GB', 'en-US', 'fr-FR', 'it-IT', 'es-ES'] as $locale) {
+            $localePath = $l18nDirPath . '/' . $locale . '.php';
+            if (is_file($localePath) && is_readable($localePath)) {
+                $ok("Found l18n locale file: {$locale}.php");
             } else {
-                $ok("{$key} has {$valid} valid mailbox entr" . ($valid === 1 ? 'y.' : 'ies.'));
-            }
-        };
-
-        $checkEscalationRecipients = static function (array $cfg, string $key, callable $ok, callable $warn, callable $fail, callable $looksPlaceholder): array {
-            $list = $cfg[$key] ?? null;
-            if (!is_array($list) || $list === []) {
-                $fail("{$key} must contain at least one recipient entry in the format [address] or [address, id].");
-                return ['ids' => []];
-            }
-
-            $valid = 0;
-            $invalid = 0;
-            $placeholder = 0;
-            $invalidIds = 0;
-            $ids = [];
-
-            foreach ($list as $entry) {
-                if (!is_array($entry) || !array_key_exists(0, $entry)) {
-                    $invalid++;
-                    continue;
-                }
-
-                foreach (array_keys($entry) as $k) {
-                    if ($k !== 0 && $k !== 1) {
-                        $invalid++;
-                        continue 2;
-                    }
-                }
-
-                $rawAddress = trim(str_replace(["\r", "\n"], '', (string)$entry[0]));
-                if ($rawAddress === '') {
-                    $invalid++;
-                    continue;
-                }
-
-                $addr = $rawAddress;
-                if (preg_match('/<([^>]+)>/', $rawAddress, $m)) {
-                    $addr = trim($m[1]);
-                }
-                if ($addr === '' || !str_contains($addr, '@')) {
-                    $invalid++;
-                    continue;
-                }
-
-                $isValid = (filter_var($addr, FILTER_VALIDATE_EMAIL) !== false);
-                if (!$isValid) {
-                    $isValid = (bool)preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $addr);
-                }
-                if (!$isValid) {
-                    $invalid++;
-                    continue;
-                }
-
-                if (array_key_exists(1, $entry)) {
-                    if (!(is_string($entry[1]) || is_numeric($entry[1]))) {
-                        $invalidIds++;
-                        continue;
-                    }
-                    $rawId = trim(str_replace(["\r", "\n"], '', (string)$entry[1]));
-                    if ($rawId !== '') {
-                        $idLen = strlen($rawId);
-                        $idOk = ($idLen <= 100 && (bool)preg_match('/^[a-z0-9_-]+$/', $rawId));
-                        if ($idOk) {
-                            $ids[$rawId] = true;
-                        } else {
-                            $invalidIds++;
-                        }
-                    }
-                }
-
-                $valid++;
-                if ($looksPlaceholder($rawAddress) || $looksPlaceholder($addr)) {
-                    $placeholder++;
-                }
-            }
-
-            if ($valid < 1) {
-                $fail("{$key} does not contain any valid recipient entries.");
-                return ['ids' => []];
-            }
-
-            if ($invalid > 0) {
-                $warn("{$key} contains {$invalid} malformed recipient " . ($invalid === 1 ? 'entry.' : 'entries.'));
-            }
-            if ($placeholder > 0) {
-                $fail("{$key} contains placeholder addresses (example.com/localhost).");
-            } else {
-                $ok("{$key} has {$valid} valid recipient " . ($valid === 1 ? 'entry.' : 'entries.'));
-            }
-
-            if ($invalidIds > 0) {
-                $fail("{$key} contains {$invalidIds} invalid recipient id entr" . ($invalidIds === 1 ? 'y' : 'ies') . ". Allowed: ^[a-z0-9_-]+$ (1..100 chars).");
-            } elseif ($ids !== []) {
-                $ok("{$key} id format check passed (" . count($ids) . " id entr" . (count($ids) === 1 ? 'y' : 'ies') . ').');
-            }
-
-            return ['ids' => array_keys($ids)];
-        };
-
-        $checkRecipients($cfg, 'to_self', $ok, $warn, $fail, $looksPlaceholder);
-        $escalationRecipientCheck = $checkEscalationRecipients($cfg, 'to_recipients', $ok, $warn, $fail, $looksPlaceholder);
-        $recipientIds = (array)$escalationRecipientCheck['ids'];
-
-        $subjectEscalate = (string)($cfg['subject_escalate'] ?? '');
-        if (trim($subjectEscalate) === '') {
-            $fail('subject_escalate is empty.');
-        } else {
-            $ok('subject_escalate is set.');
-        }
-
-        $bodyEscalate = (string)($cfg['body_escalate'] ?? '');
-        if (trim($bodyEscalate) === '') {
-            $fail('body_escalate is empty.');
-        } else {
-            $ok('body_escalate is set.');
-        }
-
-        if ($recipientIds !== []) {
-            $messagesFile = trim((string)($cfg['mail_file'] ?? ''));
-            if ($messagesFile === '') {
-                $fail('mail_file is empty while recipient IDs are configured.');
-            } else {
-                $fileNameOk = !(str_contains($messagesFile, '/') || str_contains($messagesFile, '\\') || $messagesFile === '.' || $messagesFile === '..' || str_contains($messagesFile, '..') || (bool)preg_match('/[[:cntrl:]]/', $messagesFile));
-                if (!$fileNameOk) {
-                    $fail("mail_file is invalid (filename only, no slashes/traversal): {$messagesFile}");
-                } else {
-                    $templatesPath = $stateDir . '/' . $messagesFile;
-                    if (!is_file($templatesPath) || !is_readable($templatesPath)) {
-                        $fail("mail_file missing/unreadable: {$templatesPath}");
-                    } else {
-                        try {
-                            $templatesRaw = require $templatesPath;
-                            if (!is_array($templatesRaw)) {
-                                $fail("mail_file must return an array: {$templatesPath}");
-                            } else {
-                                $templates = [];
-                                foreach ($templatesRaw as $id => $entry) {
-                                    if (!is_string($id)) {
-                                        continue;
-                                    }
-                                    $idLen = strlen($id);
-                                    if ($idLen < 1 || $idLen > 100) {
-                                        continue;
-                                    }
-                                    if (!(bool)preg_match('/^[a-z0-9_-]+$/', $id)) {
-                                                continue;
-                                    }
-                                    $subject = is_array($entry) ? ($entry['subject'] ?? null) : null;
-                                    $body = is_array($entry) ? ($entry['body'] ?? null) : null;
-                                    if (!is_string($subject) || trim($subject) === '') {
-                                        continue;
-                                    }
-                                    if (!is_string($body) || trim($body) === '') {
-                                        continue;
-                                    }
-                                    $templates[$id] = true;
-                                }
-
-                                $missingIds = [];
-                                foreach ($recipientIds as $id) {
-                                    if (!isset($templates[$id])) {
-                                        $missingIds[] = $id;
-                                    }
-                                }
-
-                                if ($missingIds !== []) {
-                                    $fail("recipient IDs missing in {$messagesFile}: " . implode(', ', $missingIds));
-                                } else {
-                                    $ok("recipient IDs resolved in {$messagesFile}.");
-                                }
-                            }
-                        } catch (Throwable $e) {
-                            $fail("mail_file load failed: " . $e->getMessage());
-                        }
-                    }
-                }
-            }
-        }
-
-        $mailFrom = trim((string)($cfg['mail_from'] ?? ''));
-        if ($mailFrom === '') {
-            $fail('mail_from is empty.');
-        } elseif ($looksPlaceholder($mailFrom)) {
-            $fail('mail_from contains placeholder/local host value.');
-        } else {
-            $ok('mail_from is set.');
-        }
-
-        $sendmailPath = trim((string)($cfg['sendmail_path'] ?? '/usr/sbin/sendmail'));
-        if ($sendmailPath === '') {
-            $fail('sendmail_path is empty.');
-        } elseif (!is_file($sendmailPath)) {
-            $fail("sendmail_path not found: {$sendmailPath}");
-        } elseif (!is_executable($sendmailPath)) {
-            $fail("sendmail_path is not executable: {$sendmailPath}");
-        } else {
-            $ok("sendmail_path executable: {$sendmailPath}");
-        }
-
-        $logMode = strtolower(trim((string)($cfg['log_mode'] ?? 'both')));
-        $allowedLogModes = ['none', 'syslog', 'file', 'both'];
-        if (!in_array($logMode, $allowedLogModes, true)) {
-            $fail("log_mode must be one of: none, syslog, file, both (got: {$logMode})");
-        } else {
-            if ($logMode === 'none') {
-                $warn('log_mode=none: logging disabled (not recommended for production).');
-            } else {
-                $ok("log_mode set to {$logMode}.");
-            }
-
-            if ($logMode === 'file' || $logMode === 'both') {
-                $logFile = trim((string)($cfg['log_file'] ?? ''));
-                if ($logFile === '') {
-                    $logFile = $stateDir . '/' . $logFileName;
-                }
-                $logDir = dirname($logFile);
-                if (is_dir($logDir) && is_writable($logDir)) {
-                    $ok("log target directory writable: {$logDir}");
-                } elseif (!is_dir($logDir)) {
-                    $warn("log target directory does not exist yet (will be created on demand): {$logDir}");
-                } else {
-                    $warn("log target directory exists but is not writable for current user: {$logDir}");
-                }
-            }
-        }
-
-        $rateLimitDir = $cfg['rate_limit_dir'] ?? null;
-        if (!is_string($rateLimitDir) || trim($rateLimitDir) === '') {
-            $rateLimitDir = $stateDir . '/ratelimit';
-        }
-        $rateLimitDir = rtrim((string)$rateLimitDir, '/');
-        if ($rateLimitDir === '') {
-            $rateLimitDir = $stateDir . '/ratelimit';
-        }
-
-        if (!empty($cfg['rate_limit_enabled'])) {
-            if (is_dir($rateLimitDir) && is_writable($rateLimitDir)) {
-                $ok("rate_limit_dir writable: {$rateLimitDir}");
-            } elseif (!is_dir($rateLimitDir)) {
-                $warn("rate_limit_dir does not exist yet (will be created on demand): {$rateLimitDir}");
-            } else {
-                $warn("rate_limit_dir exists but is not writable for current user: {$rateLimitDir}");
+                $fail("Missing/unreadable l18n locale file: {$localePath}");
             }
         }
     }
 
-    if (!$cfg) {
-        if (is_file($libPath) && is_readable($libPath)) {
-            $ok("Found {$libFileName}: {$libPath}");
+    $configuredStateDir = rtrim((string)($cfg['state_dir'] ?? ''), '/');
+    if ($configuredStateDir === '') {
+        $warn('totmann.inc.php state_dir is empty.');
+    } elseif ($configuredStateDir !== $stateDir) {
+        $warn("totmann.inc.php state_dir ({$configuredStateDir}) differs from resolved state dir ({$stateDir}).");
+    } else {
+        $ok('totmann.inc.php state_dir matches resolved state dir.');
+    }
+
+    $secret = trim((string)($cfg['hmac_secret_hex'] ?? ''));
+    if ($secret === '') {
+        $fail('hmac_secret_hex is empty.');
+    } elseif (str_contains($secret, 'REPLACE_WITH')) {
+        $fail('hmac_secret_hex still contains placeholder text.');
+    } elseif (!preg_match('/^[a-f0-9]+$/i', $secret)) {
+        $fail('hmac_secret_hex must be hex-encoded.');
+    } elseif ((strlen($secret) % 2) !== 0) {
+        $fail('hmac_secret_hex length must be even.');
+    } elseif (strlen($secret) < 32) {
+        $fail('hmac_secret_hex must be at least 32 hex chars (16 bytes).');
+    } elseif (strlen($secret) < 64) {
+        $warn('hmac_secret_hex is valid but shorter than the recommended 64 hex chars (32 bytes).');
+    } else {
+        $ok('hmac_secret_hex format/length looks good.');
+    }
+
+    $baseUrl = trim((string)($cfg['base_url'] ?? ''));
+    if ($baseUrl === '') {
+        $fail('base_url is empty.');
+    } elseif ($looksPlaceholder($baseUrl)) {
+        $fail("base_url contains placeholder/local host value: {$baseUrl}");
+    } else {
+        $parts = parse_url($baseUrl);
+        if (!is_array($parts) || empty($parts['scheme']) || empty($parts['host'])) {
+            $fail("base_url must be an absolute URL: {$baseUrl}");
+        } elseif (strtolower((string)$parts['scheme']) !== 'https') {
+            $fail("base_url must use HTTPS for GoLive: {$baseUrl}");
         } else {
-            $fail("Missing/unreadable {$libFileName}: {$libPath}");
+            $path = (string)($parts['path'] ?? '');
+            $base = $path !== '' ? basename($path) : '';
+            if ($base === $webFileName) {
+                $warn("base_url currently includes web_file ({$webFileName}). Use only the base URL path; web_file is appended automatically.");
+            } else {
+                $ok('base_url looks valid.');
+            }
         }
+    }
+
+    $downloadBaseDir = trim((string)($cfg['download_base_dir'] ?? ''));
+    if ($downloadBaseDir === '') {
+        $fail('download_base_dir is empty.');
+    } elseif (!str_starts_with($downloadBaseDir, '/')) {
+        $fail("download_base_dir must be an absolute path: {$downloadBaseDir}");
+    } elseif (!is_dir($downloadBaseDir)) {
+        $warn("download_base_dir does not exist yet: {$downloadBaseDir}");
+    } elseif (!is_readable($downloadBaseDir)) {
+        $fail("download_base_dir is not readable: {$downloadBaseDir}");
+    } else {
+        $ok("download_base_dir readable: {$downloadBaseDir}");
+    }
+
+    try {
+        $validatedRuntimeCfg = dm_validate_runtime_config($cfg);
+        $ok('Runtime timing config validation passed.');
+        foreach ((array)($validatedRuntimeCfg['warnings'] ?? []) as $w) {
+            $warn('Runtime timing warning: ' . $w);
+        }
+    } catch (Throwable $e) {
+        $fail('Runtime timing config validation failed: ' . $e->getMessage());
+    }
+
+    try {
+        $selfRecipients = dm_recipient_entries_runtime((array)($cfg['to_self'] ?? []));
+        if ($selfRecipients === []) {
+            $fail('to_self does not contain any valid mailbox.');
+        } else {
+            $ok('to_self contains ' . count($selfRecipients) . ' valid mailbox entr' . (count($selfRecipients) === 1 ? 'y.' : 'ies.'));
+        }
+    } catch (Throwable $e) {
+        $fail('to_self validation failed: ' . $e->getMessage());
+    }
+
+    try {
+        $recipients = dm_recipients_load($cfg);
+        $ok('recipients_file load passed: ' . $recipientsFileName);
+        $messageKeys = [];
+        $downloadCount = 0;
+        foreach ($recipients as $recipient) {
+            if (!is_array($recipient)) {
+                continue;
+            }
+            $name = (string)($recipient['name'] ?? '');
+            $address = (string)($recipient['address'] ?? '');
+            if ($looksPlaceholder($name)) {
+                $fail("recipients_file contains placeholder personal name: {$name}");
+            }
+            if ($looksPlaceholder($address)) {
+                $fail("recipients_file contains placeholder address: {$address}");
+            }
+            $messageKey = (string)($recipient['message_key'] ?? '');
+            if ($messageKey !== '') {
+                $messageKeys[$messageKey] = true;
+            }
+            $message = $recipient['message'] ?? null;
+            if ($message !== null && !is_array($message)) {
+                $fail("recipients_file contains invalid message data for {$address}");
+            }
+            $downloads = $recipient['downloads'] ?? [];
+            if (is_array($downloads)) {
+                $downloadCount += count($downloads);
+            }
+        }
+        $ok('recipients_file has ' . count($recipients) . ' valid recipient entr' . (count($recipients) === 1 ? 'y.' : 'ies.'));
+        if ($messageKeys !== []) {
+            $ok('recipients_file references ' . count($messageKeys) . ' individual message entr' . (count($messageKeys) === 1 ? 'y.' : 'ies.'));
+        }
+        if ($downloadCount > 0) {
+            $ok('recipients_file defines ' . $downloadCount . ' download assignment' . ($downloadCount === 1 ? '.' : 's.'));
+        }
+    } catch (Throwable $e) {
+        $fail('recipients_file load failed: ' . $e->getMessage());
+    }
+
+    $notice = trim((string)($cfg['download_notice_single_use'] ?? ''));
+    if ($notice === '') {
+        $warn('download_notice_single_use is empty. Single-use downloads will render without a warning notice.');
+    } elseif (str_contains($notice, 'YOUR SINGLE-USE DOWNLOAD WARNING')) {
+        $warn('download_notice_single_use still contains the placeholder text.');
+    } else {
+        $ok('download_notice_single_use is customised.');
+    }
+
+    $mailFrom = trim((string)($cfg['mail_from'] ?? ''));
+    if ($mailFrom === '') {
+        $fail('mail_from is empty.');
+    } elseif ($looksPlaceholder($mailFrom)) {
+        $fail('mail_from contains placeholder/local host value.');
+    } else {
+        $ok('mail_from is set.');
+    }
+
+    $sendmailPath = trim((string)($cfg['sendmail_path'] ?? '/usr/sbin/sendmail'));
+    if ($sendmailPath === '') {
+        $fail('sendmail_path is empty.');
+    } elseif (!is_file($sendmailPath)) {
+        $fail("sendmail_path not found: {$sendmailPath}");
+    } elseif (!is_executable($sendmailPath)) {
+        $fail("sendmail_path is not executable: {$sendmailPath}");
+    } else {
+        $ok("sendmail_path executable: {$sendmailPath}");
+    }
+
+    $logMode = strtolower(trim((string)($cfg['log_mode'] ?? 'both')));
+    $allowedLogModes = ['none', 'syslog', 'file', 'both'];
+    if (!in_array($logMode, $allowedLogModes, true)) {
+        $fail("log_mode must be one of: none, syslog, file, both (got: {$logMode})");
+    } elseif ($logMode === 'none') {
+        $warn('log_mode=none: logging disabled (not recommended for production).');
+    } else {
+        $ok("log_mode set to {$logMode}.");
+    }
+
+    if ($logMode === 'file' || $logMode === 'both') {
+        $logFile = trim((string)($cfg['log_file'] ?? ''));
+        if ($logFile === '') {
+            $logFile = $stateDir . '/' . $logFileName;
+        }
+        $logDir = dirname($logFile);
+        if (is_dir($logDir) && is_writable($logDir)) {
+            $ok("log target directory writable: {$logDir}");
+        } elseif (!is_dir($logDir)) {
+            $warn("log target directory does not exist yet (will be created on demand): {$logDir}");
+        } else {
+            $warn("log target directory exists but is not writable for current user: {$logDir}");
+        }
+    }
+
+    $rateLimitDir = $cfg['rate_limit_dir'] ?? null;
+    if (!is_string($rateLimitDir) || trim($rateLimitDir) === '') {
+        $rateLimitDir = $stateDir . '/ratelimit';
+    }
+    $rateLimitDir = rtrim((string)$rateLimitDir, '/');
+    if (!empty($cfg['rate_limit_enabled'])) {
+        if (is_dir($rateLimitDir) && is_writable($rateLimitDir)) {
+            $ok("rate_limit_dir writable: {$rateLimitDir}");
+        } elseif (!is_dir($rateLimitDir)) {
+            $warn("rate_limit_dir does not exist yet (will be created on demand): {$rateLimitDir}");
+        } else {
+            $warn("rate_limit_dir exists but is not writable for current user: {$rateLimitDir}");
+        }
+    }
+
+    $ipMode = (string)($cfg['ip_mode'] ?? 'remote_addr');
+    if ($ipMode === 'remote_addr') {
+        $ok('ip_mode=remote_addr (safest default).');
+    } elseif ($ipMode === 'trusted_proxy') {
+        $trustedProxies = $cfg['trusted_proxies'] ?? [];
+        $proxyHeader = trim((string)($cfg['trusted_proxy_header'] ?? ''));
+        if (!is_array($trustedProxies) || $trustedProxies === []) {
+            $fail('trusted_proxy mode requires at least one trusted proxy IP.');
+        } else {
+            $ok('trusted_proxy mode configured with ' . count($trustedProxies) . ' trusted prox' . (count($trustedProxies) === 1 ? 'y.' : 'ies.'));
+        }
+        if ($proxyHeader === '') {
+            $fail('trusted_proxy_header is empty.');
+        } else {
+            $ok("trusted_proxy_header set to {$proxyHeader}.");
+        }
+    } else {
+        $fail("ip_mode must be 'remote_addr' or 'trusted_proxy' (got: {$ipMode})");
     }
 
     if (is_string($webUser) && $webUser !== '') {
         $ok("Web user permission check requested for: {$webUser}");
-
         if (!function_exists('posix_getpwnam')) {
             $warn('POSIX functions unavailable: cannot validate --web-user permissions in this PHP build.');
         } else {
@@ -1686,7 +2386,6 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
                 if ($primaryGid >= 0) {
                     $gids[$primaryGid] = true;
                 }
-
                 if (function_exists('posix_getgrall')) {
                     $allGroups = posix_getgrall();
                     if (is_array($allGroups)) {
@@ -1698,8 +2397,6 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
                             }
                         }
                     }
-                } else {
-                    $warn('posix_getgrall unavailable: supplementary groups not evaluated for --web-user.');
                 }
 
                 $gidList = array_keys($gids);
@@ -1719,16 +2416,13 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
                     $mode = $perms & 0777;
                     $owner = (int)$owner;
                     $group = (int)$group;
-                    $gids = array_values(array_map('intval', $gids));
-
                     if ($uid === $owner) {
                         $granted = ($mode >> 6) & 0x7;
-                    } elseif (in_array($group, $gids, true)) {
+                    } elseif (in_array($group, array_values(array_map('intval', $gids)), true)) {
                         $granted = ($mode >> 3) & 0x7;
                     } else {
                         $granted = $mode & 0x7;
                     }
-
                     return (($granted & $needBits) === $needBits);
                 };
 
@@ -1750,17 +2444,14 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
                     return false;
                 };
 
-                $stateDirOkRx = $requirePathPerm($stateDir, 0x5, 'state dir (r+x)', true);
                 $stateDirOkWx = $requirePathPerm($stateDir, 0x3, 'state dir (w+x)', true);
-
+                $requirePathPerm($stateDir, 0x5, 'state dir (r+x)', true);
                 $requirePathPerm($configPath, 0x4, 'totmann.inc.php (read)', true);
                 $requirePathPerm($libPath, 0x4, "{$libFileName} (read)", true);
+                $requirePathPerm($recipientsPath, 0x4, "{$recipientsFileName} (read)", true);
 
                 $stateJsonPath = $stateDir . '/' . $stateFileName;
-                $lockPath = $stateDir . '/' . $lockFileName;
-
-                $stateJsonPresent = file_exists($stateJsonPath);
-                if ($stateJsonPresent) {
+                if (file_exists($stateJsonPath)) {
                     $requirePathPerm($stateJsonPath, 0x4, "{$stateFileName} (read)", true);
                     if ($stateDirOkWx) {
                         $ok("{$stateFileName} update path likely works (write via tmp+rename in state dir).");
@@ -1771,26 +2462,19 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
                     $warn("{$stateFileName} does not exist yet (expected before first initialise).");
                 }
 
-                $lockPresent = file_exists($lockPath);
-                if ($lockPresent) {
+                $lockPath = $stateDir . '/' . $lockFileName;
+                if (file_exists($lockPath)) {
                     $requirePathPerm($lockPath, 0x6, "{$lockFileName} (read+write for c+)", true);
+                } elseif ($stateDirOkWx) {
+                    $ok("{$lockFileName} missing is acceptable; web user can likely create it.");
                 } else {
-                    if ($stateDirOkWx) {
-                        $ok("{$lockFileName} missing is acceptable; web user can likely create it (state dir has w+x).");
-                    } else {
-                        $fail("{$lockFileName} missing and state dir lacks w+x, so web user likely cannot create lock file.");
-                    }
-                }
-
-                if (!$stateDirOkRx) {
-                    $fail('Without state dir r+x, web endpoint traversal/read will fail for web user.');
+                    $fail("{$lockFileName} missing and state dir lacks w+x, so web user likely cannot create the lock file.");
                 }
             }
         }
     }
 
     echo "Summary: {$okCount} OK, {$warnCount} WARN, {$failCount} FAIL\n";
-
     if ($failCount > 0) {
         echo "Result: NOT READY FOR GOLIVE\n";
         return 2;
@@ -1802,7 +2486,6 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
     echo "Result: READY\n";
     return 0;
 }
-
 function dm_state_make_initial(array $cfg, int $now, int $checkInterval, int $confirmWindow): array
 {
     $token = dm_make_token($cfg);
@@ -1819,6 +2502,8 @@ function dm_state_make_initial(array $cfg, int $now, int $checkInterval, int $co
     'next_check_at' => $timing['next_check_at'],
     'deadline_at' => $timing['deadline_at'],
     'next_reminder_at' => $timing['next_reminder_at'],
+    'escalation_event_at' => null,
+    'escalation_delivery' => [],
     'escalated_sent_at' => null,
     ];
     dm_state_reset_ack($state);

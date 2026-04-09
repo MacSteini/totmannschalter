@@ -22,7 +22,7 @@ if (!is_array($argv)) {
 $cmd = (string)($argv[1] ?? '');
 if (!in_array($cmd, ['tick', 'check'], true)) {
     fwrite(STDERR, "Usage: php totmann-tick.php tick\n");
-    fwrite(STDERR, "       php totmann-tick.php check [--web-user=<WEB_USER>]\n");
+    fwrite(STDERR, "Usage: php totmann-tick.php check [--web-user=<WEB_USER>]\n");
     exit(2);
 }
 if ($cmd === 'tick' && count($argv) > 2) {
@@ -45,10 +45,10 @@ try {
         throw new RuntimeException('Missing config key: lib_file');
     }
     if (str_contains($libFile, '/') || str_contains($libFile, '\\')) {
-        throw new RuntimeException("Invalid lib_file: filename must not contain slashes");
+        throw new RuntimeException('Invalid lib_file: filename must not contain slashes');
     }
     if ($libFile === '.' || $libFile === '..' || str_contains($libFile, '..') || preg_match('/[[:cntrl:]]/', $libFile)) {
-        throw new RuntimeException("Invalid lib_file: traversal/control chars not allowed");
+        throw new RuntimeException('Invalid lib_file: traversal/control chars not allowed');
     }
 
     $libPath = $stateDir . '/' . $libFile;
@@ -57,7 +57,7 @@ try {
     }
     require $libPath;
 } catch (Throwable $e) {
-    fwrite(STDERR, "BOOTSTRAP ERROR: " . $e->getMessage() . "\n");
+    fwrite(STDERR, 'BOOTSTRAP ERROR: ' . $e->getMessage() . "\n");
     exit(1);
 }
 
@@ -98,10 +98,14 @@ if ($cmd === 'check') {
 $cfg['state_dir'] = $stateDir;
 try {
     $runtimeCfg = dm_validate_runtime_config($cfg);
-    $escalationRecipients = dm_escalation_recipients_runtime($cfg);
+    $recipientErrors = [];
+    $escalationRecipients = dm_escalation_recipients_runtime($cfg, $recipientErrors);
 } catch (Throwable $e) {
-    fwrite(STDERR, "CONFIG ERROR: " . $e->getMessage() . "\n");
+    fwrite(STDERR, 'CONFIG ERROR: ' . $e->getMessage() . "\n");
     exit(1);
+}
+foreach ($recipientErrors as $recipientError) {
+    dm_log($cfg, 'Recipient skipped: ' . $recipientError);
 }
 $checkInterval = (int)$runtimeCfg['check_interval_seconds'];
 $confirmWindow = (int)$runtimeCfg['confirm_window_seconds'];
@@ -112,30 +116,11 @@ $ackEnabledCfg = (bool)$runtimeCfg['ack_enabled'];
 $ackRemindEvery = max(60, (int)$runtimeCfg['escalate_ack_remind_every_seconds']);
 $ackMaxReminds = (int)$runtimeCfg['escalate_ack_max_reminds'];
 
-$ackMailTemplateIdsUsed = [];
-foreach ($escalationRecipients as $recipient) {
-    $rid = (string)($recipient['mail_id'] ?? '');
-    if ($rid !== '') {
-        $ackMailTemplateIdsUsed[$rid] = true;
-    }
-}
-
-$ackMailTemplates = [];
-$ackMailTemplateLoadError = null;
-if ($ackMailTemplateIdsUsed !== []) {
-    try {
-        $ackMailTemplates = dm_individual_messages_load($cfg);
-    } catch (Throwable $e) {
-        $ackMailTemplateLoadError = $e->getMessage();
-    }
-}
-$ackMailTemplateFallbackLogged = [];
-
 try {
     $stateFile = dm_state_file($cfg);
     $lockFile = dm_lock_file($cfg);
 } catch (Throwable $e) {
-    fwrite(STDERR, "BOOTSTRAP ERROR: " . $e->getMessage() . "\n");
+    fwrite(STDERR, 'BOOTSTRAP ERROR: ' . $e->getMessage() . "\n");
     exit(1);
 }
 
@@ -145,13 +130,15 @@ try {
     $lockHandle = dm_lock_open($lockFile);
 
     $now = dm_now();
-    $state = dm_state_load($stateFile);
+    $stateRoot = dm_state_load($stateFile);
+    $state = dm_state_runtime($stateRoot);
 
-// Initialise state (first run)
     if (empty($state)) {
         $state = dm_state_make_initial($cfg, $now, $checkInterval, $confirmWindow);
-        dm_state_save($stateFile, $state);
-        dm_log($cfg, "Initialised state. Next check at " . dm_iso((int)$state['next_check_at']));
+        $stateRoot = dm_state_with_runtime($stateRoot, $state);
+        $stateRoot = dm_state_with_downloads($stateRoot, dm_state_downloads($stateRoot));
+        dm_state_save($stateFile, $stateRoot);
+        dm_log($cfg, 'Initialised state. Next check at ' . dm_iso((int)$state['next_check_at']));
         exit(0);
     }
 
@@ -161,14 +148,14 @@ try {
 
     if ($createdAt > 0 && $cycleStart0 === $createdAt && $lastConfirm0 === $createdAt && empty($state['escalated_sent_at']) && (int)($state['missed_cycles'] ?? 0) === 0 && ($now - $createdAt) > 5) {
         $state['last_confirm_at'] = 0;
-        dm_log($cfg, "Migrated initial state: last_confirm_at reset to 0 (was equal to created_at).");
+        dm_log($cfg, 'Migrated initial state: last_confirm_at reset to 0 (was equal to created_at).');
     }
 
-// Sanity: clock went backwards -> do nothing risky in this tick
     if (isset($state['last_tick_at']) && $now + 5 < (int)$state['last_tick_at']) {
         dm_log($cfg, "Clock moved backwards. now={$now}, last_tick_at={$state['last_tick_at']}. Skipping actions.");
         $state['last_tick_at'] = $now;
-        dm_state_save($stateFile, $state);
+        $stateRoot = dm_state_with_runtime($stateRoot, $state);
+        dm_state_save($stateFile, $stateRoot);
         exit(0);
     }
 
@@ -177,15 +164,14 @@ try {
     $nextCheck = (int)($state['next_check_at'] ?? 0);
     $deadline = (int)($state['deadline_at'] ?? 0);
 
-// If confirm token is missing: regenerate, but do NOT trigger escalation in this tick
     if (empty($state['token']['id']) || empty($state['token']['sig'])) {
         $state['token'] = dm_make_token($cfg);
-        dm_log($cfg, "Token was missing; regenerated.");
-        dm_state_save($stateFile, $state);
+        dm_log($cfg, 'Token was missing; regenerated.');
+        $stateRoot = dm_state_with_runtime($stateRoot, $state);
+        dm_state_save($stateFile, $stateRoot);
         exit(0);
     }
 
-// Also guard against malformed/non-verifiable token values in state.
     $tokenId = (string)($state['token']['id'] ?? '');
     $tokenSig = (string)($state['token']['sig'] ?? '');
     $tokenValid = false;
@@ -196,8 +182,9 @@ try {
     }
     if (!$tokenValid) {
         $state['token'] = dm_make_token($cfg);
-        dm_log($cfg, "Token was invalid; regenerated.");
-        dm_state_save($stateFile, $state);
+        dm_log($cfg, 'Token was invalid; regenerated.');
+        $stateRoot = dm_state_with_runtime($stateRoot, $state);
+        dm_state_save($stateFile, $stateRoot);
         exit(0);
     }
 
@@ -210,24 +197,24 @@ try {
         $state['missed_cycle_deadline'] = null;
         dm_state_clear_escalation($state);
         $state['last_tick_at'] = $now;
-        dm_state_save($stateFile, $state);
+        $stateRoot = dm_state_with_runtime($stateRoot, $state);
+        dm_state_save($stateFile, $stateRoot);
         exit(0);
     }
 
-// 1) Reminder phase: from next_check_at until deadline_at
     if ($now >= $nextCheck && $now < $deadline) {
         $nextReminder = (int)($state['next_reminder_at'] ?? $nextCheck);
-
-    // Defensive: if next_reminder_at is behind the window start, bump it forward.
         if ($nextReminder < $nextCheck) {
             $nextReminder = $nextCheck;
         }
 
-    // Defensive: if next_reminder_at is in the past, send now and then schedule from "now".
         if ($now >= $nextReminder) {
             $confirmUrl = dm_confirm_url($cfg, (array)$state['token']);
-
-            $body = str_replace(['{CONFIRM_URL}', '{DEADLINE_ISO}', '{CYCLE_START_ISO}'], [$confirmUrl, dm_mail_dt($cfg, $deadline), dm_mail_dt($cfg, (int)$state['cycle_start_at'])], (string)$cfg['body_reminder']);
+            $body = str_replace(
+                ['{CONFIRM_URL}', '{DEADLINE_ISO}', '{CYCLE_START_ISO}'],
+                [$confirmUrl, dm_mail_dt($cfg, $deadline), dm_mail_dt($cfg, (int)$state['cycle_start_at'])],
+                (string)$cfg['body_reminder']
+            );
 
             $selfRecipients = dm_recipient_entries_runtime((array)($cfg['to_self'] ?? []));
             if ($selfRecipients === []) {
@@ -238,42 +225,22 @@ try {
                 dm_send_mail($cfg, [$selfRecipient], $subjectReminder, $body);
             }
             dm_log($cfg, "Sent reminder to self. next_reminder_at was {$nextReminder}");
-
             $state['next_reminder_at'] = $now + $remindEvery;
         }
     }
 
-// 2) Escalation: only after deadline+grace, only if NOT confirmed in this cycle
-    $grace = $escalateGrace;
-    $fireAt = $deadline + $grace;
-
+    $fireAt = $deadline + $escalateGrace;
     $lastConfirm = (int)($state['last_confirm_at'] ?? 0);
     $cycleStart = (int)($state['cycle_start_at'] ?? 0);
-
-// "Confirmed this cycle" means: a confirm happened after the window opened.
-// If confirmation happened before next_check_at, this cycle still counts as unconfirmed.
     $confirmedThisCycle = ($lastConfirm >= $nextCheck);
+    $ackEnabled = ($ackEnabledCfg && !empty($cfg['base_url']));
 
     if ($now >= $fireAt && !$confirmedThisCycle) {
-        if (!empty($state['escalated_sent_at'])) {
-            $ackEnabledState = ($ackEnabledCfg && !empty($cfg['base_url']));
-            $ackRecordedState = !empty($state['escalate_ack_at']);
-            $maxRemindsState = $ackMaxReminds;
-            $sentCountState = (int)($state['escalate_ack_sent_count'] ?? 0);
-            $shouldLogAlreadySent = true;
-            if ($ackEnabledState && $ackRecordedState) {
-                $shouldLogAlreadySent = false;
-            } elseif ($ackEnabledState && $maxRemindsState > 0 && $sentCountState >= $maxRemindsState) {
-                $shouldLogAlreadySent = false;
-            }
-            if ($shouldLogAlreadySent) {
-                dm_log($cfg, "Escalation already sent at " . dm_iso((int)$state['escalated_sent_at']) . ". Skipping.");
-            }
-        } else {
-        // Count missed cycle only once per deadline (timer runs every minute)
+        $eventAt = (int)($state['escalation_event_at'] ?? 0);
+        if ($eventAt <= 0) {
             $alreadyCounted = ((int)($state['missed_cycle_deadline'] ?? 0) === $deadline);
             if ($alreadyCounted) {
-                dm_log($cfg, "Missed cycle already recorded for this deadline; skipping counter bump.");
+                dm_log($cfg, 'Missed cycle already recorded for this deadline; skipping counter bump.');
             } else {
                 $state['missed_cycles'] = (int)($state['missed_cycles'] ?? 0) + 1;
                 $state['missed_cycle_deadline'] = $deadline;
@@ -283,116 +250,204 @@ try {
             dm_log($cfg, "Missed cycle status (missed_cycles={$state['missed_cycles']}/{$threshold}).");
 
             if ((int)$state['missed_cycles'] >= $threshold) {
-            // ACK is enabled only if explicitly enabled AND base_url exists
-                $ackEnabled = ($ackEnabledCfg && !empty($cfg['base_url']));
-                $ackUrl = '';
                 dm_state_reset_ack($state);
+                $state['escalation_event_at'] = $now;
+                $state['escalated_sent_at'] = $now;
+                if (!isset($state['escalation_delivery']) || !is_array($state['escalation_delivery'])) {
+                    $state['escalation_delivery'] = [];
+                }
+                dm_state_refresh_ack_summary($state);
+                dm_log($cfg, 'Escalation event opened at ' . dm_iso($now) . '.');
+            } else {
+                $timing = dm_state_start_cycle($cfg, $state, $now, $checkInterval, $confirmWindow);
+                $state['missed_cycle_deadline'] = null;
+                dm_log($cfg, 'Started new conservative cycle after miss. Next check at ' . dm_iso((int)$timing['next_check_at']));
+            }
+        }
+
+        $eventAt = (int)($state['escalation_event_at'] ?? 0);
+        if ($eventAt > 0) {
+            $deliveryMap = $state['escalation_delivery'] ?? [];
+            if (!is_array($deliveryMap)) {
+                $deliveryMap = [];
+            }
+            $ackRecipients = $state['escalate_ack_recipients'] ?? [];
+            if (!is_array($ackRecipients)) {
+                $ackRecipients = [];
+            }
+
+            $initialSentNow = 0;
+            $initialFailedNow = 0;
+
+            foreach ($escalationRecipients as $recipient) {
+                $recipientKey = (string)($recipient['recipient_key'] ?? '');
+                $recipientName = (string)($recipient['name'] ?? '');
+                $recipientAddress = (string)($recipient['address'] ?? '');
+                if ($recipientKey === '' || $recipientAddress === '') {
+                    continue;
+                }
+
+                $delivery = $deliveryMap[$recipientKey] ?? dm_state_escalation_delivery_default();
+                if (!is_array($delivery)) {
+                    $delivery = dm_state_escalation_delivery_default();
+                }
 
                 if ($ackEnabled) {
-                    $ackToken = dm_make_token($cfg);
-                    $state['escalate_ack_token'] = $ackToken;
-
-                    $maxAckRemindsCfg = $ackMaxReminds;
-                    if ($maxAckRemindsCfg > 0) {
-                        $state['escalate_ack_next_at'] = $now + $ackRemindEvery;
-                    } else {
-                        $state['escalate_ack_next_at'] = null;
+                    $ackRecipient = $ackRecipients[$recipientKey] ?? null;
+                    if (!is_array($ackRecipient) || empty($ackRecipient['id']) || empty($ackRecipient['sig'])) {
+                        $recipientAckToken = dm_make_token($cfg);
+                        $ackRecipients[$recipientKey] = [
+                            'id' => (string)$recipientAckToken['id'],
+                            'sig' => (string)$recipientAckToken['sig'],
+                            'has_downloads' => false,
+                        ];
                     }
-
-                    $ackUrl = dm_ack_url($cfg, $ackToken);
                 }
 
-                $subjectEscalate = (string)$cfg['subject_escalate'];
-                if ($ackMailTemplateLoadError !== null) {
-                    dm_log($cfg, "Individual messages unavailable ({$ackMailTemplateLoadError}). Falling back to subject_escalate/body_escalate.");
+                if (!empty($delivery['initial_sent_at'])) {
+                    $deliveryMap[$recipientKey] = $delivery;
+                    continue;
                 }
-                foreach ($escalationRecipients as $recipient) {
-                    $recipientAckId = (string)($recipient['mail_id'] ?? '');
-                    if ($ackMailTemplateLoadError === null && $recipientAckId !== '' && !array_key_exists($recipientAckId, $ackMailTemplates) && !isset($ackMailTemplateFallbackLogged[$recipientAckId])) {
-                        dm_log($cfg, "Recipient " . (string)$recipient['address'] . " (ID: '{$recipientAckId}') not found in mail_file. Falling back to subject_escalate/body_escalate.");
-                        $ackMailTemplateFallbackLogged[$recipientAckId] = true;
+
+                try {
+                    $messageTemplate = dm_escalate_message_for_recipient($recipient);
+                    $linksForRecipient = dm_download_links_for_recipient($cfg, $recipient, $eventAt, $now);
+                    $downloadNotice = dm_render_download_notice($cfg, $linksForRecipient);
+                    $downloadBlock = dm_render_download_links_block($linksForRecipient);
+                    $ackUrl = '';
+                    if ($ackEnabled) {
+                        $ackRecipient = $ackRecipients[$recipientKey];
+                        $ackRecipients[$recipientKey]['has_downloads'] = ($linksForRecipient !== []);
+                        $ackUrl = dm_ack_url($cfg, ['id' => (string)$ackRecipient['id'], 'sig' => (string)$ackRecipient['sig']]);
                     }
-                    $messageTemplate = dm_escalate_message_for_recipient($cfg, $recipientAckId, $ackMailTemplates);
-                    $subjectEscalate = (string)$messageTemplate['subject'];
-                    $bodyTemplate = (string)$messageTemplate['body'];
-                    $body = dm_render_escalate_template($cfg, $bodyTemplate, $lastConfirm, $cycleStart, $deadline, $ackUrl, $ackEnabled);
-                    dm_send_mail($cfg, [(string)$recipient['address']], $subjectEscalate, $body);
+                    $ackBlock = dm_render_ack_block($ackUrl, $ackEnabled);
+                    $body = dm_render_escalate_template($cfg, (string)$messageTemplate['body'], $lastConfirm, $cycleStart, $deadline, $recipientName, $ackUrl, $ackEnabled, $downloadNotice, $downloadBlock, $ackBlock);
+                    dm_send_mail($cfg, [$recipientAddress], (string)$messageTemplate['subject'], $body);
+
+                    $delivery['initial_sent_at'] = $now;
+                    $delivery['last_error'] = null;
+                    if ($ackEnabled && $ackMaxReminds > 0) {
+                        $delivery['ack_next_at'] = $now + $ackRemindEvery;
+                    }
+                    $initialSentNow++;
+                    dm_log($cfg, "Escalation mail sent to {$recipientAddress}.");
+                } catch (Throwable $e) {
+                    $delivery['last_error'] = $e->getMessage();
+                    $initialFailedNow++;
+                    dm_log($cfg, "Escalation mail failed for {$recipientAddress}: " . $e->getMessage());
                 }
-                $state['escalated_sent_at'] = $now;
 
-                dm_log($cfg, "Escalation mail sent to recipients (count=" . count($escalationRecipients) . ').');
-            } else {
-            // Conservative: start a new cycle instead of escalating
-                $timing = dm_state_start_cycle($cfg, $state, $now, $checkInterval, $confirmWindow);
+                $deliveryMap[$recipientKey] = $delivery;
+            }
 
-            // reset so the next cycle counts cleanly
-                $state['missed_cycle_deadline'] = null;
+            $state['escalation_delivery'] = $deliveryMap;
+            $state['escalate_ack_recipients'] = $ackRecipients;
+            dm_state_refresh_ack_summary($state);
 
-                dm_log($cfg, "Started new conservative cycle after miss. Next check at " . dm_iso((int)$timing['next_check_at']));
+            if ($initialSentNow > 0 || $initialFailedNow > 0) {
+                dm_log($cfg, "Escalation delivery progress (sent_now={$initialSentNow}, failed_now={$initialFailedNow}, recipients=" . count($escalationRecipients) . ').');
             }
         }
     }
 
-// 3) Escalation ACK reminders (re-send until one recipient acknowledges)
-    $ackEnabled = ($ackEnabledCfg && !empty($cfg['base_url']));
-    if ($ackEnabled && !empty($state['escalated_sent_at']) && empty($state['escalate_ack_at'])) {
-        $maxReminds = $ackMaxReminds;
-        if ($maxReminds <= 0) {
-            if (!empty($state['escalate_ack_next_at'])) {
-                $state['escalate_ack_next_at'] = null;
-                dm_log($cfg, "ACK reminders disabled (escalate_ack_max_reminds<=0).");
+    $eventAt = (int)($state['escalation_event_at'] ?? 0);
+    if ($ackEnabled && $eventAt > 0 && empty($state['escalate_ack_at'])) {
+        $deliveryMap = $state['escalation_delivery'] ?? [];
+        if (!is_array($deliveryMap)) {
+            $deliveryMap = [];
+        }
+        $ackRecipients = $state['escalate_ack_recipients'] ?? [];
+        if (!is_array($ackRecipients)) {
+            $ackRecipients = [];
+        }
+
+        if ($ackMaxReminds <= 0) {
+            foreach ($deliveryMap as $recipientKey => $delivery) {
+                if (!is_array($delivery) || empty($delivery['ack_next_at'])) {
+                    continue;
+                }
+                $delivery['ack_next_at'] = null;
+                $deliveryMap[$recipientKey] = $delivery;
             }
+            $state['escalation_delivery'] = $deliveryMap;
+            dm_state_refresh_ack_summary($state);
         } else {
-            $sentCount = (int)($state['escalate_ack_sent_count'] ?? 0);
-            $nextAt = (int)($state['escalate_ack_next_at'] ?? 0);
+            $remindersSentNow = 0;
+            $reminderFailures = 0;
 
-            if ($sentCount >= $maxReminds) {
-                if ($nextAt > 0) {
-                    $state['escalate_ack_next_at'] = null;
-                    dm_log($cfg, "Escalation ACK reminder limit reached ({$sentCount}/{$maxReminds}). Reminder logging paused until ACK or reset.");
-                }
-            } elseif ($nextAt > 0 && $now >= $nextAt) {
-            // hard fail: reminders make no sense without an issued token from the initial escalation
-                if (empty($state['escalate_ack_token']) || empty($state['escalate_ack_token']['id']) || empty($state['escalate_ack_token']['sig'])) {
-                    dm_log($cfg, "ack: token missing during reminder phase; not sending reminder.");
-                    $state['escalate_ack_next_at'] = null;
-                    dm_state_save($stateFile, $state);
-                    exit(0);
+            foreach ($escalationRecipients as $recipient) {
+                $recipientKey = (string)($recipient['recipient_key'] ?? '');
+                $recipientName = (string)($recipient['name'] ?? '');
+                $recipientAddress = (string)($recipient['address'] ?? '');
+                if ($recipientKey === '' || $recipientAddress === '') {
+                    continue;
                 }
 
-                $ackToken = (array)$state['escalate_ack_token'];
-                $ackUrl = dm_ack_url($cfg, $ackToken);
-
-                $subjectEscalate = (string)$cfg['subject_escalate'];
-                if ($ackMailTemplateLoadError !== null) {
-                    dm_log($cfg, "Individual messages unavailable ({$ackMailTemplateLoadError}). Falling back to subject_escalate/body_escalate.");
+                $delivery = $deliveryMap[$recipientKey] ?? dm_state_escalation_delivery_default();
+                if (!is_array($delivery) || empty($delivery['initial_sent_at'])) {
+                    $deliveryMap[$recipientKey] = is_array($delivery) ? $delivery : dm_state_escalation_delivery_default();
+                    continue;
                 }
-                foreach ($escalationRecipients as $recipient) {
-                    $recipientAckId = (string)($recipient['mail_id'] ?? '');
-                    if ($ackMailTemplateLoadError === null && $recipientAckId !== '' && !array_key_exists($recipientAckId, $ackMailTemplates) && !isset($ackMailTemplateFallbackLogged[$recipientAckId])) {
-                        dm_log($cfg, "Recipient " . (string)$recipient['address'] . " (ID: '{$recipientAckId}') not found in mail_file. Falling back to subject_escalate/body_escalate.");
-                        $ackMailTemplateFallbackLogged[$recipientAckId] = true;
+
+                $sentCount = max(0, (int)($delivery['ack_remind_sent_count'] ?? 0));
+                $nextAt = (int)($delivery['ack_next_at'] ?? 0);
+
+                if ($sentCount >= $ackMaxReminds) {
+                    if ($nextAt > 0) {
+                        $delivery['ack_next_at'] = null;
+                        $deliveryMap[$recipientKey] = $delivery;
                     }
-                    $messageTemplate = dm_escalate_message_for_recipient($cfg, $recipientAckId, $ackMailTemplates);
-                    $subjectEscalate = (string)$messageTemplate['subject'];
-                    $bodyTemplate = (string)$messageTemplate['body'];
-                    $body = dm_render_escalate_template($cfg, $bodyTemplate, (int)($state['last_confirm_at'] ?? 0), (int)($state['cycle_start_at'] ?? 0), (int)($state['deadline_at'] ?? 0), $ackUrl, true);
-                    dm_send_mail($cfg, [(string)$recipient['address']], $subjectEscalate, $body);
+                    continue;
+                }
+                if ($nextAt <= 0 || $now < $nextAt) {
+                    $deliveryMap[$recipientKey] = $delivery;
+                    continue;
                 }
 
-                $state['escalate_ack_sent_count'] = $sentCount + 1;
-                $state['escalate_ack_next_at'] = $now + $ackRemindEvery;
+                $ackRecipient = $ackRecipients[$recipientKey] ?? null;
+                if (!is_array($ackRecipient) || empty($ackRecipient['id']) || empty($ackRecipient['sig'])) {
+                    dm_log($cfg, "ack: recipient token missing for {$recipientAddress} during reminder phase; skipping recipient.");
+                    $deliveryMap[$recipientKey] = $delivery;
+                    continue;
+                }
 
-                dm_log($cfg, "Escalation ACK reminder sent (count={$state['escalate_ack_sent_count']}/{$maxReminds}).");
+                try {
+                    $messageTemplate = dm_escalate_message_for_recipient($recipient);
+                    $linksForRecipient = dm_download_links_for_recipient($cfg, $recipient, $eventAt, $now);
+                    $downloadNotice = dm_render_download_notice($cfg, $linksForRecipient);
+                    $downloadBlock = dm_render_download_links_block($linksForRecipient);
+                    $ackUrl = dm_ack_url($cfg, ['id' => (string)$ackRecipient['id'], 'sig' => (string)$ackRecipient['sig']]);
+                    $ackBlock = dm_render_ack_block($ackUrl, true);
+                    $body = dm_render_escalate_template($cfg, (string)$messageTemplate['body'], (int)($state['last_confirm_at'] ?? 0), (int)($state['cycle_start_at'] ?? 0), (int)($state['deadline_at'] ?? 0), $recipientName, $ackUrl, true, $downloadNotice, $downloadBlock, $ackBlock);
+                    dm_send_mail($cfg, [$recipientAddress], (string)$messageTemplate['subject'], $body);
+
+                    $delivery['ack_remind_sent_count'] = $sentCount + 1;
+                    $delivery['ack_next_at'] = ($delivery['ack_remind_sent_count'] >= $ackMaxReminds) ? null : ($now + $ackRemindEvery);
+                    $delivery['last_error'] = null;
+                    $remindersSentNow++;
+                    dm_log($cfg, "Escalation ACK reminder sent to {$recipientAddress} (count={$delivery['ack_remind_sent_count']}/{$ackMaxReminds}).");
+                } catch (Throwable $e) {
+                    $delivery['last_error'] = $e->getMessage();
+                    $reminderFailures++;
+                    dm_log($cfg, "Escalation ACK reminder failed for {$recipientAddress}: " . $e->getMessage());
+                }
+
+                $deliveryMap[$recipientKey] = $delivery;
+            }
+
+            $state['escalation_delivery'] = $deliveryMap;
+            dm_state_refresh_ack_summary($state);
+            if ($remindersSentNow > 0 || $reminderFailures > 0) {
+                dm_log($cfg, "Escalation ACK reminder progress (sent_now={$remindersSentNow}, failed_now={$reminderFailures}).");
             }
         }
     }
 
-    dm_state_save($stateFile, $state);
+    $stateRoot = dm_state_with_runtime($stateRoot, $state);
+    dm_state_save($stateFile, $stateRoot);
     exit(0);
 } catch (Throwable $e) {
-    dm_log($cfg, "ERROR: " . $e->getMessage());
-    // Errors must NOT trigger escalation. Fail-closed against false positives.
+    dm_log($cfg, 'ERROR: ' . $e->getMessage());
     exit(1);
 } finally {
     if (is_resource($lockHandle)) {

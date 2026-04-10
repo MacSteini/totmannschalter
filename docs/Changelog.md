@@ -5,28 +5,26 @@ This project uses semantic versioning:
 - MAJOR: breaking changes
 - MINOR: new features (backwards compatible)
 - PATCH: bugfixes and small improvements (backwards compatible)
-## v4.0.0
-- Added a dedicated [Log guide](Logs.md "Log guide") for reading `totmann.log` during setup, testing, and troubleshooting.
-- Tightened mailbox-header serialisation for single-recipient `To:` headers by always quoting ASCII display names and keeping non-ASCII names RFC2047-encoded.
-- Clarified enduser wording across the public guides and templates.
-- Removed the extra reference sentence from the download-unavailable website page in all shipped locales and in the built-in fallback text.
-- BREAKING: `{DOWNLOAD_NOTICE}` and `download_notice_single_use` were removed; single-use warning text now lives as `single_use_notice` inside the affected message in `totmann-recipients.php`.
-- `{DOWNLOAD_LINKS}` now renders complete download blocks instead of raw URL lines and adds `X Downloads:` automatically when a mail contains more than one download.
-- Added mandatory operator warning mails to `to_self` for operator-facing config/runtime problems that would otherwise only show up in the log.
-- Added `operator_alert_interval_hours` as the public throttle key for those warning mails; only whole hours `1..24` are accepted and invalid/missing values now fall back automatically to `2`.
 ## v3.0.0
 - Added browser-language website localisation via `Accept-Language` with starter locales `de-DE`, `en-GB`, `en-US`, `fr-FR`, `it-IT`, and `es-ES`.
 - Reworked public website text to a more empathetic tone for neutral pages, confirmation pages, ACK pages, generic errors, and download-unavailable responses.
+- Added a dedicated [Log guide](Logs.md "Log guide") for reading `totmann.log` during setup, testing, and troubleshooting.
 - ACK success pages now show the extra download reminder only for recipients whose escalation mail actually contained download links.
 - ACK now stops all further escalation mails for the current escalation event, including pending per-recipient retry deliveries.
 - Escalation delivery and ACK reminders now persist per recipient, so partial send failures no longer force duplicate re-sends to already successful recipients.
 - Already issued valid download links now stay usable even if an unrelated message or recipient row later breaks in `totmann-recipients.php`.
 - Added `{ACK_BLOCK}` as the preferred escalation-mail placeholder for the full acknowledgement hint plus URL; `{ACK_URL}` remains available for advanced custom mail bodies.
 - Added `l18n_dir_name` as the configurable runtime directory name for website locale files.
-- Reworked the operator-facing documentation and templates for enduser readability, including clearer field-4/field-5 download examples and ACK guidance.
+- Reworked the operator-facing documentation and templates for enduser readability, including clearer field-4/field-5 download examples, ACK guidance, and the new log guide.
+- Clarified enduser wording across the public guides and templates.
+- Removed the extra reference sentence from the download-unavailable website page in all shipped locales and in the built-in fallback text.
 - BREAKING: `totmann-recipients.php` uses 3 flat top-level sections (`$files`, `$messages`, `$recipients`) instead of the earlier PHP-DSL helper model.
 - BREAKING: escalation mail text no longer falls back to `subject_escalate` or `body_escalate` in `totmann.inc.php`; every recipient row must reference a valid message key in field 3.
-- Tightened mailbox-header serialisation for additional ASCII display-name special characters by always quoting ASCII display names.
+- BREAKING: `{DOWNLOAD_NOTICE}` and `download_notice_single_use` were removed; single-use warning text now lives as `single_use_notice` inside the affected message in `totmann-recipients.php`.
+- `{DOWNLOAD_LINKS}` now renders complete download blocks instead of raw URL lines and adds `X Downloads:` automatically when a mail contains more than one download.
+- Added mandatory operator warning mails to `to_self` for operator-facing config/runtime problems that would otherwise only show up in the log.
+- Added `operator_alert_interval_hours` as the public throttle key for those warning mails; only whole hours `1..24` are accepted and invalid/missing values now fall back automatically to `2`.
+- Tightened mailbox-header serialisation for single-recipient `To:` headers by always quoting ASCII display names and keeping non-ASCII names RFC2047-encoded.
 - Verification: `php -l`, `phpstan`, and the project validation gate must be rerun after deployment because both runtime behaviour and documentation changed.
 ## v2.0.0
 - BREAKING: recipient-specific escalation configuration now lives in exactly one file: `totmann-recipients.php`.

@@ -116,6 +116,8 @@ Use according to `log_mode`:
 - `both` => both commands
 - `none` => only systemd unit status/events are visible (no script log lines)
 If you changed `log_file_name` or `log_file`, use that effective file log path for `tail`.
+If you are unsure how to read the script log lines, use [Log guide](Logs.md "Log guide").
+If `journalctl` shows a bootstrap problem such as `CONFIG ERROR: ...`, treat that as a journal-only failure first and then compare it with the same guides.
 
 The same `/var/lib/totmann` state directory should also contain your configured `l18n/` directory, because the web endpoint loads its public page texts from there.
 

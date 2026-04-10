@@ -60,7 +60,7 @@ return [
         'page_download_unavailable_title' => 'This URL is not valid.',
         'page_download_unavailable_heading' => 'This URL is not valid.',
         'page_download_unavailable_body_1' => 'The link to this download has expired, been used already, or is no longer valid.',
-        'page_download_unavailable_body_2' => 'Please keep the original message for reference.',
+        'page_download_unavailable_body_2' => '',
         'page_download_unavailable_body_3' => '',
         'detail_cycle_started' => 'The current cycle started on {datetime}.',
         'detail_last_confirm' => 'The last successful confirmation was recorded on {datetime}.',

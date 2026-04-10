@@ -3,7 +3,7 @@
 This is expected behaviour for:
 - invalid or missing token
 - stale or non-current token (depending on your stealth config)
-- most internal web-side failures (by design: stealth)
+- most runtime failures on the website side (by design: stealth)
 	- If you used the current valid token, you may instead see a generic error page with a code
 
 Most common cause:
@@ -48,6 +48,9 @@ First: reminders are only sent during the confirmation window.
 - no mails before `next_check_at`
 - reminders only from `next_check_at` (inclusive) until `deadline_at` (exclusive)
 - escalation only at or after `deadline_at + escalate_grace_seconds`, and only once `missed_cycles_before_fire` is reached
+
+If Totmannschalter detects an operator-facing setup/runtime problem while the tick is running, it can also send a separate warning mail to `to_self`.
+Those warning mails are mandatory on purpose, are throttled by `operator_alert_interval_hours`, and do not replace the log.
 ### Check timer and logs
 ```sh
 systemctl list-timers | grep totmann
@@ -59,7 +62,8 @@ Choose log commands according to `log_mode`:
 - `syslog` => rely on `journalctl`
 - `file` => rely on `tail`
 - `both` => use both
-- `none` => no script decision logs are expected
+- `none` => no Totmannschalter file-log lines are expected
+If you are unsure how to read the file-log lines or how they relate to `journalctl`, use [Log guide](Logs.md "Log guide").
 ### Check state actually progresses
 Look at these fields in `totmann.json` under the `runtime` subtree:
 - `next_check_at`, `deadline_at` (window boundaries)
@@ -67,7 +71,7 @@ Look at these fields in `totmann.json` under the `runtime` subtree:
 - `escalated_sent_at` (set when escalation mail was sent)
 - `escalate_ack_next_at` / `escalate_ack_sent_count` (only after escalation, if ACK enabled)
 
-The shared `totmann.json` now contains two top-level areas:
+The shared `totmann.json` contains two top-level areas:
 - `runtime`
 - `downloads`
 
@@ -81,6 +85,21 @@ If `next_reminder_at` does not move forward, the tick likely failed before savin
 After escalation ACK reminders hit the configured maximum, one final “limit reached” marker is expected, then recurring escalation status lines stop by design. This keeps logs focused on actionable events.
 
 If `escalate_ack_at` is already set, no further escalation mails are sent for that escalation event.
+## You received an operator warning mail
+Treat that mail as a direct setup/runtime problem report from the script itself.
+
+What to do first:
+1. read the original problem text in the warning mail
+2. follow the built-in “What to check next” hint from that mail
+3. run `php totmann-tick.php check` in your state directory
+4. inspect `totmann.log` for the same fingerprint or matching error text
+5. compare the affected values in `totmann.inc.php` and `totmann-recipients.php`
+6. if the warning refers to a bootstrap problem such as `CONFIG ERROR: ...`, also inspect `journalctl -u totmann.service`
+
+Throttle behaviour:
+- `operator_alert_interval_hours` accepts only `1..24`
+- if you remove it or set an invalid value, Totmannschalter falls back automatically to `2`
+- the warning mail itself cannot be disabled
 ## Downloads do not work
 Check these points in order:
 1. the relevant file alias exists in `$files` inside `totmann-recipients.php`
@@ -93,13 +112,13 @@ Check these points in order:
 6. `download_valid_days` in `totmann.inc.php` has not already expired the link
 7. `{DOWNLOAD_LINKS}` is present in the relevant escalation mail body
 8. if field 5 is used, remember that only the first successful download of that escalation event is allowed
-9. if `{DOWNLOAD_NOTICE}` is missing from the mail body, recipients may not realise the single-use risk
+9. if field 5 is used, confirm that the referenced message defines `single_use_notice`
 
 If a recipient’s download aliases cannot be resolved, that recipient’s escalation mail is still sent without those links. Check logs for the underlying reason.
 
 Already issued valid download links still resolve even if an unrelated message or recipient row in `totmann-recipients.php` is later broken.
 
-If you are unsure how field 4, field 5, `{DOWNLOAD_LINKS}`, and `{DOWNLOAD_NOTICE}` work together, go back to [Mail delivery notes](Mail.md "Mail delivery notes").
+If you are unsure how field 4, field 5, `{DOWNLOAD_LINKS}`, and `single_use_notice` work together, go back to [Mail delivery notes](Mail.md "Mail delivery notes").
 ## Website language is wrong or always English
 Check these points in order:
 1. `l18n/` was copied into your configured `state_dir`

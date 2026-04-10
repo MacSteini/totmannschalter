@@ -1,6 +1,6 @@
 # totmannschalter – Web endpoint configuration
 ## One endpoint for everything
-`totmann.php` is now the only public endpoint.
+`totmann.php` is the only public endpoint.
 
 It handles three actions:
 - `a=confirm`
@@ -16,7 +16,7 @@ The web endpoint resolves the state directory in this order:
 1. ENV `TOTMANN_STATE_DIR`
 2. `define('TOTMANN_STATE_DIR', '/var/lib/totmann');`
 
-In this repository version, `totmann.php` enables the `define(...)` fallback by default. Adjust it to your actual state dir if needed.
+The shipped `totmann.php` template enables the `define(...)` fallback by default. Adjust it to your actual state dir if needed.
 
 If neither exists, the endpoint returns a neutral page. The endpoint intentionally has no implicit fallback to a local webroot or to `state_dir` from `totmann.inc.php`.
 ## Website language (`l18n/` + `Accept-Language`)
@@ -50,7 +50,7 @@ Important:
 The endpoint is intentionally stealthy:
 - invalid or missing tokens get the neutral page
 - stale or non-current tokens get the neutral page, depending on your stealth config
-- most internal web-side failures return the neutral page as well
+- most website-side runtime failures return the neutral page as well
 
 Exception:
 - if the request uses the current valid token, you may see a generic error page with an error code for troubleshooting
@@ -68,7 +68,7 @@ ACK success pages follow the same locale selection as confirm pages.
 - Once any recipient acknowledges, no further escalation mails are sent for that escalation event.
 - It only shows the extra download reminder if that specific recipient’s escalation mail actually included at least one download link.
 ## Shared runtime state
-The runtime now uses only one state file: `state_file` (template default: `totmann.json`).
+The runtime uses one state file: `state_file` (template default: `totmann.json`).
 
 Internally it contains separate state areas for:
 - normal cycle/runtime behaviour
@@ -78,7 +78,7 @@ Operationally, you only need to care about one state file.
 ## Rate limiting (one root, two namespaces)
 Rate limiting reduces abuse without breaking functionality.
 
-The runtime now uses only one top-level rate-limit root:
+The runtime uses one top-level rate-limit root:
 - `rate_limit_dir`
 - if `null`, the runtime uses `{state_dir}/ratelimit`
 
@@ -98,8 +98,9 @@ Rules:
 - keep the paths in `$files` inside `totmann-recipients.php` relative to `download_base_dir`
 - the runtime signs each link for one recipient and one configured download entry
 - if a file is defined for two recipients, the runtime still generates separate signed URLs per recipient
-- `{DOWNLOAD_LINKS}` expands to raw URLs only
-- `{DOWNLOAD_NOTICE}` is the dedicated mail placeholder for the single-use warning text
+- `{DOWNLOAD_LINKS}` expands to the complete download block for that mail
+- if a mail contains two or more downloads, the runtime adds `X Downloads:` and a blank line between download blocks automatically
+- if a download is single-use, the matching message entry supplies the warning text through `single_use_notice`
 - field 4 in `totmann-recipients.php` creates normal links
 - field 5 in `totmann-recipients.php` creates single-use links
 - single-use applies to the whole escalation event for that recipient and link

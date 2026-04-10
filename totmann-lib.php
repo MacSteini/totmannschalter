@@ -477,6 +477,293 @@ function dm_state_refresh_ack_summary(array &$state): void
 }
 
 /**
+ * Resolve the mandatory operator-alert interval from config.
+ *
+ * Public operator input is intentionally restricted to whole hours in the
+ * range 1..24. Missing or invalid values fall back to 2 hours.
+ *
+ * @return array{hours: int, used_fallback: bool}
+ */
+function dm_operator_alert_interval_meta(array $cfg): array
+{
+    $fallbackHours = 2;
+    $raw = $cfg['operator_alert_interval_hours'] ?? null;
+
+    if (is_int($raw)) {
+        $hours = $raw;
+    } elseif (is_string($raw) && preg_match('/^\d+$/', trim($raw))) {
+        $hours = (int)trim($raw);
+    } else {
+        return ['hours' => $fallbackHours, 'used_fallback' => true];
+    }
+
+    if ($hours < 1 || $hours > 24) {
+        return ['hours' => $fallbackHours, 'used_fallback' => true];
+    }
+
+    return ['hours' => $hours, 'used_fallback' => false];
+}
+
+/**
+ * Human-readable label for one internal operator-alert type.
+ */
+function dm_operator_alert_label(string $type): string
+{
+    return match ($type) {
+        'recipient_skipped' => 'Recipient skipped',
+        'config_error' => 'Configuration error',
+        'runtime_error' => 'Runtime error',
+        'delivery_error' => 'Mail delivery error',
+        default => 'Operator warning',
+    };
+}
+
+/**
+ * Suggest the next operator action for a detected problem.
+ */
+function dm_operator_alert_hint(string $type, string $message): string
+{
+    if (str_contains($message, 'single_use_notice')) {
+        return 'Open totmann-recipients.php, find the referenced message key in $messages, and add a non-empty single_use_notice because that message is used with field 5.';
+    }
+    if (str_contains($message, 'unknown message key')) {
+        return 'Open totmann-recipients.php and check field 3 in the affected recipient row. It must point to an existing key in $messages.';
+    }
+    if (str_contains($message, 'unknown file alias')) {
+        return 'Open totmann-recipients.php and compare the affected alias with $files plus the field-4/field-5 lists in the affected recipient row.';
+    }
+    if (str_contains($message, 'invalid mailbox')) {
+        return 'Open totmann-recipients.php and correct field 2. Supported forms are recipient@example.com, <recipient@example.com>, or Recipient Name <recipient@example.com>.';
+    }
+    if (str_contains($message, 'duplicate recipient mailbox')) {
+        return 'Open totmann-recipients.php and keep each real mailbox only once. One recipient row must represent exactly one mailbox.';
+    }
+    if (str_contains($message, 'invalid normal file alias list') || str_contains($message, 'invalid single-use file alias list')) {
+        return 'Open totmann-recipients.php and make sure field 4 and field 5 are flat alias lists such as [\'letter\'] or [\'photos\'].';
+    }
+    if (str_contains($message, 'sendmail')) {
+        return 'Check sendmail_path in totmann.inc.php, verify the binary exists and is executable, and run php totmann-tick.php check in your state directory.';
+    }
+    if (str_contains($message, 'to_self')) {
+        return 'Check to_self in totmann.inc.php. Each entry must contain exactly one valid mailbox string.';
+    }
+    if (str_contains($message, 'recipients_file')) {
+        return 'Open totmann-recipients.php, fix the referenced row or top-level structure, and rerun php totmann-tick.php check.';
+    }
+    if ($type === 'delivery_error') {
+        return 'Check the affected recipient mailbox plus your local sendmail setup, then rerun php totmann-tick.php check and inspect totmann.log.';
+    }
+    return 'Run php totmann-tick.php check in your state directory, inspect totmann.log, and compare the affected values in totmann.inc.php and totmann-recipients.php.';
+}
+
+/**
+ * Stable fingerprint for one operator-facing problem.
+ */
+function dm_operator_alert_fingerprint(string $type, string $message): string
+{
+    $normalised = strtolower(trim((string)preg_replace('/\s+/', ' ', $message)));
+    return substr(hash('sha256', $type . "\n" . $normalised), 0, 24);
+}
+
+/**
+ * Update operator-alert state and decide whether another warning mail is due.
+ *
+ * @return array<string, int|string>|null
+ */
+function dm_operator_alert_consider(array $cfg, array &$state, int $now, string $type, string $message): ?array
+{
+    $meta = dm_operator_alert_interval_meta($cfg);
+    $intervalSeconds = (int)$meta['hours'] * 3600;
+    $label = dm_operator_alert_label($type);
+    $hint = dm_operator_alert_hint($type, $message);
+    $fingerprint = dm_operator_alert_fingerprint($type, $message);
+
+    $alerts = $state['operator_alerts'] ?? [];
+    if (!is_array($alerts)) {
+        $alerts = [];
+    }
+
+    $existing = $alerts[$fingerprint] ?? [];
+    if (!is_array($existing)) {
+        $existing = [];
+    }
+
+    $firstSeenAt = max(0, (int)($existing['first_seen_at'] ?? 0));
+    if ($firstSeenAt <= 0) {
+        $firstSeenAt = $now;
+    }
+    $lastSentAt = max(0, (int)($existing['last_sent_at'] ?? 0));
+    $count = max(0, (int)($existing['count'] ?? 0)) + 1;
+
+    $alerts[$fingerprint] = [
+        'type' => $type,
+        'label' => $label,
+        'message' => $message,
+        'hint' => $hint,
+        'first_seen_at' => $firstSeenAt,
+        'last_seen_at' => $now,
+        'last_sent_at' => $lastSentAt,
+        'count' => $count,
+    ];
+    $state['operator_alerts'] = $alerts;
+
+    if ($lastSentAt > 0 && ($now - $lastSentAt) < $intervalSeconds) {
+        return null;
+    }
+
+    return [
+        'type' => $type,
+        'label' => $label,
+        'message' => $message,
+        'hint' => $hint,
+        'fingerprint' => $fingerprint,
+        'first_seen_at' => $firstSeenAt,
+        'last_seen_at' => $now,
+        'count' => $count,
+    ];
+}
+
+/**
+ * Mark one operator alert as successfully mailed.
+ */
+function dm_operator_alert_mark_sent(array &$state, string $fingerprint, int $now): void
+{
+    $alerts = $state['operator_alerts'] ?? [];
+    if (!is_array($alerts)) {
+        $alerts = [];
+    }
+    $entry = $alerts[$fingerprint] ?? null;
+    if (!is_array($entry)) {
+        return;
+    }
+    $entry['last_sent_at'] = $now;
+    $alerts[$fingerprint] = $entry;
+    $state['operator_alerts'] = $alerts;
+}
+
+/**
+ * Render the fixed operator-warning mail.
+ *
+ * @param array{type: string, label: string, message: string, hint: string, fingerprint: string, first_seen_at: int, last_seen_at: int, count: int} $alert
+ * @return array{subject: string, body: string}
+ */
+function dm_operator_alert_render_mail(array $cfg, array $alert): array
+{
+    $label = (string)$alert['label'];
+    $subject = '[totmannschalter] Operator warning: ' . $label;
+    $stateDir = dm_state_dir($cfg);
+
+    $body = implode("\n", [
+        'Totmannschalter detected an operator-facing problem and continued in best-effort mode where possible.',
+        '',
+        'Alert type: ' . $label,
+        'Fingerprint: ' . (string)$alert['fingerprint'],
+        'First seen: ' . dm_mail_dt($cfg, (int)$alert['first_seen_at']),
+        'Last seen: ' . dm_mail_dt($cfg, (int)$alert['last_seen_at']),
+        'Occurrences: ' . (string)$alert['count'],
+        '',
+        'Original problem:',
+        (string)$alert['message'],
+        '',
+        'What to check next:',
+        (string)$alert['hint'],
+        '',
+        'Recommended next steps:',
+        '1. Change into your state directory: ' . $stateDir,
+        '2. Run: php totmann-tick.php check',
+        '3. Inspect totmann.log for matching lines.',
+        '4. Compare the affected values in totmann.inc.php and totmann-recipients.php.',
+        '5. If you still have the project docs at hand, read docs/Logs.md and docs/Troubleshooting.md.',
+    ]) . "\n";
+
+    return ['subject' => $subject, 'body' => $body];
+}
+
+/**
+ * Send one operator-warning mail per to_self recipient.
+ *
+ * @param array{type: string, label: string, message: string, hint: string, fingerprint: string, first_seen_at: int, last_seen_at: int, count: int} $alert
+ * @return array{sent: int, failed: int, errors: array<int, string>}
+ */
+function dm_operator_alert_send(array $cfg, array $alert): array
+{
+    $selfRecipients = dm_recipient_entries_runtime((array)($cfg['to_self'] ?? []));
+    if ($selfRecipients === []) {
+        return ['sent' => 0, 'failed' => 1, 'errors' => ['to_self does not contain any valid mailbox entry for operator warnings']];
+    }
+
+    $mail = dm_operator_alert_render_mail($cfg, $alert);
+    $sent = 0;
+    $failed = 0;
+    $errors = [];
+
+    foreach ($selfRecipients as $selfRecipient) {
+        try {
+            dm_send_mail($cfg, [$selfRecipient], $mail['subject'], $mail['body']);
+            $sent++;
+        } catch (Throwable $e) {
+            $failed++;
+            $errors[] = $selfRecipient . ': ' . $e->getMessage();
+        }
+    }
+
+    return ['sent' => $sent, 'failed' => $failed, 'errors' => $errors];
+}
+
+/**
+ * Handle one operator warning using an already loaded runtime state.
+ */
+function dm_operator_alert_handle(array $cfg, array &$state, int $now, string $type, string $message): void
+{
+    try {
+        $alert = dm_operator_alert_consider($cfg, $state, $now, $type, $message);
+        if ($alert === null) {
+            return;
+        }
+
+        $result = dm_operator_alert_send($cfg, $alert);
+        if ((int)$result['sent'] > 0) {
+            dm_operator_alert_mark_sent($state, (string)$alert['fingerprint'], $now);
+            dm_log($cfg, 'Operator alert sent for ' . (string)$alert['type'] . ' (fingerprint=' . (string)$alert['fingerprint'] . ', recipients=' . (int)$result['sent'] . ').');
+        }
+        foreach ($result['errors'] as $error) {
+            dm_log($cfg, 'Operator alert delivery failed for ' . (string)$alert['type'] . ' (fingerprint=' . (string)$alert['fingerprint'] . '): ' . $error);
+        }
+    } catch (Throwable $e) {
+        dm_log($cfg, 'Operator alert handling failed: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Best-effort operator warning helper for paths where no runtime state is loaded yet.
+ */
+function dm_operator_alert_handle_from_statefile(array $cfg, string $type, string $message): void
+{
+    $lockHandle = null;
+
+    try {
+        $stateFile = dm_state_file($cfg);
+        $lockFile = dm_lock_file($cfg);
+        $lockHandle = dm_lock_open($lockFile);
+
+        $now = dm_now();
+        $stateRoot = dm_state_load($stateFile);
+        $state = dm_state_runtime($stateRoot);
+        dm_operator_alert_handle($cfg, $state, $now, $type, $message);
+
+        $stateRoot = dm_state_with_runtime($stateRoot, $state);
+        $stateRoot = dm_state_with_downloads($stateRoot, dm_state_downloads($stateRoot));
+        dm_state_save($stateFile, $stateRoot);
+    } catch (Throwable $e) {
+        dm_log($cfg, 'Operator alert handling failed: ' . $e->getMessage());
+    } finally {
+        if (is_resource($lockHandle)) {
+            fclose($lockHandle);
+        }
+    }
+}
+
+/**
  * Decode HMAC secret from hex to binary.
  * - Requires hex input.
  * - Requires at least 16 bytes of entropy (32+ recommended).
@@ -830,6 +1117,7 @@ function dm_recipients_parse(array $cfg, bool $skipInvalidRecipients): array
         }
         $subject = $entry['subject'] ?? null;
         $body = $entry['body'] ?? null;
+        $singleUseNotice = $entry['single_use_notice'] ?? '';
         if (!is_string($subject) || trim($subject) === '' || !is_string($body) || trim($body) === '') {
             $message = "recipients_file message {$messageKey} must contain non-empty subject and body";
             if (!$skipInvalidRecipients) {
@@ -838,7 +1126,27 @@ function dm_recipients_parse(array $cfg, bool $skipInvalidRecipients): array
             $errors[] = $message;
             continue;
         }
-        $cleanMessages[$messageKey] = ['subject' => $subject, 'body' => $body];
+        if (!is_string($singleUseNotice)) {
+            $message = "recipients_file message {$messageKey} must use a string for single_use_notice when present";
+            if (!$skipInvalidRecipients) {
+                throw new RuntimeException($message);
+            }
+            $errors[] = $message;
+            continue;
+        }
+        if (str_contains($body, '{DOWNLOAD_NOTICE}')) {
+            $message = "recipients_file message {$messageKey} still contains removed placeholder {DOWNLOAD_NOTICE}";
+            if (!$skipInvalidRecipients) {
+                throw new RuntimeException($message);
+            }
+            $errors[] = $message;
+            continue;
+        }
+        $cleanMessages[$messageKey] = [
+            'subject' => $subject,
+            'body' => $body,
+            'single_use_notice' => trim($singleUseNotice),
+        ];
     }
 
     $out = [];
@@ -935,6 +1243,10 @@ function dm_recipients_parse(array $cfg, bool $skipInvalidRecipients): array
                     'single_use' => true,
                 ];
                 $seenAliases[$alias] = true;
+            }
+
+            if ($singleUseAliases !== [] && trim($cleanMessages[$messageKey]['single_use_notice']) === '') {
+                throw new RuntimeException("recipients_file message {$messageKey} must define single_use_notice for recipient {$address} because field 5 is used");
             }
 
             $out[] = [
@@ -1051,7 +1363,12 @@ function dm_escalate_message_for_recipient(array $recipient): array
         throw new RuntimeException('Recipient message is incomplete');
     }
 
-    return ['subject' => $subject, 'body' => $body];
+    $singleUseNotice = $message['single_use_notice'] ?? '';
+    if (!is_string($singleUseNotice)) {
+        throw new RuntimeException('Recipient message single_use_notice is invalid');
+    }
+
+    return ['subject' => $subject, 'body' => $body, 'single_use_notice' => trim($singleUseNotice)];
 }
 
 /**
@@ -1112,48 +1429,21 @@ function dm_render_ack_block(string $ackUrl, bool $ackEnabled): string
 }
 
 /**
- * Return true if at least one rendered download link is single-use.
- */
-function dm_download_links_require_notice(array $links): bool
-{
-    foreach ($links as $entry) {
-        if (is_array($entry) && !empty($entry['single_use'])) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-/**
- * Render the optional single-use warning block.
- *
- * The text itself is configurable so operators can phrase it in their own language.
- */
-function dm_render_download_notice(array $cfg, array $links): string
-{
-    if (!dm_download_links_require_notice($links)) {
-        return '';
-    }
-
-    return trim((string)($cfg['download_notice_single_use'] ?? ''));
-}
-
-/**
  * Render download links as one optional plain-text block.
  *
- * Output is intentionally language-neutral:
- * - one raw URL per line
- * - no heading
- * - no generated human text around the links
+ * Output is intentionally simple:
+ * - one download => one block without heading
+ * - multiple downloads => "X Downloads:" plus one blank line between blocks
+ * - single-use warning text appears directly above the affected URL
  */
-function dm_render_download_links_block(array $links): string
+function dm_render_download_links_block(array $links, string $singleUseNotice = ''): string
 {
     if ($links === []) {
         return '';
     }
 
-    $lines = [];
+    $blocks = [];
+    $singleUseNotice = trim($singleUseNotice);
     foreach ($links as $entry) {
         if (!is_array($entry)) {
             continue;
@@ -1162,10 +1452,21 @@ function dm_render_download_links_block(array $links): string
         if ($url === '') {
             continue;
         }
-        $lines[] = $url;
+        if (!empty($entry['single_use']) && $singleUseNotice !== '') {
+            $blocks[] = $singleUseNotice . "\n" . $url;
+            continue;
+        }
+        $blocks[] = $url;
     }
 
-    return implode("\n", $lines);
+    if ($blocks === []) {
+        return '';
+    }
+    if (count($blocks) === 1) {
+        return $blocks[0];
+    }
+
+    return count($blocks) . " Downloads:\n\n" . implode("\n\n", $blocks);
 }
 
 /**
@@ -1178,10 +1479,9 @@ function dm_render_download_links_block(array $links): string
  * - {RECIPIENT_NAME}
  * - {ACK_BLOCK}
  * - {ACK_URL}
- * - {DOWNLOAD_NOTICE}
  * - {DOWNLOAD_LINKS}
  */
-function dm_render_escalate_template(array $cfg, string $tpl, int $lastConfirm, int $cycleStart, int $deadline, string $recipientName, string $ackUrl, bool $ackEnabled, string $downloadNotice = '', string $downloadLinks = '', string $ackBlock = ''): string
+function dm_render_escalate_template(array $cfg, string $tpl, int $lastConfirm, int $cycleStart, int $deadline, string $recipientName, string $ackUrl, bool $ackEnabled, string $downloadLinks = '', string $ackBlock = ''): string
 {
     if (!$ackEnabled) {
         $tpl = str_replace('{ACK_BLOCK}', '', $tpl);
@@ -1189,8 +1489,8 @@ function dm_render_escalate_template(array $cfg, string $tpl, int $lastConfirm, 
     }
 
     return str_replace(
-        ['{LAST_CONFIRM_ISO}', '{CYCLE_START_ISO}', '{DEADLINE_ISO}', '{RECIPIENT_NAME}', '{ACK_BLOCK}', '{ACK_URL}', '{DOWNLOAD_NOTICE}', '{DOWNLOAD_LINKS}'],
-        [dm_mail_dt_or_never($cfg, $lastConfirm), dm_mail_dt($cfg, $cycleStart), dm_mail_dt($cfg, $deadline), $recipientName, $ackBlock, $ackUrl, $downloadNotice, $downloadLinks],
+        ['{LAST_CONFIRM_ISO}', '{CYCLE_START_ISO}', '{DEADLINE_ISO}', '{RECIPIENT_NAME}', '{ACK_BLOCK}', '{ACK_URL}', '{DOWNLOAD_LINKS}'],
+        [dm_mail_dt_or_never($cfg, $lastConfirm), dm_mail_dt($cfg, $cycleStart), dm_mail_dt($cfg, $deadline), $recipientName, $ackBlock, $ackUrl, $downloadLinks],
         $tpl
     );
 }
@@ -1259,7 +1559,9 @@ function dm_hdr_encode(string $s): string
  * Encode a mailbox header value like:
  * "Name <addr@example.com>"OR"addr@example.com"
  *
- * Only the display name is RFC2047-encoded; address stays ASCII.
+ * Only the display name is RFC2047-encoded or quoted; address stays ASCII.
+ * ASCII display names are always emitted as quoted strings so one mailbox
+ * cannot look like a comma-separated recipient list in the final header.
  */
 function dm_hdr_mailbox(string $raw): string
 {
@@ -1986,6 +2288,11 @@ function dm_validate_runtime_config(array $cfg): array
         $warnings[] = 'download_valid_days is below 7; recipients may lose access to files sooner than expected.';
     }
 
+    $operatorAlertMeta = dm_operator_alert_interval_meta($cfg);
+    if ((bool)$operatorAlertMeta['used_fallback']) {
+        $warnings[] = 'operator_alert_interval_hours is missing or invalid; safety fallback of 2 hours will be used.';
+    }
+
     return [
     'check_interval_seconds' => $checkInterval,
     'confirm_window_seconds' => $confirmWindow,
@@ -2000,6 +2307,7 @@ function dm_validate_runtime_config(array $cfg): array
     'download_rate_limit_max_requests' => $downloadRateLimitMax,
     'download_rate_limit_window_seconds' => $downloadRateLimitWindow,
     'download_lease_seconds' => $downloadLeaseSeconds,
+    'operator_alert_interval_hours' => (int)$operatorAlertMeta['hours'],
     'warnings' => $warnings,
     ];
 }
@@ -2282,15 +2590,6 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
         $fail('recipients_file load failed: ' . $e->getMessage());
     }
 
-    $notice = trim((string)($cfg['download_notice_single_use'] ?? ''));
-    if ($notice === '') {
-        $warn('download_notice_single_use is empty. Single-use downloads will render without a warning notice.');
-    } elseif (str_contains($notice, 'YOUR SINGLE-USE DOWNLOAD WARNING')) {
-        $warn('download_notice_single_use still contains the placeholder text.');
-    } else {
-        $ok('download_notice_single_use is customised.');
-    }
-
     $mailFrom = trim((string)($cfg['mail_from'] ?? ''));
     if ($mailFrom === '') {
         $fail('mail_from is empty.');
@@ -2503,6 +2802,7 @@ function dm_state_make_initial(array $cfg, int $now, int $checkInterval, int $co
     'deadline_at' => $timing['deadline_at'],
     'next_reminder_at' => $timing['next_reminder_at'],
     'escalation_event_at' => null,
+    'operator_alerts' => [],
     'escalation_delivery' => [],
     'escalated_sent_at' => null,
     ];

@@ -49,19 +49,20 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 	- `recipients_file` (default: `totmann-recipients.php`)
 	- `download_base_dir` (private directory for downloadable files; keep it outside webroot)
 	- `download_valid_days` (global download-link validity for all files; default: `180`)
-	- `download_notice_single_use` (warning text inserted via `{DOWNLOAD_NOTICE}` when at least one included download link is single-use; the repo default is only a placeholder and must be replaced)
+	- `operator_alert_interval_hours` (mandatory operator-warning throttle in whole hours; allowed: `1..24`; missing/invalid values fall back automatically to `2`)
 	- Runtime names: `lib_file`, `l18n_dir_name`, `lock_file`, `log_file_name`, `recipients_file`, `state_file`, `web_file` (filenames/directories only; no paths)
 	- Optional web stylesheet filename: `web_css_file` (same webroot folder as `web_file`; empty disables link)
 	- Logging target via `log_mode`: `none`, `syslog`, `file`, `both` (recommended: `both`)
+	- Operator warnings are separate mails to `to_self`; they are built in on purpose and cannot be disabled
 	- Use the test preset from [Timing](docs/Timing.md "Timing model and presets")
-	- `{DOWNLOAD_LINKS}` expands to raw URLs only, one URL per line
-	- `{DOWNLOAD_NOTICE}` expands only if the current mail includes at least one file from recipient field 5
+	- `{DOWNLOAD_LINKS}` renders the complete download block for that mail
 	- `totmann-recipients.php` defines files once in `$files`, reusable mail texts in `$messages`, and then assigns them in `$recipients`
 	- every recipient row must reference a valid message key in field 3; there is no escalation fallback in `totmann.inc.php`
 	- normal downloads go into recipient field 4; single-use downloads go into recipient field 5
 	- you never write `single_use=true` yourself; field 5 is the single-use list
 	- if a message should contain a receipt-confirmation link, keep `{ACK_BLOCK}` in that message body
-	- if a message may contain field-5 files, keep `{DOWNLOAD_NOTICE}` in that message body and replace `download_notice_single_use` with your own real warning text
+	- if a message is used with field-5 files, add `single_use_notice` to that message in `totmann-recipients.php`
+	- if a mail contains more than one download, the runtime adds `X Downloads:` and leaves a blank line between the download blocks automatically
 	- If two recipients should receive the same file, repeat the same file alias in both recipient rows
 	- Public web pages use the browser language from `Accept-Language`; if only a base language such as `de` is sent, the runtime picks the closest supported locale such as `de-DE`
 	- If no supported browser language matches, the web endpoint falls back to `en-US`
@@ -88,11 +89,11 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 	The `rm` line uses the filenames shown in the template config; if you changed them in `totmann.inc.php`, adapt this command.
 8. Install + enable `systemd` unit/timer: follow [systemd](docs/Systemd.md "systemd").
 9. Run the smoke/E2E test with short timings: follow [Installation](docs/Installation.md "Installation guide") and [Timing](docs/Timing.md "Timing model and presets").
-10. During live testing, watch script decisions in real time:
+10. During live testing, watch current activity in real time:
 	```sh
 	tail -f /var/lib/totmann/totmann.log
 	```
-	If you changed `log_file_name` or `log_file`, use that effective path instead. If `log_mode` is `syslog` or `none`, use `journalctl` instead of `tail`.
+	If you changed `log_file_name` or `log_file`, use that effective path instead. If `log_mode` is `syslog` or `none`, use `journalctl` instead of `tail`. For help reading file-log lines, journal bootstrap failures, and operator warning mails together, use [Log guide](docs/Logs.md "Log guide").
 ## Terms
 - ENV: environment variable (e. g., `TOTMANN_STATE_DIR`).
 - GET/POST: HTTP request methods (`GET` shows the confirm page; `POST` performs the confirmation).
@@ -102,16 +103,16 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 - PHP-FPM: PHP FastCGI Process Manager (common PHP runtime behind nginx).
 - setgid: directory bit so new files inherit the directory group.
 - umask: process permission mask controlling default file modes.
-- fail-open: on internal failure, allow the request (used for rate limiting to avoid accidental lockouts).
+- fail-open: on limiter failure, allow the request (used for rate limiting to avoid accidental lockouts).
 ## Docs
 1. Read the [installation guide](docs/Installation.md "Installation guide") – layout, permissions, clean initialise, smoke test
 2. [Configure `systemd`](docs/Systemd.md "systemd") – service/timer units + operational checks
 3. [Configure the web endpoint](docs/Web.md "Web endpoint configuration") – state dir resolution, stealth responses, downloads, proxy trust, rate limiting
 4. [Understand the timing model and presets](docs/Timing.md "Timing model and presets") – timing model, presets, walkthrough
 5. [Mail delivery notes](docs/Mail.md "Mail delivery notes") – sendmail notes, recipient file, placeholders, ACK, normal downloads, single-use downloads
-6. [Troubleshooting](docs/Troubleshooting.md "Troubleshooting") – neutral page, missing mails, permissions, common failure modes
-7. [Changelog](docs/Changelog.md "Changelog") – release notes and version history
-8. [Release notes for v3.0.0](docs/Release-v3.0.0.md "Release notes for v3.0.0") – published breaking-change release summary and upgrade notes
+6. [Log guide](docs/Logs.md "Log guide") – how to read `totmann.log` and which lines require action
+7. [Troubleshooting](docs/Troubleshooting.md "Troubleshooting") – neutral page, missing mails, permissions, common failure modes
+8. [Changelog](docs/Changelog.md "Changelog") – release notes and version history
 9. [Roadmap](docs/Roadmap.md "Roadmap") – planned next features
 10. [Contribution guide](CONTRIBUTING.md "Contribution guide") – contribution workflow, quality checks, PR checklist
 ## Contributing

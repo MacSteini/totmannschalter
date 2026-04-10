@@ -60,7 +60,7 @@ return [
         'page_download_unavailable_title' => 'Diese URL ist nicht gültig.',
         'page_download_unavailable_heading' => 'Diese URL ist nicht gültig.',
         'page_download_unavailable_body_1' => 'Der Link zu diesem Download ist abgelaufen, bereits verbraucht oder nicht mehr gültig.',
-        'page_download_unavailable_body_2' => 'Bitte behalten Sie die ursprüngliche Nachricht als Referenz.',
+        'page_download_unavailable_body_2' => '',
         'page_download_unavailable_body_3' => '',
         'detail_cycle_started' => 'Der aktuelle Zyklus begann am {datetime}.',
         'detail_last_confirm' => 'Die letzte erfolgreiche Bestätigung wurde am {datetime} gespeichert.',

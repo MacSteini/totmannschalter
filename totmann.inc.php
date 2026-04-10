@@ -51,13 +51,6 @@ return [
 // Keep this OUTSIDE your webroot.
 'download_base_dir' => '/var/lib/totmann/downloads',
 
-// Rendered only when the current escalation mail includes at least one single-use file
-// from field 5 in totmann-recipients.php.
-// You do NOT switch single-use on here. You only write the warning text that should
-// appear through {DOWNLOAD_NOTICE} in the affected mail bodies.
-// Replace this placeholder text with your own warning in your own language/tone.
-'download_notice_single_use' => '[YOUR SINGLE-USE DOWNLOAD WARNING GOES HERE – DO NOT FORGET TO TRANSLATE / ADAPT THIS TEXT]',
-
 // Validity period for every download link (days).
 // This timer starts at the first escalation mail of that escalation event and then applies
 // to all later reminder URLs for the same recipient/file pair as well.
@@ -66,7 +59,7 @@ return [
 
 // Download action rate limiting.
 // Confirm/ACK and download requests share one top-level ratelimit directory, but use
-// separate internal namespaces automatically.
+// separate namespaces automatically.
 'download_rate_limit_enabled' => true,
 'download_rate_limit_max_requests' => 20,
 'download_rate_limit_window_seconds' => 60,
@@ -181,6 +174,15 @@ return [
     'My Name <myname@example.com>',
     'Fallback Mail <fallback@example.com>',
 ],
+
+// Mandatory operator warning mails also go to `to_self`.
+// They are sent only for operator-facing setup/runtime problems that would otherwise
+// be easy to miss in the log or journal.
+//
+// Allowed values: whole hours 1..24
+// If you remove this key or set an invalid value, Totmannschalter falls back to 2.
+// The warning mail itself is built in on purpose and cannot be disabled.
+'operator_alert_interval_hours' => 2,
 
 // Mail From + optional Reply-To.
 'mail_from' => 'totmannschalter <totmannschalter@example.com>',

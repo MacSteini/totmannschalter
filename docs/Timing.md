@@ -149,6 +149,7 @@ After deadline + grace:
 3. Watch logs while testing:
 	- `journalctl -u totmann.service -f`
 	- `tail -f /var/lib/totmann/totmann.log`
+	- If you are not yet familiar with the log lines, keep [Log guide](Logs.md "Log guide") open alongside the test.
 4. Test scenarios:
 	- Scenario A, confirm: confirm within the window -> cycle resets, escalation never triggers
 	- Scenario B, no confirm: wait past deadline plus grace -> escalation mail arrives and ACK reminders follow

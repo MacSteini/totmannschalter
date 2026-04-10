@@ -94,17 +94,21 @@ If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `w
 - Runtime names (filenames/directories only): `lib_file`, `l18n_dir_name`, `lock_file`, `log_file_name`, `recipients_file`, `state_file`, `web_file`
 - `download_base_dir` should point to a private directory outside your webroot
 - `download_valid_days` sets one global validity period for all download links in the same escalation event
-- `download_notice_single_use` is your own warning text for single-use downloads and must be replaced before real use
+- `operator_alert_interval_hours` throttles mandatory operator warning mails to `to_self`
 - Optional web stylesheet filename in webroot: `web_css_file` (empty disables link)
 - `base_url` must point to your real public HTTPS base URL (without endpoint filename); the runtime appends `web_file` automatically
 - set `log_mode` explicitly: `none`, `syslog`, `file`, `both` (recommended: `both`)
+- `log_file_name` keeps the default file-log name unless you intentionally want a different filename
 - `hmac_secret_hex` (e. g., `openssl rand -hex 32`)
 - `to_self`
 - Public web pages follow the browser language from `Accept-Language`; fallback language is `en-US`
 - Public web timestamps stay in `mail_timezone`
 - If a locale directory/file is missing or unreadable, preflight reports it and the endpoint falls back to `en-US`
+- `operator_alert_interval_hours` accepts only whole hours `1..24`; if you remove it or set an invalid value, Totmannschalter automatically falls back to `2`
+- If you plan to read file logs directly, also read [Log guide](Logs.md "Log guide") so you know how to interpret file-log lines, journal bootstrap failures, and operator warning mails together
+- Important: operator warning mails are built in on purpose, go to `to_self`, and cannot be disabled
 ## Update `totmann-recipients.php`
-`totmann-recipients.php` now contains exactly 3 flat top-level areas:
+`totmann-recipients.php` contains exactly 3 flat top-level areas:
 - `$files`: file alias => relative path
 - `$messages`: message key => `subject` + `body`
 - `$recipients`: one flat recipient row per mailbox
@@ -127,6 +131,7 @@ Practical meaning:
 - field 5 is the special case for single-use downloads
 - you never write `single_use=true` yourself in this file
 - if field 5 is omitted, everything stays on the safer normal-download default
+- if a message is used with field 5, that message must define `single_use_notice`
 - `download_valid_days` in `totmann.inc.php` controls one global validity period for all downloads
 
 Happy-path editing order:
@@ -150,8 +155,6 @@ Hello {RECIPIENT_NAME},
 
 {ACK_BLOCK}
 
-{DOWNLOAD_NOTICE}
-
 {DOWNLOAD_LINKS}
 TXT,
     ],
@@ -162,7 +165,16 @@ Dear {RECIPIENT_NAME},
 
 {ACK_BLOCK}
 
-{DOWNLOAD_NOTICE}
+{DOWNLOAD_LINKS}
+TXT,
+    ],
+    'john' => [
+        'subject' => '[totmannschalter] Escalation triggered',
+        'single_use_notice' => '[replace with your own single-use warning]',
+        'body' => <<<TXT
+Hello {RECIPIENT_NAME},
+
+{ACK_BLOCK}
 
 {DOWNLOAD_LINKS}
 TXT,
@@ -177,7 +189,7 @@ $recipients = [
     ['Jane Doe', 'Jane Doe <recipient2@example.com>', 'jane', ['letter', 'contacts']],
 
     // Single-use download: use field 5.
-    ['John Doe', '<recipient3@example.com>', 'default', [], ['photos']],
+    ['John Doe', '<recipient3@example.com>', 'john', [], ['photos']],
 
     // Mixed case: field 4 stays normal, field 5 becomes single-use.
     ['Alex Example', 'alex@example.com', 'default', ['letter'], ['photos']],
@@ -197,8 +209,8 @@ How to read those recipient rows:
 - `['Jane Doe', 'Jane Doe <recipient2@example.com>', 'jane', ['letter', 'contacts']]`
   - sends the `jane` message
   - adds 2 normal download links from field 4
-- `['John Doe', '<recipient3@example.com>', 'default', [], ['photos']]`
-  - sends the `default` message
+- `['John Doe', '<recipient3@example.com>', 'john', [], ['photos']]`
+  - sends the `john` message
   - adds 1 single-use download link from field 5
 - `['Alex Example', 'alex@example.com', 'default', ['letter'], ['photos']]`
   - sends the `default` message
@@ -233,7 +245,6 @@ Use these placeholders in each message `body` inside `$messages`:
 - `{ACK_BLOCK}`
 - `{ACK_URL}` (advanced manual use only)
 - `{DOWNLOAD_LINKS}`
-- `{DOWNLOAD_NOTICE}`
 
 Behaviour:
 - `{RECIPIENT_NAME}` expands to field 1 from the matching recipient row
@@ -241,24 +252,22 @@ Behaviour:
 - keep `{ACK_BLOCK}` in any message that should let recipients confirm receipt
 - if you remove `{ACK_BLOCK}` from a message, that message will not show an ACK link even when ACK is enabled globally
 - `{ACK_URL}` expands only to the raw ACK URL and is intended for advanced custom bodies
-- `{DOWNLOAD_LINKS}` expands to raw URLs only, one URL per line
-- `{DOWNLOAD_NOTICE}` expands only if the current mail includes at least one field-5 file
+- `{DOWNLOAD_LINKS}` expands to the full download block for that mail
 - field 4 is the default and behaves like `single_use=false`
 - field 5 is the single-use list
-- the repository default for `download_notice_single_use` is deliberately only a placeholder, not a finished production text
-- if you use field 5, keep `{DOWNLOAD_NOTICE}` in the mail body so recipients always see the warning
+- if a message is used with field 5, define `single_use_notice` in that message
+- if a mail contains 2 or more downloads, the runtime adds `X Downloads:` and leaves a blank line between the download blocks automatically
 
 Minimal example:
 ```text
-{DOWNLOAD_NOTICE}
-
 {DOWNLOAD_LINKS}
 ```
 
 Practical rule:
-- If you only ever use field 4, `{DOWNLOAD_NOTICE}` always stays empty.
-- If you use field 5 anywhere in that message, `{DOWNLOAD_NOTICE}` becomes your warning text from `download_notice_single_use`.
+- If you only ever use field 4, you do not need `single_use_notice`.
+- If a message is used with field 5 anywhere, that message must define `single_use_notice`.
 - Full detail for mail bodies, ACK, and downloads: see [Mail delivery notes](Mail.md "Mail delivery notes").
+- If you are unsure what the runtime writes to `totmann.log` during mail delivery, see [Log guide](Logs.md "Log guide").
 ## Preflight check (recommended before enabling timer)
 Run the built-in preflight in your deployed state dir:
 ```sh
@@ -282,7 +291,7 @@ What `check` now validates:
 - `recipients_file`
 - `download_base_dir`
 - `base_url`
-- `download_notice_single_use`
+- message-specific `single_use_notice` requirements inside `recipients_file`
 - `mail_from`
 - `sendmail_path`
 - `log_mode`
@@ -351,3 +360,4 @@ journalctl -u totmann.service -f
 ```sh
 tail -f /var/lib/totmann/totmann.log
 ```
+If you are not yet familiar with the log lines, keep [Log guide](Logs.md "Log guide") open in parallel.

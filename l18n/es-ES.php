@@ -60,7 +60,7 @@ return [
         'page_download_unavailable_title' => 'Esta URL no es válida.',
         'page_download_unavailable_heading' => 'Esta URL no es válida.',
         'page_download_unavailable_body_1' => 'El enlace de esta descarga ha caducado, ya se ha utilizado o ya no es válido.',
-        'page_download_unavailable_body_2' => 'Conserve el mensaje original como referencia.',
+        'page_download_unavailable_body_2' => '',
         'page_download_unavailable_body_3' => '',
         'detail_cycle_started' => 'El ciclo actual comenzó el {datetime}.',
         'detail_last_confirm' => 'La última confirmación correcta se registró el {datetime}.',

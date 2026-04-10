@@ -163,7 +163,7 @@ function dm_web_fallback_catalog(): array
             'page_download_unavailable_title' => 'This URL is not valid.',
             'page_download_unavailable_heading' => 'This URL is not valid.',
             'page_download_unavailable_body_1' => 'The link to this download has expired, been used already, or is no longer valid.',
-            'page_download_unavailable_body_2' => 'Please keep the original message for reference.',
+            'page_download_unavailable_body_2' => '',
             'page_download_unavailable_body_3' => '',
             'detail_cycle_started' => 'The current cycle started on {datetime}.',
             'detail_last_confirm' => 'The last successful confirmation was recorded on {datetime}.',
@@ -504,8 +504,14 @@ function dm_render_unavailable(): void
 {
     http_response_code(200);
     $body = '<h1>' . dm_h(dm_web_text('page_download_unavailable_heading')) . '</h1>';
-    $body .= '<p>' . dm_h(dm_web_text('page_download_unavailable_body_1')) . '</p>';
-    $body .= '<p>' . dm_h(dm_web_text('page_download_unavailable_body_2')) . '</p>';
+    $body1 = trim(dm_web_text('page_download_unavailable_body_1'));
+    if ($body1 !== '') {
+        $body .= '<p>' . dm_h($body1) . '</p>';
+    }
+    $body2 = trim(dm_web_text('page_download_unavailable_body_2'));
+    if ($body2 !== '') {
+        $body .= '<p>' . dm_h($body2) . '</p>';
+    }
     $body3 = trim(dm_web_text('page_download_unavailable_body_3'));
     if ($body3 !== '') {
         $body .= '<p>' . dm_h($body3) . '</p>';

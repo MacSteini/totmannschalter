@@ -31,7 +31,8 @@ Rules:
 - each list entry must be exactly one mailbox string
 - reminder mails are always sent individually (one mail per `to_self` entry)
 - do not put comma-separated recipient lists into one string
-- display names that contain commas are emitted safely in the `To:` header as one mailbox, not as a fake multi-recipient list
+- use `Name <recipient@example.com>` only when you really want a display name in the visible mail header
+- if you only need a personal greeting inside the mail body, prefer `{RECIPIENT_NAME}` instead
 
 Correct:
 ```php
@@ -48,7 +49,7 @@ Do not do this:
 ],
 ```
 ## The recipient file at a glance
-Everything recipient-related now lives in `totmann-recipients.php`.
+Everything recipient-related lives in `totmann-recipients.php`.
 
 The file has exactly 3 top-level areas:
 - `$files` => define each downloadable file once
@@ -73,11 +74,14 @@ Important rules:
 	- `recipient@example.com`
 	- `<recipient@example.com>`
 	- `Recipient Name <recipient@example.com>`
+- field 2 must still describe exactly one real mailbox
+- if you want the simplest visible `To:` header, use only the address in field 2 and keep the human greeting in field 1 via `{RECIPIENT_NAME}`
 - field 3 must always reference an existing message key in `$messages`
 - field 4 is the normal/safe default for downloads
 - field 5 is only for one-time download links
 - you never write `single_use=true` yourself in this file
 - if field 5 is omitted, everything stays on the normal-download default
+- if a message is used with field 5 anywhere, that message must define `single_use_notice`
 ## Enduser example for `totmann-recipients.php`
 ```php
 $files = [
@@ -94,13 +98,12 @@ Hello {RECIPIENT_NAME},
 
 {ACK_BLOCK}
 
-{DOWNLOAD_NOTICE}
-
 {DOWNLOAD_LINKS}
 TXT,
     ],
     'documents' => [
         'subject' => '[totmannschalter] Important documents',
+        'single_use_notice' => 'Save this file locally straight away. This download link works only once.',
         'body' => <<<TXT
 Dear {RECIPIENT_NAME},
 
@@ -108,9 +111,6 @@ Please read this message carefully.
 
 {ACK_BLOCK}
 
-{DOWNLOAD_NOTICE}
-
-Downloads:
 {DOWNLOAD_LINKS}
 TXT,
     ],
@@ -187,16 +187,16 @@ Escalation mails from `$messages` in `totmann-recipients.php` support:
 - `{RECIPIENT_NAME}`
 - `{ACK_BLOCK}`
 - `{ACK_URL}`
-- `{DOWNLOAD_NOTICE}`
 - `{DOWNLOAD_LINKS}`
 
 Practical meaning:
 - `{RECIPIENT_NAME}` expands to field 1 from the matching recipient row
 - `{ACK_BLOCK}` expands to the complete ACK text plus URL, or stays empty
 - `{ACK_URL}` expands only to the raw ACK URL
-- `{DOWNLOAD_LINKS}` expands to raw URLs only, one URL per line
-- the runtime does not add headings, bullets, labels, or expiry text around those URLs
-- `{DOWNLOAD_NOTICE}` expands only if the current mail includes at least one field-5 file
+- `{DOWNLOAD_LINKS}` expands to the complete download block for that mail
+- with one download, the block contains only that one download
+- with two or more downloads, the runtime adds `X Downloads:` and inserts one blank line between the download blocks
+- when a download is single-use, the message-specific `single_use_notice` appears directly above that one URL
 ## Normal downloads vs single-use downloads
 Escalation mails can include optional download links through field 4 and field 5 in each recipient row.
 
@@ -216,34 +216,27 @@ Operational behaviour:
 - single-use applies to the whole escalation event for that recipient/file pair, not to each newly generated reminder URL
 
 If you need the same file for two recipients, define it once in `$files` and repeat only the alias in each recipient row.
-## `{DOWNLOAD_NOTICE}` and `download_notice_single_use`
-`{DOWNLOAD_NOTICE}` is the dedicated warning placeholder for single-use downloads.
+## `single_use_notice`
+`single_use_notice` is the message-specific warning text for single-use downloads.
 
 Practical meaning:
-- if a message includes only field-4 files, `{DOWNLOAD_NOTICE}` stays empty
-- if a message includes at least one field-5 file, `{DOWNLOAD_NOTICE}` expands to the text from `download_notice_single_use` in `totmann.inc.php`
-- the repository default for `download_notice_single_use` is deliberately only a placeholder and must be replaced with your own real warning text before production use
-
-Practical rule:
-- if any recipient using that message may receive a field-5 file, keep `{DOWNLOAD_NOTICE}` in that message body
-- if you remove `{DOWNLOAD_NOTICE}`, the single-use link still works technically, but the recipient loses the warning text
+- write it directly next to `subject` and `body` inside the affected message entry in `$messages`
+- only messages that are actually used with field 5 need it
+- the runtime inserts that text automatically above each affected single-use URL
+- you do not need a second placeholder in the message body
 
 Minimal example:
-```text
-{DOWNLOAD_NOTICE}
-
-{DOWNLOAD_LINKS}
+```php
+'documents' => [
+    'subject' => '[totmannschalter] Important documents',
+    'single_use_notice' => 'Save this file locally straight away. This download link works only once.',
+    'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
+],
 ```
 
-Practical example:
-```text
-Please save all downloaded files locally before closing this message.
-
-{DOWNLOAD_NOTICE}
-
-Downloads:
-{DOWNLOAD_LINKS}
-```
+Practical rule:
+- if a message is only used with field 4, `single_use_notice` can be omitted
+- if a message is used with field 5 anywhere, `single_use_notice` must be present
 ## Same file for multiple recipients
 If two or more recipients should receive the same file, define it once in `$files` and repeat only the alias in each recipient row.
 
@@ -277,5 +270,5 @@ Before you go live, confirm all of these points:
 3. every normal download alias lives in field 4
 4. every single-use alias lives in field 5
 5. every message that should allow receipt confirmation still contains `{ACK_BLOCK}`
-6. every message that may carry field-5 files still contains `{DOWNLOAD_NOTICE}`
-7. `download_notice_single_use` in `totmann.inc.php` was replaced with your own finished warning text
+6. every message that is used with field-5 files defines `single_use_notice`
+7. `{DOWNLOAD_LINKS}` is still present in every message that should contain downloads

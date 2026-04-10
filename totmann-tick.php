@@ -96,16 +96,19 @@ if ($cmd === 'check') {
 }
 
 $cfg['state_dir'] = $stateDir;
+$pendingOperatorAlerts = [];
 try {
     $runtimeCfg = dm_validate_runtime_config($cfg);
     $recipientErrors = [];
     $escalationRecipients = dm_escalation_recipients_runtime($cfg, $recipientErrors);
 } catch (Throwable $e) {
     fwrite(STDERR, 'CONFIG ERROR: ' . $e->getMessage() . "\n");
+    dm_operator_alert_handle_from_statefile($cfg, 'config_error', $e->getMessage());
     exit(1);
 }
 foreach ($recipientErrors as $recipientError) {
     dm_log($cfg, 'Recipient skipped: ' . $recipientError);
+    $pendingOperatorAlerts[] = ['type' => 'recipient_skipped', 'message' => $recipientError];
 }
 $checkInterval = (int)$runtimeCfg['check_interval_seconds'];
 $confirmWindow = (int)$runtimeCfg['confirm_window_seconds'];
@@ -125,6 +128,10 @@ try {
 }
 
 $lockHandle = null;
+$stateRoot = [];
+$state = [];
+$now = 0;
+$stateLoaded = false;
 
 try {
     $lockHandle = dm_lock_open($lockFile);
@@ -132,14 +139,22 @@ try {
     $now = dm_now();
     $stateRoot = dm_state_load($stateFile);
     $state = dm_state_runtime($stateRoot);
+    $stateLoaded = true;
 
     if (empty($state)) {
         $state = dm_state_make_initial($cfg, $now, $checkInterval, $confirmWindow);
+        foreach ($pendingOperatorAlerts as $pendingOperatorAlert) {
+            dm_operator_alert_handle($cfg, $state, $now, (string)$pendingOperatorAlert['type'], (string)$pendingOperatorAlert['message']);
+        }
         $stateRoot = dm_state_with_runtime($stateRoot, $state);
         $stateRoot = dm_state_with_downloads($stateRoot, dm_state_downloads($stateRoot));
         dm_state_save($stateFile, $stateRoot);
         dm_log($cfg, 'Initialised state. Next check at ' . dm_iso((int)$state['next_check_at']));
         exit(0);
+    }
+
+    foreach ($pendingOperatorAlerts as $pendingOperatorAlert) {
+        dm_operator_alert_handle($cfg, $state, $now, (string)$pendingOperatorAlert['type'], (string)$pendingOperatorAlert['message']);
     }
 
     $createdAt = (int)($state['created_at'] ?? 0);
@@ -313,8 +328,7 @@ try {
                 try {
                     $messageTemplate = dm_escalate_message_for_recipient($recipient);
                     $linksForRecipient = dm_download_links_for_recipient($cfg, $recipient, $eventAt, $now);
-                    $downloadNotice = dm_render_download_notice($cfg, $linksForRecipient);
-                    $downloadBlock = dm_render_download_links_block($linksForRecipient);
+                    $downloadBlock = dm_render_download_links_block($linksForRecipient, (string)($messageTemplate['single_use_notice'] ?? ''));
                     $ackUrl = '';
                     if ($ackEnabled) {
                         $ackRecipient = $ackRecipients[$recipientKey];
@@ -322,7 +336,7 @@ try {
                         $ackUrl = dm_ack_url($cfg, ['id' => (string)$ackRecipient['id'], 'sig' => (string)$ackRecipient['sig']]);
                     }
                     $ackBlock = dm_render_ack_block($ackUrl, $ackEnabled);
-                    $body = dm_render_escalate_template($cfg, (string)$messageTemplate['body'], $lastConfirm, $cycleStart, $deadline, $recipientName, $ackUrl, $ackEnabled, $downloadNotice, $downloadBlock, $ackBlock);
+                    $body = dm_render_escalate_template($cfg, (string)$messageTemplate['body'], $lastConfirm, $cycleStart, $deadline, $recipientName, $ackUrl, $ackEnabled, $downloadBlock, $ackBlock);
                     dm_send_mail($cfg, [$recipientAddress], (string)$messageTemplate['subject'], $body);
 
                     $delivery['initial_sent_at'] = $now;
@@ -336,6 +350,7 @@ try {
                     $delivery['last_error'] = $e->getMessage();
                     $initialFailedNow++;
                     dm_log($cfg, "Escalation mail failed for {$recipientAddress}: " . $e->getMessage());
+                    dm_operator_alert_handle($cfg, $state, $now, 'delivery_error', "Escalation mail failed for {$recipientAddress}: " . $e->getMessage());
                 }
 
                 $deliveryMap[$recipientKey] = $delivery;
@@ -408,6 +423,7 @@ try {
                 $ackRecipient = $ackRecipients[$recipientKey] ?? null;
                 if (!is_array($ackRecipient) || empty($ackRecipient['id']) || empty($ackRecipient['sig'])) {
                     dm_log($cfg, "ack: recipient token missing for {$recipientAddress} during reminder phase; skipping recipient.");
+                    dm_operator_alert_handle($cfg, $state, $now, 'runtime_error', "ack: recipient token missing for {$recipientAddress} during reminder phase; skipping recipient.");
                     $deliveryMap[$recipientKey] = $delivery;
                     continue;
                 }
@@ -415,11 +431,10 @@ try {
                 try {
                     $messageTemplate = dm_escalate_message_for_recipient($recipient);
                     $linksForRecipient = dm_download_links_for_recipient($cfg, $recipient, $eventAt, $now);
-                    $downloadNotice = dm_render_download_notice($cfg, $linksForRecipient);
-                    $downloadBlock = dm_render_download_links_block($linksForRecipient);
+                    $downloadBlock = dm_render_download_links_block($linksForRecipient, (string)($messageTemplate['single_use_notice'] ?? ''));
                     $ackUrl = dm_ack_url($cfg, ['id' => (string)$ackRecipient['id'], 'sig' => (string)$ackRecipient['sig']]);
                     $ackBlock = dm_render_ack_block($ackUrl, true);
-                    $body = dm_render_escalate_template($cfg, (string)$messageTemplate['body'], (int)($state['last_confirm_at'] ?? 0), (int)($state['cycle_start_at'] ?? 0), (int)($state['deadline_at'] ?? 0), $recipientName, $ackUrl, true, $downloadNotice, $downloadBlock, $ackBlock);
+                    $body = dm_render_escalate_template($cfg, (string)$messageTemplate['body'], (int)($state['last_confirm_at'] ?? 0), (int)($state['cycle_start_at'] ?? 0), (int)($state['deadline_at'] ?? 0), $recipientName, $ackUrl, true, $downloadBlock, $ackBlock);
                     dm_send_mail($cfg, [$recipientAddress], (string)$messageTemplate['subject'], $body);
 
                     $delivery['ack_remind_sent_count'] = $sentCount + 1;
@@ -431,6 +446,7 @@ try {
                     $delivery['last_error'] = $e->getMessage();
                     $reminderFailures++;
                     dm_log($cfg, "Escalation ACK reminder failed for {$recipientAddress}: " . $e->getMessage());
+                    dm_operator_alert_handle($cfg, $state, $now, 'delivery_error', "Escalation ACK reminder failed for {$recipientAddress}: " . $e->getMessage());
                 }
 
                 $deliveryMap[$recipientKey] = $delivery;
@@ -449,6 +465,18 @@ try {
     exit(0);
 } catch (Throwable $e) {
     dm_log($cfg, 'ERROR: ' . $e->getMessage());
+    if ($stateLoaded) {
+        dm_operator_alert_handle($cfg, $state, ($now > 0 ? $now : dm_now()), 'runtime_error', $e->getMessage());
+        try {
+            $stateRoot = dm_state_with_runtime($stateRoot, $state);
+            $stateRoot = dm_state_with_downloads($stateRoot, dm_state_downloads($stateRoot));
+            dm_state_save($stateFile, $stateRoot);
+        } catch (Throwable $saveError) {
+            dm_log($cfg, 'Operator alert state save failed: ' . $saveError->getMessage());
+        }
+    } else {
+        dm_operator_alert_handle_from_statefile($cfg, 'runtime_error', $e->getMessage());
+    }
     exit(1);
 } finally {
     if (is_resource($lockHandle)) {

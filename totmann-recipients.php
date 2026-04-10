@@ -6,9 +6,9 @@
  * Project: https://github.com/MacSteini/totmannschalter
  * Licence: MIT (see LICENCE)
  *
- * This file is intentionally flat and operator-focused:
+ * This file is the operator-facing recipient template:
  * - `$files` defines each downloadable file once
- * - `$messages` defines reusable escalation subjects/bodies
+ * - `$messages` defines reusable escalation subjects/bodies and optional single-use warnings
  * - `$recipients` assigns one mailbox per row
  *
  * Practical order for editing this file:
@@ -33,6 +33,8 @@
  * - `recipient@example.com`
  * - `<recipient@example.com>`
  * - `Recipient Name <recipient@example.com>`
+ * - If you want the simplest visible `To:` header, keep the actual greeting
+ * in field 1 and use only the address in field 2.
  *
  * Important rules:
  * - The first 3 values in every recipient row are mandatory.
@@ -51,15 +53,16 @@
  * - `{RECIPIENT_NAME}`
  * - `{ACK_BLOCK}`
  * - `{ACK_URL}`
- * - `{DOWNLOAD_NOTICE}`
  * - `{DOWNLOAD_LINKS}`
  *
  * Practical placeholder rules:
  * - keep `{ACK_BLOCK}` in a message body if that recipient should be able to confirm receipt
  * - omit `{ACK_BLOCK}` only if you intentionally do not want an ACK link in that message
- * - keep `{DOWNLOAD_NOTICE}` in a message body if any recipient using that message may receive field-5 files
+ * - keep `{DOWNLOAD_LINKS}` in the message body if that recipient should receive download links
+ * - add `single_use_notice` to the message only if that message is used with field 5
+ * - the runtime prints `single_use_notice` directly above each affected single-use URL
  *
- * IMPORTANT:
+ * Important:
  * - The subjects and bodies below are examples only.
  * - Replace them with your own real texts before production use.
  */
@@ -84,8 +87,6 @@ Please review the original email carefully.
 
 {ACK_BLOCK}
 
-{DOWNLOAD_NOTICE}
-
 {DOWNLOAD_LINKS}
 TXT,
     ],
@@ -100,13 +101,12 @@ Please review the original email carefully.
 
 {ACK_BLOCK}
 
-{DOWNLOAD_NOTICE}
-
 {DOWNLOAD_LINKS}
 TXT,
     ],
     'john' => [
         'subject' => '[totmannschalter] EXAMPLE ONLY – document delivery template',
+        'single_use_notice' => '[EXAMPLE SINGLE-USE WARNING – REPLACE BEFORE PRODUCTION USE]',
         'body' => <<<TXT
 [EXAMPLE TEXT – REPLACE BEFORE PRODUCTION USE]
 
@@ -115,8 +115,6 @@ Hello {RECIPIENT_NAME},
 Please read the note below.
 
 {ACK_BLOCK}
-
-{DOWNLOAD_NOTICE}
 
 {DOWNLOAD_LINKS}
 TXT,
@@ -132,6 +130,7 @@ $recipients = [
 
     // Mixed case: field 4 stays normal, field 5 becomes single-use.
     // Here `letter` can be downloaded normally, while `photos` is limited to one successful download.
+    // Because field 5 is used here, message `john` also defines `single_use_notice`.
     ['John Doe', '<recipient3@example.com>', 'john', ['letter'], ['photos']],
 
     // The same file can be assigned to another recipient by repeating the same alias.

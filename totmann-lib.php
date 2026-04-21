@@ -1,11 +1,9 @@
 <?php
 
-declare(strict_types=1);
-
 /**
  * totmannschalter – runtime library
  *
- * Project: https://github.com/MacSteini/totmannschalter
+ * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)
  *
  * Shared helpers for time formatting, state handling, locking, mail sending,
@@ -24,6 +22,9 @@ declare(strict_types=1);
  * - Uses a tiny in-function cache for DateTimeZone objects (micro-optimisation).
  * - Any invalid timezone string falls back to UTC.
  */
+
+declare(strict_types=1);
+
 function dm_mail_dt(array $cfg, int $ts): string
 {
     static $tzCache = [];
@@ -654,7 +655,7 @@ function dm_operator_alert_render_mail(array $cfg, array $alert): array
     $stateDir = dm_state_dir($cfg);
 
     $body = implode("\n", [
-        'Totmannschalter detected an operator-facing problem and continued in best-effort mode where possible.',
+        'totmannschalter detected an operator-facing problem and continued in best-effort mode where possible.',
         '',
         'Alert type: ' . $label,
         'Fingerprint: ' . (string)$alert['fingerprint'],
@@ -1425,7 +1426,7 @@ function dm_render_ack_block(string $ackUrl, bool $ackEnabled): string
         return '';
     }
 
-    return "Please click this link to acknowledge receipt:\n" . trim($ackUrl);
+    return "If you have received this message, please confirm receipt using this link:\n" . trim($ackUrl);
 }
 
 /**

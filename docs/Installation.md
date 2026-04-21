@@ -1,4 +1,6 @@
 # totmannschalter – Installation
+![totmannschalter](../img/totmannschalter-icon.png)
+
 ## Prerequisites
 - PHP 8.0+.
 - `systemd` (service + timer).
@@ -104,7 +106,7 @@ If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `w
 - Public web pages follow the browser language from `Accept-Language`; fallback language is `en-US`
 - Public web timestamps stay in `mail_timezone`
 - If a locale directory/file is missing or unreadable, preflight reports it and the endpoint falls back to `en-US`
-- `operator_alert_interval_hours` accepts only whole hours `1..24`; if you remove it or set an invalid value, Totmannschalter automatically falls back to `2`
+- `operator_alert_interval_hours` accepts only whole hours `1..24`; if you remove it or set an invalid value, totmannschalter automatically falls back to `2`
 - If you plan to read file logs directly, also read [Log guide](Logs.md "Log guide") so you know how to interpret file-log lines, journal bootstrap failures, and operator warning mails together
 - Important: operator warning mails are built in on purpose, go to `to_self`, and cannot be disabled
 ## Update `totmann-recipients.php`
@@ -142,99 +144,112 @@ Happy-path editing order:
 Copy/paste example:
 ```php
 $files = [
-    'letter' => 'shared/letter.pdf',
-    'contacts' => 'shared/contacts.txt',
-    'photos' => 'shared/family-photos.zip',
+'letter' => 'shared/letter.pdf',
+'contacts' => 'shared/contacts.txt',
+'photos' => 'shared/family-photos.zip',
 ];
 
 $messages = [
-    'default' => [
-        'subject' => '[totmannschalter] Escalation triggered',
-        'body' => <<<TXT
+'default' => [
+'subject' => '[totmannschalter] EXAMPLE TEMPLATE – escalation message',
+'body' => <<<TXT
 Hello {RECIPIENT_NAME},
+
+This is an example escalation message for Totmannschalter.
+Please replace it with your own wording before production use.
+
+You are receiving this message because the sender did not complete the required confirmation in time.
 
 {ACK_BLOCK}
 
 {DOWNLOAD_LINKS}
 TXT,
-    ],
-    'jane' => [
-        'subject' => '[totmannschalter] Escalation triggered for Jane',
-        'body' => <<<TXT
+],
+'jane' => [
+'subject' => '[totmannschalter] EXAMPLE TEMPLATE – personal message',
+'body' => <<<TXT
 Dear {RECIPIENT_NAME},
 
+This is an example of a more personal escalation message.
+Please replace it with your own wording before production use.
+
+If you are reading this, the sender did not complete the required confirmation in time.
+
 {ACK_BLOCK}
 
 {DOWNLOAD_LINKS}
 TXT,
-    ],
-    'john' => [
-        'subject' => '[totmannschalter] Escalation triggered',
-        'single_use_notice' => '[replace with your own single-use warning]',
-        'body' => <<<TXT
+],
+'john' => [
+'subject' => '[totmannschalter] EXAMPLE TEMPLATE – message with documents',
+'single_use_notice' => 'Please save this file straight away. This download link works only once.',
+'body' => <<<TXT
 Hello {RECIPIENT_NAME},
 
+This is an example escalation message for document delivery.
+Please replace it with your own wording before production use.
+
+The files below are included as part of this message.
+
 {ACK_BLOCK}
 
 {DOWNLOAD_LINKS}
 TXT,
-    ],
+],
 ];
 
 $recipients = [
-    // Simplest case: message only, no files.
-    ['Recipient 1', 'recipient1@example.com', 'default'],
+// Simplest case: message only, no files.
+['Recipient 1', 'recipient1@example.com', 'default'],
 
-    // Normal download: use field 4.
-    ['Jane Doe', 'Jane Doe <recipient2@example.com>', 'jane', ['letter', 'contacts']],
+// Normal download: use field 4.
+['Jane Doe', 'Jane Doe <recipient2@example.com>', 'jane', ['letter', 'contacts']],
 
-    // Single-use download: use field 5.
-    ['John Doe', '<recipient3@example.com>', 'john', [], ['photos']],
+// Single-use download: use field 5.
+['John Doe', '<recipient3@example.com>', 'john', [], ['photos']],
 
-    // Mixed case: field 4 stays normal, field 5 becomes single-use.
-    ['Alex Example', 'alex@example.com', 'default', ['letter'], ['photos']],
+// Mixed case: field 4 stays normal, field 5 becomes single-use.
+['Alex Example', 'alex@example.com', 'default', ['letter'], ['photos']],
 ];
 
 return [
-    'files' => $files,
-    'messages' => $messages,
-    'recipients' => $recipients,
+'files' => $files,
+'messages' => $messages,
+'recipients' => $recipients,
 ];
 ```
-
 How to read those recipient rows:
 - `['Recipient 1', 'recipient1@example.com', 'default']`
-  - sends the `default` message
-  - no download links
+	- sends the `default` message
+	- no download links
 - `['Jane Doe', 'Jane Doe <recipient2@example.com>', 'jane', ['letter', 'contacts']]`
-  - sends the `jane` message
-  - adds 2 normal download links from field 4
+	- sends the `jane` message
+	- adds 2 normal download links from field 4
 - `['John Doe', '<recipient3@example.com>', 'john', [], ['photos']]`
-  - sends the `john` message
-  - adds 1 single-use download link from field 5
+	- sends the `john` message
+	- adds 1 single-use download link from field 5
 - `['Alex Example', 'alex@example.com', 'default', ['letter'], ['photos']]`
-  - sends the `default` message
-  - adds 1 normal link and 1 single-use link
+	- sends the `default` message
+	- adds 1 normal link and 1 single-use link
 
 Same file for two recipients:
 ```php
 $files = [
-    'letter' => 'shared/letter.pdf',
+'letter' => 'shared/letter.pdf',
 ];
 
 $messages = [
-    'default' => [
-        'subject' => '[totmannschalter] Escalation triggered',
-        'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
-    ],
+'default' => [
+'subject' => '[totmannschalter] EXAMPLE TEMPLATE – escalation message',
+'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
+],
 ];
 
 $recipients = [
-    ['Jane Doe', 'recipient2@example.com', 'default', ['letter']],
-    ['John Doe', 'recipient3@example.com', 'default', ['letter']],
+['Jane Doe', 'recipient2@example.com', 'default', ['letter']],
+['John Doe', 'recipient3@example.com', 'default', ['letter']],
 ];
 ```
-
 Result:
 - both recipients receive the same underlying file
 - both recipients still receive separate escalation mails
@@ -262,7 +277,6 @@ Minimal example:
 ```text
 {DOWNLOAD_LINKS}
 ```
-
 Practical rule:
 - If you only ever use field 4, you do not need `single_use_notice`.
 - If a message is used with field 5 anywhere, that message must define `single_use_notice`.

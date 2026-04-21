@@ -1,6 +1,8 @@
 # totmannschalter – Log guide
+![totmannschalter](../img/totmannschalter-icon.png)
+
 ## What `totmann.log` is for
-`totmann.log` records Totmannschalter activity in plain English.
+`totmann.log` records totmannschalter activity in plain English.
 
 Use it when you want to answer practical questions such as:
 - Did the cycle reset?
@@ -18,7 +20,7 @@ If you use `log_mode = file` or `log_mode = both`, the default file is `/var/lib
 
 If you changed `log_file_name` or `log_file` in `totmann.inc.php`, use that effective path instead.
 ## What belongs where
-You may see Totmannschalter errors in 3 different places:
+You may see totmannschalter errors in 3 different places:
 
 1. `totmann.log`
 	- normal runtime activity and runtime failures after bootstrap
@@ -37,7 +39,7 @@ Choose your log command according to `log_mode`:
 - `file` => read `totmann.log`
 - `syslog` => use `journalctl -u totmann.service`
 - `both` => you can use both
-- `none` => Totmannschalter does not write a file log
+- `none` => totmannschalter does not write a file log
 
 Useful commands:
 ```sh
@@ -51,7 +53,6 @@ Example:
 ```text
 [2026-04-10T12:34:56+00:00] confirm: OK ip=203.0.113.10 next_check_at=2026-04-11T12:34:56+00:00
 ```
-
 Practical reading order:
 1. read the timestamp
 2. read the leading topic such as `confirm:`, `ack:`, or `Escalation mail ...`
@@ -64,7 +65,6 @@ Typical STDERR / journal examples:
 CONFIG ERROR: Missing config key: download_valid_days
 BOOTSTRAP ERROR: missing/unreadable totmann.inc.php: /var/lib/totmann/totmann.inc.php
 ```
-
 How to interpret them:
 - `CONFIG ERROR: ...` => configuration loaded far enough to check, but a required value or file structure is wrong
 - `BOOTSTRAP ERROR: ...` => the script failed before normal runtime setup completed
@@ -76,7 +76,7 @@ What to do:
 - if the problem happens under `systemd`, confirm it again with `journalctl -u totmann.service`
 
 Important:
-- these messages may still trigger a separate operator warning mail if Totmannschalter can load enough mail configuration to send one
+- these messages may still trigger a separate operator warning mail if totmannschalter can load enough mail configuration to send one
 - do not rely on them appearing in `totmann.log`
 ## Normal confirmation activity
 Typical lines:
@@ -85,7 +85,6 @@ confirm: OK ip=203.0.113.10 next_check_at=2026-04-11T12:34:56+00:00
 confirm: stale-or-noncurrent token used ip=203.0.113.10
 confirm: blocked after escalation ip=203.0.113.10
 ```
-
 How to interpret them:
 - `confirm: OK ...` => the button click was accepted and the cycle was reset
 - `stale-or-noncurrent token used` => an older link was used; the current cycle had already moved on
@@ -103,7 +102,6 @@ ack: escalation acknowledged; no further escalation mails will be sent for this 
 ack: stale-or-noncurrent token used ip=203.0.113.10
 ack: recipient token missing for recipient@example.com during reminder phase; skipping recipient.
 ```
-
 How to interpret them:
 - `ack: OK ...` => one recipient confirmed receipt successfully
 - `no further escalation mails ...` => the current escalation event is finished from the system’s point of view
@@ -123,13 +121,12 @@ Escalation delivery progress (sent_now=1, failed_now=1, recipients=2).
 Recipient skipped: ...
 Operator alert sent for recipient_skipped (fingerprint=..., recipients=1).
 ```
-
 How to interpret them:
 - `Escalation mail sent ...` => that one recipient mail was handed to sendmail successfully
 - `Escalation mail failed ...` => that one recipient mail failed; the reason follows after the colon
 - `Escalation delivery progress ...` => this tick finished one escalation delivery pass and shows how many recipients succeeded or failed in that pass
 - `Recipient skipped: ...` => that one recipient row was unusable, so the script continued without sending to that recipient
-- `Operator alert sent ...` => Totmannschalter also sent a separate operator warning mail to `to_self`
+- `Operator alert sent ...` => totmannschalter also sent a separate operator warning mail to `to_self`
 
 What to do:
 - sent => nothing else; this is expected
@@ -149,10 +146,9 @@ Operator alert delivery failed for recipient_skipped (fingerprint=...): ...
 Operator alert handling failed: ...
 Operator alert state save failed: ...
 ```
-
 How to interpret them:
 - `Operator alert sent ...` => a separate operator warning mail was handed to sendmail successfully
-- `Operator alert delivery failed ...` => Totmannschalter detected the problem but could not deliver the warning mail to at least one `to_self` address
+- `Operator alert delivery failed ...` => totmannschalter detected the problem but could not deliver the warning mail to at least one `to_self` address
 - `Operator alert handling failed ...` => even the warning-mail helper hit a runtime problem while trying to process the alert
 - `Operator alert state save failed ...` => the script handled the runtime problem but could not persist the updated alert-throttle state afterwards
 
@@ -165,7 +161,7 @@ What to do:
 Practical note:
 - the fingerprint stays stable for the same alert type plus the same normalised error text
 - repeated alerts with the same fingerprint are throttled by `operator_alert_interval_hours`
-- if you set an invalid value or remove that key, Totmannschalter falls back to `2` hours
+- if you set an invalid value or remove that key, totmannschalter falls back to `2` hours
 ## ACK reminder problems
 Typical lines:
 ```text
@@ -173,7 +169,6 @@ ack: recipient token missing for recipient@example.com during reminder phase; sk
 Escalation ACK reminder failed for recipient@example.com: ...
 Escalation ACK reminder progress (sent_now=0, failed_now=1).
 ```
-
 How to interpret them:
 - `recipient token missing ...` => that one recipient could not get an ACK reminder link in this pass
 - `Escalation ACK reminder failed ...` => sendmail handoff failed for that ACK reminder mail
@@ -188,7 +183,6 @@ Typical lines:
 ```text
 ERROR: ...
 ```
-
 How to interpret them:
 - this is the main runtime catch-all for unexpected failures after bootstrap completed
 

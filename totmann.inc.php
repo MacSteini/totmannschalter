@@ -3,7 +3,7 @@
 /**
  * totmannschalter – configuration template
  *
- * Project: https://github.com/MacSteini/totmannschalter
+ * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)
  *
  * Template defaults for runtime filenames, timing, mail, logging, web behaviour,
@@ -20,9 +20,9 @@ return [
 // State directory on disk (holds totmann.inc.php, totmann-tick.php,
 // your configured lib_file, your configured recipients_file, and runtime files).
 // NOTE: Entry points do NOT use this value to locate the directory. They resolve it via:
-// - totmann-tick.php: ENV TOTMANN_STATE_DIR (or __DIR__)
-// - totmann.php: ENV TOTMANN_STATE_DIR (or define('TOTMANN_STATE_DIR', ...))
-// Keep this value aligned with TOTMANN_STATE_DIR purely for clarity.
+// - totmann-tick.php: ENV totmann_STATE_DIR (or __DIR__)
+// - totmann.php: ENV totmann_STATE_DIR (or define('totmann_STATE_DIR', ...))
+// Keep this value aligned with totmann_STATE_DIR purely for clarity.
 'state_dir' => '/var/lib/totmann',
 
 // Runtime file names (filenames only, no paths).
@@ -171,8 +171,8 @@ return [
 // Each list entry must be exactly one mailbox string.
 // Do not put comma-separated mailbox lists into one entry.
 'to_self' => [
-    'My Name <myname@example.com>',
-    'Fallback Mail <fallback@example.com>',
+'My Name <myname@example.com>',
+'Fallback Mail <fallback@example.com>',
 ],
 
 // Mandatory operator warning mails also go to `to_self`.
@@ -180,7 +180,7 @@ return [
 // be easy to miss in the log or journal.
 //
 // Allowed values: whole hours 1..24
-// If you remove this key or set an invalid value, Totmannschalter falls back to 2.
+// If you remove this key or set an invalid value, totmannschalter falls back to 2.
 // The warning mail itself is built in on purpose and cannot be disabled.
 'operator_alert_interval_hours' => 2,
 
@@ -189,13 +189,13 @@ return [
 'reply_to' => 'My Name <myname@example.com>',
 
 // Reminder subject.
-'subject_reminder' => '[totmannschalter] Confirmation required',
+'subject_reminder' => '[totmannschalter] Please confirm you are safe',
 
 // Timezone for human-readable timestamps in emails.
 'mail_timezone' => 'Europe/London',
 // Date/time format pieces (DateTime::format()) – see https://php.net/manual/datetime.format.php
-'mail_date_format' => 'j F Y', // "14. Feb 2026"
-'mail_time_format' => 'H:i:s', // "21:03:12"
+'mail_date_format' => 'j F Y',
+'mail_time_format' => 'H:i:s',
 // Optional: override date+time with one format string (DateTime::format()). Empty string disables.
 'mail_datetime_format' => 'l, j F Y, H:i:s e',
 
@@ -204,15 +204,17 @@ return [
 // - reminder: {CONFIRM_URL}, {DEADLINE_ISO}, {CYCLE_START_ISO}
 // Escalation mail bodies now live only in `totmann-recipients.php`.
 'body_reminder' => <<<TXT
-Hi,
+Hello,
 
-Please confirm you are still alive by clicking this link:
+This is a reminder to confirm that you are safe and able to respond.
+
+Please use this link to confirm:
 {CONFIRM_URL}
 
-Please confirm by: {DEADLINE_ISO}
-Cycle started at: {CYCLE_START_ISO}
+Confirmation deadline: {DEADLINE_ISO}
+Current cycle started: {CYCLE_START_ISO}
 
-Note: This email link may remain valid until the next cycle starts. If you confirm after the deadline, escalation logic may already have progressed.
+If you confirm after the deadline, escalation may already have started.
 TXT,
 
 // Logging target mode:

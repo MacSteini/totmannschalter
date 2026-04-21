@@ -3,16 +3,16 @@
 /**
  * totmannschalter – systemd tick entrypoint
  *
- * Project: https://github.com/MacSteini/totmannschalter
+ * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)
  *
  * State dir resolution:
- * - ENV TOTMANN_STATE_DIR, otherwise __DIR__ (so it works when placed in /var/lib/totmann).
+ * - ENV totmann_STATE_DIR, otherwise __DIR__ (so it works when placed in /var/lib/totmann).
  */
 
 declare(strict_types=1);
 
-$stateDir = rtrim((string)(getenv('TOTMANN_STATE_DIR') ?: __DIR__), '/');
+$stateDir = rtrim((string)(getenv('totmann_STATE_DIR') ?: __DIR__), '/');
 
 $argv = $_SERVER['argv'] ?? [];
 if (!is_array($argv)) {

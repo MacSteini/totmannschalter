@@ -1,4 +1,6 @@
 # totmannschalter – Roadmap
+![totmannschalter](../img/totmannschalter-icon.png)
+
 This document lists planned next steps.
 ## Scope and intent
 - No ETA commitments.

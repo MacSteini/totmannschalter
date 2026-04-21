@@ -3,11 +3,11 @@
 /**
  * totmannschalter – web endpoint
  *
- * Project: https://github.com/MacSteini/totmannschalter
+ * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)
  *
  * State dir resolution order:
- * 1) ENV: TOTMANN_STATE_DIR
+ * 1) ENV: totmann_STATE_DIR
  * 2) define('TOTMANN_STATE_DIR', '/var/lib/totmann'); // fallback if you cannot set ENV
  *
  * If neither exists, endpoint stays neutral (no implicit fallback to webroot/config state_dir).
@@ -20,7 +20,7 @@ define('TOTMANN_STATE_DIR', '/var/lib/totmann');
 
 function dm_resolve_state_dir(): ?string
 {
-    $v = rtrim((string)getenv('TOTMANN_STATE_DIR'), '/');
+    $v = rtrim((string)getenv('totmann_STATE_DIR'), '/');
     if ($v !== '') {
         return $v;
     }

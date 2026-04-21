@@ -1,10 +1,17 @@
 # totmannschalter – Changelog
+![totmannschalter](../img/totmannschalter-icon.png)
+
 This file documents all notable changes to this project.
 
 This project uses semantic versioning:
 - MAJOR: breaking changes
 - MINOR: new features (backwards compatible)
 - PATCH: bugfixes and small improvements (backwards compatible)
+## v3.0.1
+- Reworked the shipped reminder text in `totmann.inc.php` to a clearer and more professional British-English starter template.
+- Reworked the automatic `{ACK_BLOCK}` text to a more natural acknowledgement request.
+- Replaced the example escalation subjects, bodies, and single-use warning text in `totmann-recipients.php` with more useful starter templates for new users.
+- Updated the installation and mail guides so their example snippets match the shipped templates.
 ## v3.0.0
 - Added browser-language website localisation via `Accept-Language` with starter locales `de-DE`, `en-GB`, `en-US`, `fr-FR`, `it-IT`, and `es-ES`.
 - Reworked public website text to a more empathetic tone for neutral pages, confirmation pages, ACK pages, generic errors, and download-unavailable responses.

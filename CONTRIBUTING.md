@@ -1,4 +1,6 @@
 # Contribution guide
+![totmannschalter](img/totmannschalter-xs.png)
+
 This guide defines the expected workflow for pull requests in this repository.
 ## Scope
 - Contributions are welcome for bug fixes, documentation improvements, tests, and focused feature work.

@@ -1,4 +1,6 @@
 # totmannschalter – `systemd` unit & timer
+![totmannschalter](../img/totmannschalter-icon.png)
+
 You can create the unit and timer in one of two ways:
 - **Option A (recommended):** via terminal (copy/paste, deterministic)
 - **Option B:** manually with an editor (`nano`, `vi`, etc.)
@@ -17,7 +19,7 @@ User=root
 Group=<WEB_GROUP>
 Type=oneshot
 WorkingDirectory=/var/lib/totmann
-Environment=TOTMANN_STATE_DIR=/var/lib/totmann
+Environment=totmann_STATE_DIR=/var/lib/totmann
 UMask=0007
 
 ProtectSystem=strict
@@ -59,7 +61,7 @@ User=root
 Group=<WEB_GROUP>
 Type=oneshot
 WorkingDirectory=/var/lib/totmann
-Environment=TOTMANN_STATE_DIR=/var/lib/totmann
+Environment=totmann_STATE_DIR=/var/lib/totmann
 UMask=0007
 
 ProtectSystem=strict

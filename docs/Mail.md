@@ -1,4 +1,6 @@
 # totmannschalter – Mail delivery notes
+![totmannschalter](../img/totmannschalter-icon.png)
+
 ## Mail delivery (prerequisite)
 The script sends mail via the configured sendmail binary (`sendmail_path` in `totmann.inc.php`) in sendmail-compatible mode.
 
@@ -37,15 +39,15 @@ Rules:
 Correct:
 ```php
 'to_self' => [
-    'Alice <alice@example.com>',
-    'Bob <bob@example.com>',
+'Alice <alice@example.com>',
+'Bob <bob@example.com>',
 ],
 ```
 
 Do not do this:
 ```php
 'to_self' => [
-    'Alice <alice@example.com>, Bob <bob@example.com>',
+'Alice <alice@example.com>, Bob <bob@example.com>',
 ],
 ```
 ## The recipient file at a glance
@@ -85,61 +87,68 @@ Important rules:
 ## Enduser example for `totmann-recipients.php`
 ```php
 $files = [
-    'letter' => 'shared/letter.pdf',
-    'contacts' => 'shared/contacts.txt',
-    'photos' => 'shared/family-photos.zip',
+'letter' => 'shared/letter.pdf',
+'contacts' => 'shared/contacts.txt',
+'photos' => 'shared/family-photos.zip',
 ];
 
 $messages = [
-    'default' => [
-        'subject' => '[totmannschalter] Escalation triggered',
-        'body' => <<<TXT
+'default' => [
+'subject' => '[totmannschalter] EXAMPLE TEMPLATE – escalation message',
+'body' => <<<TXT
 Hello {RECIPIENT_NAME},
 
-{ACK_BLOCK}
+This is an example escalation message for Totmannschalter.
+Please replace it with your own wording before production use.
 
-{DOWNLOAD_LINKS}
-TXT,
-    ],
-    'documents' => [
-        'subject' => '[totmannschalter] Important documents',
-        'single_use_notice' => 'Save this file locally straight away. This download link works only once.',
-        'body' => <<<TXT
-Dear {RECIPIENT_NAME},
-
-Please read this message carefully.
+You are receiving this message because the sender did not complete the required confirmation in time.
 
 {ACK_BLOCK}
 
 {DOWNLOAD_LINKS}
 TXT,
-    ],
+],
+'documents' => [
+'subject' => '[totmannschalter] EXAMPLE TEMPLATE – message with documents',
+'single_use_notice' => 'Please save this file straight away. This download link works only once.',
+'body' => <<<TXT
+Hello {RECIPIENT_NAME},
+
+This is an example escalation message for document delivery.
+Please replace it with your own wording before production use.
+
+The files below are included as part of this message.
+
+{ACK_BLOCK}
+
+{DOWNLOAD_LINKS}
+TXT,
+],
 ];
 
 $recipients = [
-    // Message only, no files.
-    ['Recipient 1', 'recipient1@example.com', 'default'],
+// Message only, no files.
+['Recipient 1', 'recipient1@example.com', 'default'],
 
-    // Normal downloads only: use field 4.
-    ['Jane Doe', 'Jane Doe <recipient2@example.com>', 'documents', ['letter', 'contacts']],
+// Normal downloads only: use field 4.
+['Jane Doe', 'Jane Doe <recipient2@example.com>', 'documents', ['letter', 'contacts']],
 
-    // Single-use download only: use field 5.
-    ['John Doe', '<recipient3@example.com>', 'documents', [], ['photos']],
+// Single-use download only: use field 5.
+['John Doe', '<recipient3@example.com>', 'documents', [], ['photos']],
 
-    // Mixed case: field 4 stays normal, field 5 becomes single-use.
-    ['Alex Example', 'alex@example.com', 'documents', ['letter'], ['photos']],
+// Mixed case: field 4 stays normal, field 5 becomes single-use.
+['Alex Example', 'alex@example.com', 'documents', ['letter'], ['photos']],
 
-    // Same file for another recipient: repeat the same alias.
-    ['Sam Example', 'sam@example.com', 'documents', ['letter']],
+// Same file for another recipient: repeat the same alias.
+['Sam Example', 'sam@example.com', 'documents', ['letter']],
 ];
 
 return [
-    'files' => $files,
-    'messages' => $messages,
-    'recipients' => $recipients,
+'files' => $files,
+'messages' => $messages,
+'recipients' => $recipients,
 ];
 ```
-
 How to read those rows:
 - `['Recipient 1', 'recipient1@example.com', 'default']`
 	- sends the `default` message
@@ -228,12 +237,11 @@ Practical meaning:
 Minimal example:
 ```php
 'documents' => [
-    'subject' => '[totmannschalter] Important documents',
-    'single_use_notice' => 'Save this file locally straight away. This download link works only once.',
-    'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
+'subject' => '[totmannschalter] EXAMPLE TEMPLATE – message with documents',
+'single_use_notice' => 'Please save this file straight away. This download link works only once.',
+'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
 ],
 ```
-
 Practical rule:
 - if a message is only used with field 4, `single_use_notice` can be omitted
 - if a message is used with field 5 anywhere, `single_use_notice` must be present
@@ -243,22 +251,21 @@ If two or more recipients should receive the same file, define it once in `$file
 Example:
 ```php
 $files = [
-    'letter' => 'shared/letter.pdf',
+'letter' => 'shared/letter.pdf',
 ];
 
 $messages = [
-    'default' => [
-        'subject' => '[totmannschalter] Escalation triggered',
-        'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
-    ],
+'default' => [
+'subject' => '[totmannschalter] EXAMPLE TEMPLATE – escalation message',
+'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
+],
 ];
 
 $recipients = [
-    ['Jane Doe', 'recipient2@example.com', 'default', ['letter']],
-    ['John Doe', 'recipient3@example.com', 'default', ['letter']],
+['Jane Doe', 'recipient2@example.com', 'default', ['letter']],
+['John Doe', 'recipient3@example.com', 'default', ['letter']],
 ];
 ```
-
 Result:
 - both recipients receive separate mails
 - both recipients receive separate signed URLs

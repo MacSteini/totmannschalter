@@ -1,4 +1,6 @@
 # totmannschalter – Troubleshooting
+![totmannschalter](../img/totmannschalter-icon.png)
+
 ## Neutral page (“This page is not available.”)
 This is expected behaviour for:
 - invalid or missing token
@@ -19,7 +21,6 @@ Typical causes:
 ```sh
 ls -la /var/lib/totmann
 ```
-
 Expected (conceptually):
 - directory: `root:<WEB_GROUP>` and mode like `drwxrws---` (`2770`)
 - files: `-rw-rw----` (`0660`) for configured runtime files such as `state_file`, `lock_file`, and `log_file_name`
@@ -27,9 +28,8 @@ Expected (conceptually):
 ```sh
 sudo systemctl show totmann.service -p Environment -p WorkingDirectory -p ExecStart -p UMask
 ```
-
 Make sure you see:
-- `Environment=TOTMANN_STATE_DIR=/var/lib/totmann`
+- `Environment=totmann_STATE_DIR=/var/lib/totmann`
 - `WorkingDirectory=/var/lib/totmann`
 - `UMask=0007`
 ### Confirm the real web identity can write
@@ -37,7 +37,6 @@ Replace `<WEB_USER>` with the PHP runtime user (e. g., `www-data`).
 ```sh
 sudo -u <WEB_USER> php -r '$f="/var/lib/totmann/.permtest"; echo (file_put_contents($f,"x")!==false)?"write:OK\n":"write:NO\n"; @unlink($f);'
 ```
-
 If you do not know `<WEB_USER>` (PHP-FPM):
 ```sh
 sudo grep -R --line-number "^\s*user\s*=" /etc/php/*/fpm/pool.d
@@ -49,7 +48,7 @@ First: reminders are only sent during the confirmation window.
 - reminders only from `next_check_at` (inclusive) until `deadline_at` (exclusive)
 - escalation only at or after `deadline_at + escalate_grace_seconds`, and only once `missed_cycles_before_fire` is reached
 
-If Totmannschalter detects an operator-facing setup/runtime problem while the tick is running, it can also send a separate warning mail to `to_self`.
+If totmannschalter detects an operator-facing setup/runtime problem while the tick is running, it can also send a separate warning mail to `to_self`.
 Those warning mails are mandatory on purpose, are throttled by `operator_alert_interval_hours`, and do not replace the log.
 ### Check timer and logs
 ```sh
@@ -57,12 +56,11 @@ systemctl list-timers | grep totmann
 journalctl -u totmann.service -n 200 --no-pager
 tail -n 200 /var/lib/totmann/totmann.log
 ```
-
 Choose log commands according to `log_mode`:
 - `syslog` => rely on `journalctl`
 - `file` => rely on `tail`
 - `both` => use both
-- `none` => no Totmannschalter file-log lines are expected
+- `none` => no totmannschalter file-log lines are expected
 If you are unsure how to read the file-log lines or how they relate to `journalctl`, use [Log guide](Logs.md "Log guide").
 ### Check state actually progresses
 Look at these fields in `totmann.json` under the `runtime` subtree:
@@ -79,7 +77,6 @@ If the timing fields in `runtime` are missing or inconsistent (`cycle_start_at`,
 ```sh
 cat /var/lib/totmann/totmann.json
 ```
-
 If `next_reminder_at` does not move forward, the tick likely failed before saving state. Check logs for an exception.
 
 After escalation ACK reminders hit the configured maximum, one final “limit reached” marker is expected, then recurring escalation status lines stop by design. This keeps logs focused on actionable events.
@@ -98,7 +95,7 @@ What to do first:
 
 Throttle behaviour:
 - `operator_alert_interval_hours` accepts only `1..24`
-- if you remove it or set an invalid value, Totmannschalter falls back automatically to `2`
+- if you remove it or set an invalid value, totmannschalter falls back automatically to `2`
 - the warning mail itself cannot be disabled
 ## Downloads do not work
 Check these points in order:
@@ -140,7 +137,6 @@ Default and safest setting:
 ```php
 'ip_mode' => 'remote_addr',
 ```
-
 Only use:
 ```php
 'ip_mode' => 'trusted_proxy',
@@ -158,7 +154,6 @@ sudo rm -f /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/
 sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totmann-tick.php tick'
 sudo systemctl start totmann.timer
 ```
-
 The `rm` command uses the filenames from the template config. Adapt it if you changed them in `totmann.inc.php`.
 
 > **Why `umask 0007` matters**

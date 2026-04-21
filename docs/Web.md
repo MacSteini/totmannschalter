@@ -1,4 +1,6 @@
 # totmannschalter – Web endpoint configuration
+![totmannschalter](../img/totmannschalter-icon.png)
+
 ## One endpoint for everything
 `totmann.php` is the only public endpoint.
 
@@ -13,7 +15,7 @@ This means:
 - the runtime appends `web_file` automatically
 ## State dir resolution
 The web endpoint resolves the state directory in this order:
-1. ENV `TOTMANN_STATE_DIR`
+1. ENV `totmann_STATE_DIR`
 2. `define('TOTMANN_STATE_DIR', '/var/lib/totmann');`
 
 The shipped `totmann.php` template enables the `define(...)` fallback by default. Adjust it to your actual state dir if needed.
@@ -139,7 +141,6 @@ Expected paths exist:
 ```sh
 ls -la /var/lib/totmann
 ```
-
 Web identity can read config and write runtime files, replace `<WEB_USER>`:
 ```sh
 sudo -u <WEB_USER> php -r 'echo is_readable("/var/lib/totmann/totmann.inc.php") ? "config:OK\n" : "config:NO\n";'

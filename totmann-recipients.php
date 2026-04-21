@@ -3,7 +3,7 @@
 /**
  * totmannschalter – recipients, reusable messages, and optional download files
  *
- * Project: https://github.com/MacSteini/totmannschalter
+ * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)
  *
  * This file is the operator-facing recipient template:
@@ -70,75 +70,74 @@
 declare(strict_types=1);
 
 $files = [
-    'letter' => 'shared/letter.pdf',
-    'contacts' => 'shared/contacts.txt',
-    'photos' => 'shared/family-photos.zip',
+'letter' => 'shared/letter.pdf',
+'contacts' => 'shared/contacts.txt',
+'photos' => 'shared/family-photos.zip',
 ];
 
 $messages = [
-    'default' => [
-        'subject' => '[totmannschalter] EXAMPLE ONLY – replace before production use',
-        'body' => <<<TXT
-[EXAMPLE TEXT – REPLACE BEFORE PRODUCTION USE]
-
+'default' => [
+'subject' => '[totmannschalter] EXAMPLE TEMPLATE – escalation message',
+'body' => <<<TXT
 Hello {RECIPIENT_NAME},
 
-Please review the original email carefully.
+This is an example escalation message for Totmannschalter.
+Please replace it with your own wording before production use.
+
+You are receiving this message because the sender did not complete the required confirmation in time.
 
 {ACK_BLOCK}
 
 {DOWNLOAD_LINKS}
 TXT,
-    ],
-    'jane' => [
-        'subject' => '[totmannschalter] EXAMPLE ONLY – personal message template',
-        'body' => <<<TXT
-[EXAMPLE TEXT – REPLACE BEFORE PRODUCTION USE]
-
+],
+'jane' => [
+'subject' => '[totmannschalter] EXAMPLE TEMPLATE – personal message',
+'body' => <<<TXT
 Dear {RECIPIENT_NAME},
 
-Please review the original email carefully.
+This is an example of a more personal escalation message.
+Please replace it with your own wording before production use.
+
+If you are reading this, the sender did not complete the required confirmation in time.
 
 {ACK_BLOCK}
 
 {DOWNLOAD_LINKS}
 TXT,
-    ],
-    'john' => [
-        'subject' => '[totmannschalter] EXAMPLE ONLY – document delivery template',
-        'single_use_notice' => '[EXAMPLE SINGLE-USE WARNING – REPLACE BEFORE PRODUCTION USE]',
-        'body' => <<<TXT
-[EXAMPLE TEXT – REPLACE BEFORE PRODUCTION USE]
-
+],
+'john' => [
+'subject' => '[totmannschalter] EXAMPLE TEMPLATE – message with documents',
+'single_use_notice' => 'Please save this file straight away. This download link works only once.',
+'body' => <<<TXT
 Hello {RECIPIENT_NAME},
 
-Please read the note below.
+This is an example escalation message for document delivery.
+Please replace it with your own wording before production use.
+
+The files below are included as part of this message.
 
 {ACK_BLOCK}
 
 {DOWNLOAD_LINKS}
 TXT,
-    ],
+],
 ];
 
 $recipients = [
-    // Simplest case: one recipient, one message, no download links.
-    ['Recipient 1', 'recipient1@example.com', 'default'],
+// Simplest case: one recipient, one message, no download links.
+['Recipient 1', 'recipient1@example.com', 'default'],
 
-    // Normal downloads only: put file aliases into field 4.
-    ['Jane Doe', 'Jane Doe <recipient2@example.com>', 'jane', ['letter', 'contacts']],
+// Normal downloads only: put file aliases into field 4.
+['Jane Doe', 'Jane Doe <recipient2@example.com>', 'jane', ['letter', 'contacts']],
 
-    // Mixed case: field 4 stays normal, field 5 becomes single-use.
-    // Here `letter` can be downloaded normally, while `photos` is limited to one successful download.
-    // Because field 5 is used here, message `john` also defines `single_use_notice`.
-    ['John Doe', '<recipient3@example.com>', 'john', ['letter'], ['photos']],
+// Mixed case: field 4 stays normal, field 5 becomes single-use.
+// Here `letter` can be downloaded normally, while `photos` is limited to one successful download.
+// Because field 5 is used here, message `john` also defines `single_use_notice`.
+['John Doe', '<recipient3@example.com>', 'john', ['letter'], ['photos']],
 
-    // The same file can be assigned to another recipient by repeating the same alias.
-    ['Alex Example', 'alex@example.com', 'default', ['letter']],
+// The same file can be assigned to another recipient by repeating the same alias.
+['Alex Example', 'alex@example.com', 'default', ['letter']],
 ];
 
-return [
-    'files' => $files,
-    'messages' => $messages,
-    'recipients' => $recipients,
-];
+return ['files' => $files, 'messages' => $messages, 'recipients' => $recipients];

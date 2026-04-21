@@ -1,4 +1,6 @@
 # totmannschalter – Timing model & presets
+![totmannschalter](../img/totmannschalter-icon.png)
+
 The system works in repeating cycles. Each cycle is anchored at `cycle_start_at`, set on initialisation and on every successful confirmation.
 ## Timeline definitions (per cycle)
 - `next_check_at = cycle_start_at + check_interval_seconds` -> the moment the confirmation window opens

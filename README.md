@@ -1,7 +1,9 @@
 # totmannschalter
+![totmannschalter](img/totmannschalter-xs.png)
+
 ![GitHub Release](https://img.shields.io/github/v/release/macsteini/totmannschalter?label=Release&color=red)
-![Static Badge](https://img.shields.io/badge/PHP_>=-v8.0.0-blue)
-[![Licence: MIT](https://img.shields.io/github/license/macsteini/totmannschalter)](https://opensource.org/license/mit)
+![Static Badge](https://img.shields.io/badge/PHP->=v8.0.0-red)
+[![Licence: MIT](https://img.shields.io/github/license/macsteini/totmannschalter?label=License&color=red)](https://opensource.org/license/mit)
 
 A fully self-hosted “dead man’s switch” for email: it sends periodic confirmation links from your own server, and if you do not confirm within a defined window (plus grace), it escalates to predefined recipients. No third-party services, no vendor lock-in – just `systemd`, PHP, and sendmail on infrastructure you control.
 ## What this does
@@ -73,7 +75,7 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 	sudo find /var/lib/totmann -type f -exec chmod 0660 {} \;
 	```
 5. Ensure the web runtime resolves the same state dir:
-	- Prefer ENV `TOTMANN_STATE_DIR=/var/lib/totmann` in your PHP runtime.
+	- Prefer ENV `totmann_STATE_DIR=/var/lib/totmann` in your PHP runtime.
 	- `totmann.php` in this repo ships with `define('TOTMANN_STATE_DIR', '/var/lib/totmann')` enabled by default. Adjust this value if your state dir differs.
 6. Run preflight in the deployed state dir:
 	```sh
@@ -95,7 +97,7 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 	```
 	If you changed `log_file_name` or `log_file`, use that effective path instead. If `log_mode` is `syslog` or `none`, use `journalctl` instead of `tail`. For help reading file-log lines, journal bootstrap failures, and operator warning mails together, use [Log guide](docs/Logs.md "Log guide").
 ## Terms
-- ENV: environment variable (e. g., `TOTMANN_STATE_DIR`).
+- ENV: environment variable (e. g., `totmann_STATE_DIR`).
 - GET/POST: HTTP request methods (`GET` shows the confirm page; `POST` performs the confirmation).
 - ACK: recipient receipt acknowledgement link (stops further escalation mails for that escalation event once any recipient clicks).
 - HMAC: keyed hash used to sign tokens (tamper-resistant).
@@ -116,13 +118,6 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 9. [Roadmap](docs/Roadmap.md "Roadmap") – planned next features
 10. [Contribution guide](CONTRIBUTING.md "Contribution guide") – contribution workflow, quality checks, PR checklist
 ## Contributing
-Contributions are welcome! Please follow these steps:
-1. Fork this repository
-2. Create a feature branch: `git checkout -b feature-branch`
-3. Commit your changes: `git commit -m "Add feature"`
-4. Push the branch: `git push origin feature-branch`
-5. Submit a pull request
-
-Please ensure all changes are well-documented and tested.
+[Contributions are welcome!](CONTRIBUTING.md "Contributions are welcome!")
 ## Licence
 This project uses the [MIT Licence](LICENCE "MIT Licence"). You may use, change, and distribute it in compliance with the licence terms.

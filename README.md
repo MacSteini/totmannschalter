@@ -1,11 +1,14 @@
 # totmannschalter
 ![totmannschalter](img/totmannschalter-xs.png)
 
-![GitHub Release](https://img.shields.io/github/v/release/macsteini/totmannschalter?label=Release&color=red)
-![Static Badge](https://img.shields.io/badge/PHP->=v8.0.0-red)
+[![GitHub Release](https://img.shields.io/github/v/release/macsteini/totmannschalter?label=Release&color=red)](https://github.com/MacSteini/totmannschalter/releases/latest)
+[![Static Badge](https://img.shields.io/badge/PHP->=v8.0.0-red)](docs/Installation.md)
 [![Licence: MIT](https://img.shields.io/github/license/macsteini/totmannschalter?label=License&color=red)](https://opensource.org/license/mit)
 
 A fully self-hosted “dead man’s switch” for email: it sends periodic confirmation links from your own server, and if you do not confirm within a defined window (plus grace), it escalates to predefined recipients. No third-party services, no vendor lock-in – just `systemd`, PHP, and sendmail on infrastructure you control.
+
+**[Download the latest version from here.](https://github.com/MacSteini/totmannschalter/releases/latest)**
+
 ## What this does
 - You regularly receive an email containing a **confirmation link**.
 - Confirmation is **two-step** (`GET` shows a button, `POST` confirms) to defeat mail link scanners.

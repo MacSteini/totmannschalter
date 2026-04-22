@@ -1,4 +1,3 @@
-# totmann
 ![totmann](img/totmannschalter-xs.png)
 
 [![GitHub Release](https://img.shields.io/github/v/release/macsteini/totmannschalter?label=Release&color=red)](https://github.com/MacSteini/totmannschalter/releases/latest)

@@ -13,6 +13,13 @@ This document lists planned next steps.
 ### TXT or HTML output mode
 - Add a config option to send plain text or HTML mail format.
 - Default remains plain text.
+### Optional web UI for recipient and message management
+- Add an optional browser-based interface for managing recipients, downloads, and custom message texts.
+- Intended for operators who do not want to edit the PHP config files manually.
+- The existing file-based workflow remains valid; the web UI is a convenience and accessibility feature, not a replacement.
+- Initial scope targets a single-user setup with username/password authentication first.
+- 2FA may be added later as an extension if the basic interface proves useful.
+- The implementation must preserve the current file-based source of truth or generate configuration that stays fully compatible with it.
 ### Encrypted final recipient messages
 - Add optional encryption for final recipient emails to reduce unauthorised access risk in transit/storage and allow sensitive content usage.
 - Scope includes key handling strategy and operational recovery expectations.

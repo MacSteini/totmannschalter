@@ -51,7 +51,7 @@ return [
 'page_ack_ok_body_1' => 'Le message a été marqué comme reçu.',
 'page_ack_ok_body_2' => 'Vous ne recevrez plus aucun autre courriel. Le dispositif homme mort a été arrêté.',
 'page_ack_ok_body_3' => 'Veuillez maintenant suivre les souhaits et les instructions figurant dans le courriel reçu.',
-'page_ack_ok_body_4' => 'Important ! Si le courriel contenait un lien de téléchargement, assurez-vous d’avoir téléchargé ce document.',
+'page_ack_ok_body_4' => 'Important! Si le courriel contenait un lien de téléchargement, assurez-vous d’avoir téléchargé ce document.',
 'page_error_title' => 'Cela n’a pas fonctionné pour le moment.',
 'page_error_heading' => 'Cela n’a pas fonctionné pour le moment.',
 'page_error_body_1' => 'Veuillez réessayer.',

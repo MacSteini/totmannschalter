@@ -411,7 +411,8 @@ function dm_render_page(string $title, string $bodyHtml): void
     $cssFile = dm_web_css_file_get();
     $cssLink = $cssFile !== null ? '<link rel="stylesheet" href="' . dm_h($cssFile) . '">' : '';
     $htmlLang = dm_h((string)(dm_web_catalog()['html_lang'] ?? 'en-US'));
-    echo '<!doctype html><html lang="' . $htmlLang . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>' . dm_h($title) . '</title>' . $cssLink . '</head><body><main class="dm_shell"><section class="dm_card">' . $bodyHtml . '</section></main></body></html>';
+    $logoHtml = '<div class="dm_logo_wrap"><img class="dm_logo" src="https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totmannschalter-s.png" alt="totmannschalter"></div>';
+    echo '<!doctype html><html lang="' . $htmlLang . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>' . dm_h($title) . '</title>' . $cssLink . '</head><body><main class="dm_shell"><section class="dm_card">' . $logoHtml . $bodyHtml . '</section></main></body></html>';
     exit;
 }
 

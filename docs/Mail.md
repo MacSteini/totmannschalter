@@ -1,5 +1,5 @@
-# totmannschalter – Mail delivery notes
-![totmannschalter](../img/totmannschalter-icon.png)
+# totmann – Mail delivery notes
+![totmann](../img/totmannschalter-icon.png)
 
 ## Mail delivery (prerequisite)
 The script sends mail via the configured sendmail binary (`sendmail_path` in `totmann.inc.php`) in sendmail-compatible mode.
@@ -100,11 +100,11 @@ $files = [
 
 $messages = [
 'default' => [
-'subject' => '[totmannschalter] EXAMPLE TEMPLATE – escalation message',
+'subject' => '[totmann] EXAMPLE TEMPLATE – escalation message',
 'body' => <<<TXT
 Hello {RECIPIENT_NAME},
 
-This is an example escalation message for Totmannschalter.
+This is an example escalation message for totmann.
 Please replace it with your own wording before production use.
 
 You are receiving this message because the sender did not complete the required confirmation in time.
@@ -115,7 +115,7 @@ You are receiving this message because the sender did not complete the required 
 TXT,
 ],
 'documents' => [
-'subject' => '[totmannschalter] EXAMPLE TEMPLATE – message with documents',
+'subject' => '[totmann] EXAMPLE TEMPLATE – message with documents',
 'single_use_notice' => 'Please save this file straight away. This download link works only once.',
 'body' => <<<TXT
 Hello {RECIPIENT_NAME},
@@ -243,7 +243,7 @@ Practical meaning:
 Minimal example:
 ```php
 'documents' => [
-'subject' => '[totmannschalter] EXAMPLE TEMPLATE – message with documents',
+'subject' => '[totmann] EXAMPLE TEMPLATE – message with documents',
 'single_use_notice' => 'Please save this file straight away. This download link works only once.',
 'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
 ],
@@ -262,7 +262,7 @@ $files = [
 
 $messages = [
 'default' => [
-'subject' => '[totmannschalter] EXAMPLE TEMPLATE – escalation message',
+'subject' => '[totmann] EXAMPLE TEMPLATE – escalation message',
 'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
 ],
 ];

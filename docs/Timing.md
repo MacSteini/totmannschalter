@@ -1,5 +1,5 @@
-# totmannschalter – Timing model & presets
-![totmannschalter](../img/totmannschalter-icon.png)
+# totmann – Timing model & presets
+![totmann](../img/totmannschalter-icon.png)
 
 The system works in repeating cycles. Each cycle is anchored at `cycle_start_at`, set on initialisation and on every successful confirmation.
 ## Timeline definitions (per cycle)

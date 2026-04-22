@@ -1,5 +1,5 @@
-# totmannschalter – `systemd` unit & timer
-![totmannschalter](../img/totmannschalter-icon.png)
+# totmann – `systemd` unit & timer
+![totmann](../img/totmannschalter-icon.png)
 
 You can create the unit and timer in one of two ways:
 - **Option A (recommended):** via terminal (copy/paste, deterministic)

@@ -189,7 +189,7 @@ return [
 'reply_to' => 'My Name <myname@example.com>',
 
 // Reminder subject.
-'subject_reminder' => '[totmannschalter] Please confirm you are safe',
+'subject_reminder' => '[totmann] Please confirm you are safe',
 
 // Timezone for human-readable timestamps in emails.
 'mail_timezone' => 'Europe/London',

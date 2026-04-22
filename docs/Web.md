@@ -1,5 +1,5 @@
-# totmannschalter – Web endpoint configuration
-![totmannschalter](../img/totmannschalter-icon.png)
+# totmann – Web endpoint configuration
+![totmann](../img/totmannschalter-icon.png)
 
 ## One endpoint for everything
 `totmann.php` is the only public endpoint.

@@ -411,7 +411,7 @@ function dm_render_page(string $title, string $bodyHtml, string $cardClass = '')
     $cssFile = dm_web_css_file_get();
     $cssLink = $cssFile !== null ? '<link rel="stylesheet" href="' . dm_h($cssFile) . '">' : '';
     $htmlLang = dm_h((string)(dm_web_catalog()['html_lang'] ?? 'en-US'));
-    $logoHtml = '<div class="dm_logo_wrap"><img class="dm_logo" src="https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totmannschalter-s.png" alt="totmannschalter"></div>';
+    $logoHtml = '<div class="dm_logo_wrap"><img class="dm_logo" src="https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totmannschalter-s.png" alt="totmann"></div>';
     $cardClassAttr = 'dm_card';
     if ($cardClass !== '') {
         $cardClassAttr .= ' ' . $cardClass;

@@ -1,7 +1,7 @@
-# totmannschalter – Example messages
-![totmannschalter](../img/totmannschalter-icon.png)
+# totmann – Example messages
+![totmann](../img/totmannschalter-icon.png)
 
-This page shows representative messages that Totmannschalter can generate during normal use and during operator-facing problems.
+This page shows representative messages that totmann can generate during normal use and during operator-facing problems.
 
 Use it when you want to answer practical questions such as:
 - What does a normal self-reminder look like?
@@ -15,7 +15,7 @@ Important:
 - if you need to analyse live runtime evidence, use [Log guide](Logs.md "Log guide")
 
 ## Self reminder
-You will see this when the normal reminder cycle runs and Totmannschalter asks you to confirm that you are safe and able to respond.
+You will see this when the normal reminder cycle runs and totmann asks you to confirm that you are safe and able to respond.
 
 This message goes to the addresses listed in `to_self`.
 
@@ -49,7 +49,7 @@ What to notice:
 - the deadline and current cycle timing help you see how urgent the action is
 
 ## Operator warning
-You will see this when Totmannschalter detects an operator-facing configuration or runtime problem but can still continue in best-effort mode.
+You will see this when totmann detects an operator-facing configuration or runtime problem but can still continue in best-effort mode.
 
 This message goes to the addresses in `to_self`, not to escalation recipients.
 
@@ -65,7 +65,7 @@ Example: unknown single-use file alias
 ```text
 Subject: Operator warning: Recipient skipped
 
-totmannschalter detected an operator-facing problem and continued in best-effort mode where possible.
+totmann detected an operator-facing problem and continued in best-effort mode where possible.
 
 Alert type: Recipient skipped
 Fingerprint: ba4b8927595f7f3b03b103c8
@@ -91,7 +91,7 @@ Example: unknown normal file alias
 ```text
 Subject: Operator warning: Recipient skipped
 
-totmannschalter detected an operator-facing problem and continued in best-effort mode where possible.
+totmann detected an operator-facing problem and continued in best-effort mode where possible.
 
 Alert type: Recipient skipped
 Fingerprint: 8d70ce73514a6dc97e26353e
@@ -119,7 +119,7 @@ What to notice:
 - the important variation is usually the `Original problem` line, not the rest of the mail
 
 ## Escalation mail to a recipient
-You will see this when the configured confirmation window and grace period have passed and Totmannschalter starts escalation.
+You will see this when the configured confirmation window and grace period have passed and totmann starts escalation.
 
 This message goes to one configured escalation recipient, not to `to_self`.
 
@@ -135,7 +135,7 @@ What to do next:
 
 Example:
 ```text
-Subject: [totmannschalter] EXAMPLE TEMPLATE – message with documents
+Subject: [totmann] EXAMPLE TEMPLATE – message with documents
 
 Hello John Doe,
 

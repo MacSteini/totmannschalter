@@ -1,5 +1,5 @@
-# totmannschalter – Changelog
-![totmannschalter](../img/totmannschalter-icon.png)
+# totmann – Changelog
+![totmann](../img/totmannschalter-icon.png)
 
 This file documents all notable changes to this project.
 

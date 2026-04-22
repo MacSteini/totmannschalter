@@ -49,7 +49,7 @@ return [
 'page_ack_ok_title' => 'Rückmeldung gespeichert.',
 'page_ack_ok_heading' => 'Danke.',
 'page_ack_ok_body_1' => 'Die Nachricht wurde als erhalten bestätigt.',
-'page_ack_ok_body_2' => 'Sie werden keine weiteren E-Mails mehr erhalten. Der Totmannschalter wurde stillgelegt.',
+'page_ack_ok_body_2' => 'Sie werden keine weiteren E-Mails mehr erhalten. Der totmann wurde stillgelegt.',
 'page_ack_ok_body_3' => 'Bitte folgen Sie nun den Wünschen und Hinweisen in der empfangenen E-Mail.',
 'page_ack_ok_body_4' => 'Wichtig! Sollte die E-Mail einen Downloadlink enthalten haben, stellen Sie sicher, dass Sie dieses Dokument heruntergeladen haben.',
 'page_error_title' => 'Das hat gerade nicht geklappt.',

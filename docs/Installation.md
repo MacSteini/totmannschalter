@@ -1,5 +1,5 @@
-# totmannschalter – Installation
-![totmannschalter](../img/totmannschalter-icon.png)
+# totmann – Installation
+![totmann](../img/totmannschalter-icon.png)
 
 ## Prerequisites
 - PHP 8.0+.
@@ -107,7 +107,7 @@ If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `w
 - Public web pages follow the browser language from `Accept-Language`; fallback language is `en-US`
 - Public web timestamps stay in `mail_timezone`
 - If a locale directory/file is missing or unreadable, preflight reports it and the endpoint falls back to `en-US`
-- `operator_alert_interval_hours` accepts only whole hours `1..24`; if you remove it or set an invalid value, totmannschalter automatically falls back to `2`
+- `operator_alert_interval_hours` accepts only whole hours `1..24`; if you remove it or set an invalid value, totmann automatically falls back to `2`
 - If you plan to read file logs directly, also read [Log guide](Logs.md "Log guide") so you know how to interpret file-log lines, journal bootstrap failures, and operator warning mails together
 - Important: operator warning mails are built in on purpose, go to `to_self`, and cannot be disabled
 ## Update `totmann-recipients.php`
@@ -152,11 +152,11 @@ $files = [
 
 $messages = [
 'default' => [
-'subject' => '[totmannschalter] EXAMPLE TEMPLATE – escalation message',
+'subject' => '[totmann] EXAMPLE TEMPLATE – escalation message',
 'body' => <<<TXT
 Hello {RECIPIENT_NAME},
 
-This is an example escalation message for Totmannschalter.
+This is an example escalation message for totmann.
 Please replace it with your own wording before production use.
 
 You are receiving this message because the sender did not complete the required confirmation in time.
@@ -167,7 +167,7 @@ You are receiving this message because the sender did not complete the required 
 TXT,
 ],
 'jane' => [
-'subject' => '[totmannschalter] EXAMPLE TEMPLATE – personal message',
+'subject' => '[totmann] EXAMPLE TEMPLATE – personal message',
 'body' => <<<TXT
 Dear {RECIPIENT_NAME},
 
@@ -182,7 +182,7 @@ If you are reading this, the sender did not complete the required confirmation i
 TXT,
 ],
 'john' => [
-'subject' => '[totmannschalter] EXAMPLE TEMPLATE – message with documents',
+'subject' => '[totmann] EXAMPLE TEMPLATE – message with documents',
 'single_use_notice' => 'Please save this file straight away. This download link works only once.',
 'body' => <<<TXT
 Hello {RECIPIENT_NAME},
@@ -241,7 +241,7 @@ $files = [
 
 $messages = [
 'default' => [
-'subject' => '[totmannschalter] EXAMPLE TEMPLATE – escalation message',
+'subject' => '[totmann] EXAMPLE TEMPLATE – escalation message',
 'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
 ],
 ];

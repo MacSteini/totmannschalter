@@ -651,11 +651,11 @@ function dm_operator_alert_mark_sent(array &$state, string $fingerprint, int $no
 function dm_operator_alert_render_mail(array $cfg, array $alert): array
 {
     $label = (string)$alert['label'];
-    $subject = '[totmannschalter] Operator warning: ' . $label;
+    $subject = '[totmann] Operator warning: ' . $label;
     $stateDir = dm_state_dir($cfg);
 
     $body = implode("\n", [
-        'totmannschalter detected an operator-facing problem and continued in best-effort mode where possible.',
+        'totmann detected an operator-facing problem and continued in best-effort mode where possible.',
         '',
         'Alert type: ' . $label,
         'Fingerprint: ' . (string)$alert['fingerprint'],

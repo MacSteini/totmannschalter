@@ -1,5 +1,5 @@
-# totmannschalter – Troubleshooting
-![totmannschalter](../img/totmannschalter-icon.png)
+# totmann – Troubleshooting
+![totmann](../img/totmannschalter-icon.png)
 
 ## Neutral page (“This page is not available.”)
 This is expected behaviour for:
@@ -48,7 +48,7 @@ First: reminders are only sent during the confirmation window.
 - reminders only from `next_check_at` (inclusive) until `deadline_at` (exclusive)
 - escalation only at or after `deadline_at + escalate_grace_seconds`, and only once `missed_cycles_before_fire` is reached
 
-If totmannschalter detects an operator-facing setup/runtime problem while the tick is running, it can also send a separate warning mail to `to_self`.
+If totmann detects an operator-facing setup/runtime problem while the tick is running, it can also send a separate warning mail to `to_self`.
 Those warning mails are mandatory on purpose, are throttled by `operator_alert_interval_hours`, and do not replace the log.
 ### Check timer and logs
 ```sh
@@ -60,7 +60,7 @@ Choose log commands according to `log_mode`:
 - `syslog` => rely on `journalctl`
 - `file` => rely on `tail`
 - `both` => use both
-- `none` => no totmannschalter file-log lines are expected
+- `none` => no totmann file-log lines are expected
 If you are unsure how to read the file-log lines or how they relate to `journalctl`, use [Log guide](Logs.md "Log guide").
 ### Check state actually progresses
 Look at these fields in `totmann.json` under the `runtime` subtree:
@@ -95,7 +95,7 @@ What to do first:
 
 Throttle behaviour:
 - `operator_alert_interval_hours` accepts only `1..24`
-- if you remove it or set an invalid value, totmannschalter falls back automatically to `2`
+- if you remove it or set an invalid value, totmann falls back automatically to `2`
 - the warning mail itself cannot be disabled
 ## Downloads do not work
 Check these points in order:

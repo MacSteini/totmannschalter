@@ -1604,6 +1604,13 @@ function dm_send_mail(array $cfg, array $to, string $subject, string $body): voi
     $fromRaw = trim((string)($cfg['mail_from'] ?? ''));
     $replyRaw = trim((string)($cfg['reply_to'] ?? ''));
 
+    if ($fromRaw !== '' && !dm_mailbox_field_valid($fromRaw)) {
+        throw new RuntimeException('mail_from must contain exactly one valid mailbox string');
+    }
+    if ($replyRaw !== '' && !dm_mailbox_field_valid($replyRaw)) {
+        throw new RuntimeException('reply_to must contain exactly one valid mailbox string');
+    }
+
     $toHeader = [];
     $toArgv = [];
     $seen = [];
@@ -2188,6 +2195,7 @@ function dm_download_content_type(string $path): string
         $finfo = finfo_open(FILEINFO_MIME_TYPE);
         if ($finfo !== false) {
             $type = finfo_file($finfo, $path);
+            finfo_close($finfo);
             if (is_string($type) && trim($type) !== '') {
                 return $type;
             }
@@ -2596,8 +2604,21 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
         $fail('mail_from is empty.');
     } elseif ($looksPlaceholder($mailFrom)) {
         $fail('mail_from contains placeholder/local host value.');
+    } elseif (!dm_mailbox_field_valid($mailFrom)) {
+        $fail('mail_from must contain exactly one valid mailbox string.');
     } else {
         $ok('mail_from is set.');
+    }
+
+    $replyTo = trim((string)($cfg['reply_to'] ?? ''));
+    if ($replyTo !== '') {
+        if ($looksPlaceholder($replyTo)) {
+            $fail('reply_to contains placeholder/local host value.');
+        } elseif (!dm_mailbox_field_valid($replyTo)) {
+            $fail('reply_to must contain exactly one valid mailbox string when set.');
+        } else {
+            $ok('reply_to is set and valid.');
+        }
     }
 
     $sendmailPath = trim((string)($cfg['sendmail_path'] ?? '/usr/sbin/sendmail'));

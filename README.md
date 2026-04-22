@@ -115,11 +115,12 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 3. [Configure the web endpoint](docs/Web.md "Web endpoint configuration") – state dir resolution, stealth responses, downloads, proxy trust, rate limiting
 4. [Understand the timing model and presets](docs/Timing.md "Timing model and presets") – timing model, presets, walkthrough
 5. [Mail delivery notes](docs/Mail.md "Mail delivery notes") – sendmail notes, recipient file, placeholders, ACK, normal downloads, single-use downloads
-6. [Log guide](docs/Logs.md "Log guide") – how to read `totmann.log` and which lines require action
-7. [Troubleshooting](docs/Troubleshooting.md "Troubleshooting") – neutral page, missing mails, permissions, common failure modes
-8. [Changelog](docs/Changelog.md "Changelog") – release notes and version history
-9. [Roadmap](docs/Roadmap.md "Roadmap") – planned next features
-10. [Contribution guide](CONTRIBUTING.md "Contribution guide") – contribution workflow, quality checks, PR checklist
+6. [Example messages](docs/Examples.md "Example messages") – representative reminder, operator-warning, and escalation mails with practical explanation
+7. [Log guide](docs/Logs.md "Log guide") – how to read `totmann.log` and which lines require action
+8. [Troubleshooting](docs/Troubleshooting.md "Troubleshooting") – neutral page, missing mails, permissions, common failure modes
+9. [Changelog](docs/Changelog.md "Changelog") – release notes and version history
+10. [Roadmap](docs/Roadmap.md "Roadmap") – planned next features
+11. [Contribution guide](CONTRIBUTING.md "Contribution guide") – contribution workflow, quality checks, PR checklist
 ## Contributing
 [Contributions are welcome!](CONTRIBUTING.md "Contributions are welcome!")
 ## Licence

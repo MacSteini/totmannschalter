@@ -7,6 +7,13 @@ This project uses semantic versioning:
 - MAJOR: breaking changes
 - MINOR: new features (backwards compatible)
 - PATCH: bugfixes and small improvements (backwards compatible)
+## v3.0.2
+- Hardened outbound mail configuration checks so `mail_from` and optional `reply_to` must each contain exactly one valid mailbox string before sendmail handoff.
+- Extended preflight so invalid `mail_from` and `reply_to` values are reported explicitly during `php totmann-tick.php check`.
+- Closed the remaining MIME-detection handle in the download path.
+- Added a dedicated [Example messages](Examples.md "Example messages") guide with representative reminder, operator-warning, and escalation mails plus practical explanation for new users.
+- Corrected the installation example so the mixed normal/single-use download row matches the required `single_use_notice` model.
+- Synchronised comment and documentation wording with the current web-layout and shipped escalation-message templates.
 ## v3.0.1
 - Reworked the shipped reminder text in `totmann.inc.php` to a clearer and more professional British-English starter template.
 - Reworked the automatic `{ACK_BLOCK}` text to a more natural acknowledgement request.

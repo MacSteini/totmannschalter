@@ -4,6 +4,12 @@
 ## Mail delivery (prerequisite)
 The script sends mail via the configured sendmail binary (`sendmail_path` in `totmann.inc.php`) in sendmail-compatible mode.
 
+If you want to see what reminder mails, operator warnings, and escalation mails actually look like for end users, go to [Example messages](Examples.md "Example messages").
+
+Practical rule:
+- `mail_from` must contain exactly one mailbox string
+- if `reply_to` is set, it must also contain exactly one mailbox string
+
 Manual pipe test:
 ```sh
 # Adjust `/usr/sbin/sendmail` to match totmann.inc.php sendmail_path

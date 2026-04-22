@@ -16,6 +16,8 @@ Important:
 - those warning mails do not replace the log; they point you back to the same underlying problem
 - repeated operator warning mails are throttled by `operator_alert_interval_hours`
 
+If you want to see a full operator warning mail in context, go to [Example messages](Examples.md "Example messages").
+
 If you use `log_mode = file` or `log_mode = both`, the default file is `/var/lib/totmann/totmann.log`.
 
 If you changed `log_file_name` or `log_file` in `totmann.inc.php`, use that effective path instead.

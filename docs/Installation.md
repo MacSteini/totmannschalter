@@ -103,6 +103,7 @@ If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `w
 - `log_file_name` keeps the default file-log name unless you intentionally want a different filename
 - `hmac_secret_hex` (e. g., `openssl rand -hex 32`)
 - `to_self`
+- `mail_from` and optional `reply_to` must each contain exactly one mailbox string
 - Public web pages follow the browser language from `Accept-Language`; fallback language is `en-US`
 - Public web timestamps stay in `mail_timezone`
 - If a locale directory/file is missing or unreadable, preflight reports it and the endpoint falls back to `en-US`
@@ -209,7 +210,7 @@ $recipients = [
 ['John Doe', '<recipient3@example.com>', 'john', [], ['photos']],
 
 // Mixed case: field 4 stays normal, field 5 becomes single-use.
-['Alex Example', 'alex@example.com', 'default', ['letter'], ['photos']],
+['Alex Example', 'alex@example.com', 'john', ['letter'], ['photos']],
 ];
 
 return [
@@ -228,8 +229,8 @@ How to read those recipient rows:
 - `['John Doe', '<recipient3@example.com>', 'john', [], ['photos']]`
 	- sends the `john` message
 	- adds 1 single-use download link from field 5
-- `['Alex Example', 'alex@example.com', 'default', ['letter'], ['photos']]`
-	- sends the `default` message
+- `['Alex Example', 'alex@example.com', 'john', ['letter'], ['photos']]`
+	- sends the `john` message
 	- adds 1 normal link and 1 single-use link
 
 Same file for two recipients:

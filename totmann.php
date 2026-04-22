@@ -405,14 +405,18 @@ function dm_cycles_current_text(int $count): string
     return dm_web_text('detail_missed_current_other', ['count' => (string)$count]);
 }
 
-function dm_render_page(string $title, string $bodyHtml): void
+function dm_render_page(string $title, string $bodyHtml, string $cardClass = ''): void
 {
     dm_headers_common();
     $cssFile = dm_web_css_file_get();
     $cssLink = $cssFile !== null ? '<link rel="stylesheet" href="' . dm_h($cssFile) . '">' : '';
     $htmlLang = dm_h((string)(dm_web_catalog()['html_lang'] ?? 'en-US'));
     $logoHtml = '<div class="dm_logo_wrap"><img class="dm_logo" src="https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totmannschalter-s.png" alt="totmannschalter"></div>';
-    echo '<!doctype html><html lang="' . $htmlLang . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>' . dm_h($title) . '</title>' . $cssLink . '</head><body><main class="dm_shell"><section class="dm_card">' . $logoHtml . $bodyHtml . '</section></main></body></html>';
+    $cardClassAttr = 'dm_card';
+    if ($cardClass !== '') {
+        $cardClassAttr .= ' ' . $cardClass;
+    }
+    echo '<!doctype html><html lang="' . $htmlLang . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>' . dm_h($title) . '</title>' . $cssLink . '</head><body><main class="dm_shell"><section class="' . dm_h($cardClassAttr) . '">' . $logoHtml . $bodyHtml . '</section></main></body></html>';
     exit;
 }
 
@@ -422,7 +426,7 @@ function dm_render_neutral(): void
     $body = '<h1>' . dm_h(dm_web_text('page_neutral_heading')) . '</h1>';
     $body .= '<p>' . dm_h(dm_web_text('page_neutral_body_1')) . '</p>';
     $body .= '<p>' . dm_h(dm_web_text('page_neutral_body_2')) . '</p>';
-    dm_render_page(dm_web_text('page_neutral_title'), $body);
+    dm_render_page(dm_web_text('page_neutral_title'), $body, 'dm_card_centered');
 }
 
 function dm_render_confirm_prompt(string $id, string $sig): void
@@ -431,7 +435,7 @@ function dm_render_confirm_prompt(string $id, string $sig): void
     $body = '<h1>' . dm_h(dm_web_text('page_confirm_heading')) . '</h1>';
     $body .= '<p>' . dm_h(dm_web_text('page_confirm_intro')) . '</p>';
     $body .= '<form method="post"><input type="hidden" name="a" value="confirm"><input type="hidden" name="id" value="' . dm_h($id) . '"><input type="hidden" name="sig" value="' . dm_h($sig) . '"><button type="submit">' . dm_h(dm_web_text('page_confirm_button')) . '</button></form>';
-    dm_render_page(dm_web_text('page_confirm_title'), $body);
+    dm_render_page(dm_web_text('page_confirm_title'), $body, 'dm_card_centered');
 }
 
 function dm_render_confirm_ok(array $cfg, array $state): void
@@ -488,7 +492,7 @@ function dm_render_ack_ok(bool $hasDownloads): void
     if ($hasDownloads) {
         $body .= '<p>' . dm_h(dm_web_text('page_ack_ok_body_4')) . '</p>';
     }
-    dm_render_page(dm_web_text('page_ack_ok_title'), $body);
+    dm_render_page(dm_web_text('page_ack_ok_title'), $body, 'dm_card_centered');
 }
 
 function dm_render_error(string $code): void
@@ -498,7 +502,7 @@ function dm_render_error(string $code): void
     $body .= '<p>' . dm_h(dm_web_text('page_error_body_1')) . '</p>';
     $body .= '<p>' . dm_h(dm_web_text('page_error_body_2')) . '</p>';
     $body .= '<p class="dm_note">' . dm_h(dm_web_text('page_error_code_label')) . ': <code>' . dm_h($code) . '</code></p>';
-    dm_render_page(dm_web_text('page_error_title'), $body);
+    dm_render_page(dm_web_text('page_error_title'), $body, 'dm_card_centered');
 }
 
 function dm_render_unavailable(): void
@@ -517,7 +521,7 @@ function dm_render_unavailable(): void
     if ($body3 !== '') {
         $body .= '<p>' . dm_h($body3) . '</p>';
     }
-    dm_render_page(dm_web_text('page_download_unavailable_title'), $body);
+    dm_render_page(dm_web_text('page_download_unavailable_title'), $body, 'dm_card_centered');
 }
 
 $resolvedDir = dm_resolve_state_dir();

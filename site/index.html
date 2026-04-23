@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>totmann | A fully self-hosted dead man's switch for email</title>
+	<meta name="description" content="totmann sends regular check-in emails to you. If you stop confirming for long enough, it contacts the people you chose in advance, from infrastructure you control.">
+	<meta property="og:title" content="totmann | A fully self-hosted dead man's switch for email">
+	<meta property="og:description" content="Regular check-in emails. Nothing happens while you keep confirming. If confirmations stop for long enough, totmann contacts the people you chose in advance.">
+	<meta property="og:type" content="website">
+	<meta property="og:image" content="assets/img/totmann-logo.png">
+	<meta name="twitter:card" content="summary_large_image">
+	<meta name="twitter:title" content="totmann | A fully self-hosted dead man's switch for email">
+	<meta name="twitter:description" content="Regular check-in emails. Nothing happens while you keep confirming. If confirmations stop for long enough, totmann contacts the people you chose in advance.">
+	<link rel="icon" href="assets/img/totmann-logo.png" type="image/png">
+	<link rel="stylesheet" href="assets/site.css">
+	<script src="assets/site.js" defer></script>
+</head>
+<body>
+	<a class="skip-link" href="#main-content">Skip to content</a>
+	<header class="site-header">
+		<div class="wrap shell">
+			<a class="brand" href="#top" aria-label="totmann homepage">
+				<img src="assets/img/totmann-logo.png" alt="totmann logo" width="56" height="56">
+				<div class="brand-copy">
+					<span class="brand-name">totmann</span>
+					<span class="brand-tag">Self-hosted email continuity</span>
+				</div>
+			</a>
+			<nav class="site-nav" aria-label="Primary">
+				<a href="#features">Features</a>
+				<a href="#use-cases">Use cases</a>
+				<a href="#how-it-works">How it works</a>
+				<a href="#summary">Summary</a>
+			</nav>
+		</div>
+	</header>
+
+	<main id="main-content">
+		<section class="hero shell" id="top">
+			<div class="hero-copy">
+				<p class="eyebrow">A fully self-hosted dead man's switch for email</p>
+				<h1>Confirms presence. Escalates only when confirmation stops.</h1>
+				<p class="lead">totmann sends regular check-in emails to you. As long as you keep confirming that you are still there, nothing else happens. If those confirmations stop for long enough, it contacts the people you chose in advance.</p>
+				<div class="hero-points" aria-label="Key product points">
+					<p>Runs on your own server</p>
+					<p>Deliberate confirmation</p>
+					<p>Prepared handover</p>
+				</div>
+				<div class="hero-actions">
+					<a class="button button-primary" href="https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md">Read installation</a>
+					<a class="button button-secondary" href="https://github.com/MacSteini/totmannschalter">View repository</a>
+				</div>
+			</div>
+		</section>
+
+		<section class="section shell" id="features" aria-labelledby="features-title">
+			<div class="section-head">
+				<p class="section-kicker">Key features</p>
+				<h2 id="features-title">What totmann handles, and what stays in your control.</h2>
+			</div>
+				<div class="card-grid card-grid-features">
+					<article class="card">
+						<h3>Fully self-hosted</h3>
+						<p>Runs on infrastructure you control, without a third-party service sitting in the middle.</p>
+					</article>
+					<article class="card">
+						<h3>You choose the rhythm</h3>
+						<p>Set the check-in schedule that fits your life, instead of adapting yourself to a fixed cadence.</p>
+					</article>
+					<article class="card">
+						<h3>Intentional confirmation</h3>
+						<p>Opening an email is not enough on its own. You make a deliberate confirmation, which helps prevent accidental resets.</p>
+					</article>
+				<article class="card">
+					<h3>Protected links</h3>
+					<p>Confirmation and recipient links are protected so unsuitable or accidental requests do not trigger the real action.</p>
+				</article>
+					<article class="card">
+						<h3>Grace before escalation</h3>
+						<p>The system waits through your configured window and safety buffer before it treats silence as a real problem.</p>
+					</article>
+					<article class="card">
+						<h3>Predefined contact list</h3>
+						<p>The contact scope is fixed in advance, so the system does not improvise when it matters.</p>
+					</article>
+					<article class="card">
+						<h3>Recipient-specific messages</h3>
+						<p>Different recipients can receive the message content you prepared for them, instead of one shared generic note.</p>
+					</article>
+					<article class="card">
+						<h3>Receipt confirmation</h3>
+						<p>A recipient can confirm receipt so the same event does not keep generating unnecessary follow-up.</p>
+					</article>
+					<article class="card">
+						<h3>Private file delivery</h3>
+						<p>Optional private files can be included for selected recipients when they are part of the plan.</p>
+					</article>
+			</div>
+		</section>
+
+		<section class="section shell" id="use-cases" aria-labelledby="use-cases-title">
+			<div class="section-head">
+				<p class="section-kicker">Why it matters</p>
+				<h2 id="use-cases-title">Where this can actually be useful.</h2>
+			</div>
+			<div class="scenario-grid">
+				<article class="scenario">
+					<h3>Personal continuity</h3>
+					<p>Useful if private instructions, context, or sensitive information should only be shared when you genuinely stop responding.</p>
+				</article>
+				<article class="scenario">
+					<h3>Family or trusted contacts</h3>
+					<p>Useful if chosen people may need guidance, documents, or practical details that you would normally provide yourself.</p>
+				</article>
+				<article class="scenario">
+					<h3>Small operational fallback</h3>
+					<p>Useful if a simple private handover should reach the right people when regular check-ins stop.</p>
+				</article>
+				<article class="scenario">
+					<h3>Privacy-first self-hosting</h3>
+					<p>Useful if you want the whole process to stay on systems you already trust and control.</p>
+				</article>
+			</div>
+		</section>
+
+		<section class="section shell" id="how-it-works" aria-labelledby="how-it-works-title">
+			<div class="section-head">
+				<p class="section-kicker">How it works</p>
+				<h2 id="how-it-works-title">What happens in practice.</h2>
+			</div>
+				<ol class="steps">
+					<li>
+						<h3>You receive a check-in email</h3>
+						<p>totmann sends you a regular email asking you to confirm that you are still there.</p>
+					</li>
+					<li>
+						<h3>You confirm and the routine continues</h3>
+						<p>As long as you confirm in time, the cycle resets and the prepared handover stays untouched.</p>
+					</li>
+					<li>
+						<h3>A meaningful gap changes the state</h3>
+						<p>If confirmations stop for long enough, totmann treats that as a real absence rather than a single missed moment.</p>
+					</li>
+					<li>
+						<h3>The prepared handover goes out</h3>
+						<p>The prepared recipient messages are sent individually, and extra follow-up can stop once receipt has been confirmed.</p>
+					</li>
+				</ol>
+			</section>
+
+		<section class="section shell" id="summary" aria-labelledby="summary-title">
+			<div class="section-head">
+				<p class="section-kicker">Summary</p>
+				<h2 id="summary-title">What totmann actually does for you.</h2>
+			</div>
+				<div class="summary-grid">
+					<article class="summary-card">
+						<h3>Quiet in normal life</h3>
+						<p>When your regular routine is working, totmann stays in the background instead of demanding constant attention.</p>
+					</article>
+					<article class="summary-card">
+						<h3>Prepared before it is needed</h3>
+						<p>The timing, recipient list, messages, and optional files are all decided in advance, before there is any urgency.</p>
+					</article>
+					<article class="summary-card">
+						<h3>Problems do not stay hidden</h3>
+						<p>If totmann detects a setup or runtime problem, it can send a separate warning mail to your own address so you hear about it directly.</p>
+					</article>
+					<article class="summary-card">
+						<h3>Protected links, clear trail</h3>
+						<p>Detailed logs help you review what happened, and the action links are protected with signed tokens, including HMAC-based signing.</p>
+					</article>
+					<article class="summary-card">
+						<h3>Personal rather than broadcast</h3>
+						<p>Escalation messages go out one by one, which keeps the handover clearer and more private than a shared blast.</p>
+					</article>
+					<article class="summary-card">
+					<h3>Clear stop to follow-up</h3>
+					<p>Once receipt has been confirmed for an event, the additional follow-up can end cleanly.</p>
+				</article>
+			</div>
+		</section>
+	</main>
+
+	<footer class="site-footer">
+		<nav class="wrap shell footer-nav" aria-label="Footer">
+			<a href="https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md">Installation</a>
+			<a href="https://github.com/MacSteini/totmannschalter/releases/latest">Releases</a>
+			<a href="https://github.com/MacSteini/totmannschalter">Repository</a>
+		</nav>
+	</footer>
+</body>
+</html>

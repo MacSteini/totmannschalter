@@ -18,6 +18,7 @@ Important:
 You will see this when the normal reminder cycle runs and totmann asks you to confirm that you are safe and able to respond.
 
 This message goes to the addresses listed in `to_self`.
+The same `to_self` addresses can also receive separate operator warning mails when totmann detects an operator-facing setup or runtime problem.
 
 It helps because it gives you one clear action, shows the current deadline, and reminds you that escalation may already have started if you react too late.
 

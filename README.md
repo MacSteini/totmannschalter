@@ -24,6 +24,7 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 - Public web pages follow the browser language via `Accept-Language` (`de-DE`, `en-GB`, `en-US`, `fr-FR`, `it-IT`, `es-ES`; fallback: `en-US`).
 - Web timestamps stay in your configured `mail_timezone`, even when the browser language changes.
 - Rate limiting runs in **fail-open** mode to reduce abuse without breaking functionality.
+
 ## Requirements
 - Linux host with `systemd` (timer + oneshot service).
 - PHP 8.0+.

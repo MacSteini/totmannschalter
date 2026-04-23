@@ -1,17 +1,21 @@
 :root {
 	color-scheme: dark light;
 	--header-offset: 6rem;
-	--bg: #0e1014;
-	--bg-elevated: #161a22;
-	--bg-soft: #1e2430;
+	--brand-red: #B51700;
+	--brand-orange: #FF6900;
+	--brand-black: #000;
+	--bg: #0d0d0f;
+	--bg-elevated: #171413;
+	--bg-soft: #231916;
 	--line: rgba(255, 255, 255, 0.12);
 	--line-strong: rgba(255, 255, 255, 0.18);
-	--text: #f4f6fb;
-	--muted: #b8c0cf;
-	--accent: #e8505b;
-	--accent-strong: #ff7578;
-	--accent-soft: rgba(232, 80, 91, 0.16);
-	--focus: #ffd166;
+	--text: #f5efe9;
+	--muted: #c5b5ab;
+	--accent: var(--brand-red);
+	--accent-strong: var(--brand-orange);
+	--accent-soft: rgba(181, 23, 0, 0.16);
+	--accent-wash: rgba(255, 105, 0, 0.14);
+	--focus: #ff9b4d;
 	--shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
 	--radius-lg: 1.6rem;
 	--radius-md: 1rem;
@@ -21,17 +25,18 @@
 
 @media (prefers-color-scheme: light) {
 	:root {
-		--bg: #f7f5f1;
-		--bg-elevated: #fff;
-		--bg-soft: #f1ece6;
-		--line: rgba(17, 20, 27, 0.12);
-		--line-strong: rgba(17, 20, 27, 0.18);
-		--text: #141821;
-		--muted: #4d5565;
-		--accent: #c53f4a;
-		--accent-strong: #9f2433;
-		--accent-soft: rgba(197, 63, 74, 0.12);
-		--shadow: 0 22px 48px rgba(23, 28, 40, 0.1);
+		--bg: #fcf5ef;
+		--bg-elevated: #fffaf6;
+		--bg-soft: #f7e7db;
+		--line: rgba(0, 0, 0, 0.11);
+		--line-strong: rgba(0, 0, 0, 0.18);
+		--text: #18110f;
+		--muted: #5f4a43;
+		--accent: var(--brand-red);
+		--accent-strong: var(--brand-orange);
+		--accent-soft: rgba(181, 23, 0, 0.1);
+		--accent-wash: rgba(255, 105, 0, 0.1);
+		--shadow: 0 22px 48px rgba(36, 17, 10, 0.12);
 	}
 }
 
@@ -69,8 +74,8 @@ main > section[id] {
 body {
 	font-family: "Avenir Next", "Segoe UI", "Helvetica Neue", sans-serif;
 	background:
-		radial-gradient(circle at top right, rgba(232, 80, 91, 0.16), transparent 30%),
-		radial-gradient(circle at top left, rgba(255, 255, 255, 0.05), transparent 22%),
+		radial-gradient(circle at top right, rgba(255, 105, 0, 0.16), transparent 30%),
+		radial-gradient(circle at top left, rgba(181, 23, 0, 0.12), transparent 24%),
 		var(--bg);
 	color: var(--text);
 	line-height: 1.6;
@@ -182,6 +187,7 @@ h3 {
 	font-weight: 800;
 	letter-spacing: 0.08em;
 	text-transform: uppercase;
+	color: var(--accent);
 }
 
 .brand-tag {
@@ -204,6 +210,12 @@ h3 {
 	color: var(--muted);
 	font-weight: 650;
 	font-size: clamp(0.92rem, 1.6vw, 0.98rem);
+	transition: color 160ms ease;
+}
+
+.site-nav a:hover,
+.site-nav a:focus-visible {
+	color: var(--accent-strong);
 }
 
 .hero {
@@ -222,7 +234,7 @@ h3 {
 	font-weight: 800;
 	letter-spacing: 0.14em;
 	text-transform: uppercase;
-	color: var(--accent-strong);
+	color: var(--accent);
 }
 
 h1,
@@ -234,6 +246,7 @@ h3 {
 h1 {
 	font-size: clamp(3.1rem, 8vw, 5.9rem);
 	letter-spacing: -0.055em;
+	color: var(--accent-strong);
 }
 
 h2 {
@@ -253,7 +266,6 @@ h3 {
 .summary-card p,
 .steps p,
 .section-intro,
-.hero-points p,
 .link-card span {
 	color: var(--muted);
 }
@@ -262,22 +274,6 @@ h3 {
 	margin-top: clamp(1.15rem, 2.4vw, 1.5rem);
 	max-width: min(100%, 76ch);
 	font-size: clamp(1.07rem, 2.2vw, 1.22rem);
-}
-
-.hero-points {
-	display: flex;
-	flex-wrap: wrap;
-	gap: clamp(0.65rem, 1.8vw, 0.9rem);
-	margin-top: clamp(1.35rem, 2.8vw, 1.8rem);
-}
-
-.hero-points p {
-	padding: 0.62rem 0.95rem;
-	border: 1px solid var(--line);
-	border-radius: 999px;
-	background: var(--accent-soft);
-	font-size: clamp(0.92rem, 1.7vw, 1rem);
-	font-weight: 700;
 }
 
 .hero-actions {
@@ -300,13 +296,18 @@ h3 {
 }
 
 .button-primary {
-	background: var(--accent);
+	background: var(--accent-strong);
 	color: #fff;
 }
 
 .button-secondary {
 	background: transparent;
 	border-color: var(--line-strong);
+}
+
+.button-secondary:hover,
+.button-secondary:focus-visible {
+	border-color: color-mix(in srgb, var(--accent) 40%, var(--line-strong));
 }
 
 .section {
@@ -352,6 +353,13 @@ h3 {
 	box-shadow: var(--shadow);
 }
 
+.card h3,
+.scenario h3,
+.summary-card h3,
+.steps h3 {
+	color: var(--accent);
+}
+
 .card,
 .scenario,
 .summary-card {
@@ -379,11 +387,12 @@ h3 {
 	counter-increment: step;
 	position: absolute;
 	right: clamp(0.9rem, 1.8vw, 1.15rem);
-	top: clamp(0.85rem, 1.8vw, 1.1rem);
+	top: 50%;
+	transform: translateY(-50%);
 	font-size: clamp(2.6rem, 8vw, 4rem);
 	font-weight: 900;
 	line-height: 1;
-	color: color-mix(in srgb, var(--accent) 22%, transparent);
+	color: color-mix(in srgb, var(--accent-strong) 26%, transparent);
 }
 
 .steps {
@@ -407,6 +416,12 @@ h3 {
 	font-weight: 700;
 	text-decoration: none;
 	width: fit-content;
+	transition: color 160ms ease;
+}
+
+.footer-nav a:hover,
+.footer-nav a:focus-visible {
+	color: var(--accent-strong);
 }
 
 .footer-nav a:first-child {

@@ -1,9 +1,9 @@
 <!-- markdownlint-disable MD041 -->
 
-![totmann](img/totmannschalter-xs.png)
+![totmann](https://raw.githubusercontent.com/MacSteini/totmannschalter/main/img/totmannschalter-xs.png)
 
 [![GitHub Release](https://img.shields.io/github/v/release/macsteini/totmannschalter?label=Release&color=red)](https://github.com/MacSteini/totmannschalter/releases/latest)
-[![Static Badge](https://img.shields.io/badge/PHP->=v8.0.0-red)](docs/Installation.md)
+[![Static Badge](https://img.shields.io/badge/PHP->=v8.0.0-red)](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Installation.md)
 [![Licence: MIT](https://img.shields.io/github/license/macsteini/totmannschalter?label=License&color=red)](LICENCE)
 
 # totmann
@@ -36,7 +36,7 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 > One rule that matters:
 > The tick runs as `root`, but the web request does not. This means the state directory must be writable by both `root` and your real web user/group – and it must not be inside your webroot.
 ## Installation (step-by-step, happy path)
-1. Identify your real PHP runtime identity (`<WEB_USER>:<WEB_GROUP>`): [Installation guide](docs/Installation.md "Installation guide"), section “Before you start”.
+1. Identify your real PHP runtime identity (`<WEB_USER>:<WEB_GROUP>`): [Installation guide](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Installation.md "Installation guide"), section “Before you start”.
 2. Create state dir + place files:
 	```sh
 	sudo mkdir -p /var/lib/totmann
@@ -62,7 +62,7 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 	- Optional web stylesheet filename: `web_css_file` (same webroot folder as `web_file`; empty disables link)
 	- Logging target via `log_mode`: `none`, `syslog`, `file`, `both` (recommended: `both`)
 	- Operator warnings are separate mails to `to_self`; they are built in on purpose and cannot be disabled
-	- Use the test preset from [Timing](docs/Timing.md "Timing model and presets")
+	- Use the test preset from [Timing](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Timing.md "Timing model and presets")
 	- `{DOWNLOAD_LINKS}` renders the complete download block for that mail
 	- `totmann-recipients.php` defines files once in `$files`, reusable mail texts in `$messages`, and then assigns them in `$recipients`
 	- every recipient row must reference a valid message key in field 3; there is no escalation fallback in `totmann.inc.php`
@@ -95,13 +95,13 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 	sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totmann-tick.php tick'
 	```
 	The `rm` line uses the filenames shown in the template config; if you changed them in `totmann.inc.php`, adapt this command.
-8. Install + enable `systemd` unit/timer: follow [systemd](docs/Systemd.md "systemd").
-9. Run the smoke/E2E test with short timings: follow [Installation](docs/Installation.md "Installation guide") and [Timing](docs/Timing.md "Timing model and presets").
+8. Install + enable `systemd` unit/timer: follow [systemd](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Systemd.md "systemd").
+9. Run the smoke/E2E test with short timings: follow [Installation](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Installation.md "Installation guide") and [Timing](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Timing.md "Timing model and presets").
 10. During live testing, watch current activity in real time:
 	```sh
 	tail -f /var/lib/totmann/totmann.log
 	```
-	If you changed `log_file_name` or `log_file`, use that effective path instead. If `log_mode` is `syslog` or `none`, use `journalctl` instead of `tail`. For help reading file-log lines, journal bootstrap failures, and operator warning mails together, use [Log guide](docs/Logs.md "Log guide").
+	If you changed `log_file_name` or `log_file`, use that effective path instead. If `log_mode` is `syslog` or `none`, use `journalctl` instead of `tail`. For help reading file-log lines, journal bootstrap failures, and operator warning mails together, use [Log guide](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Logs.md "Log guide").
 ## Terms
 - ENV: environment variable (e. g., `totmann_STATE_DIR`).
 - GET/POST: HTTP request methods (`GET` shows the confirm page; `POST` performs the confirmation).
@@ -113,18 +113,18 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 - umask: process permission mask controlling default file modes.
 - fail-open: on limiter failure, allow the request (used for rate limiting to avoid accidental lockouts).
 ## Docs
-1. Read the [installation guide](docs/Installation.md "Installation guide") – layout, permissions, clean initialise, smoke test
-2. [Configure `systemd`](docs/Systemd.md "systemd") – service/timer units + operational checks
-3. [Configure the web endpoint](docs/Web.md "Web endpoint configuration") – state dir resolution, stealth responses, downloads, proxy trust, rate limiting
-4. [Understand the timing model and presets](docs/Timing.md "Timing model and presets") – timing model, presets, walkthrough
-5. [Mail delivery notes](docs/Mail.md "Mail delivery notes") – sendmail notes, recipient file, placeholders, ACK, normal downloads, single-use downloads
-6. [Example messages](docs/Examples.md "Example messages") – representative reminder, operator-warning, and escalation mails with practical explanation
-7. [Log guide](docs/Logs.md "Log guide") – how to read `totmann.log` and which lines require action
-8. [Troubleshooting](docs/Troubleshooting.md "Troubleshooting") – neutral page, missing mails, permissions, common failure modes
-9. [Changelog](docs/Changelog.md "Changelog") – release notes and version history
-10. [Roadmap](docs/Roadmap.md "Roadmap") – planned next features
-11. [Contribution guide](CONTRIBUTING.md "Contribution guide") – contribution workflow, quality checks, PR checklist
+1. Read the [installation guide](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Installation.md "Installation guide") – layout, permissions, clean initialise, smoke test
+2. [Configure `systemd`](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Systemd.md "systemd") – service/timer units + operational checks
+3. [Configure the web endpoint](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Web.md "Web endpoint configuration") – state dir resolution, stealth responses, downloads, proxy trust, rate limiting
+4. [Understand the timing model and presets](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Timing.md "Timing model and presets") – timing model, presets, walkthrough
+5. [Mail delivery notes](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Mail.md "Mail delivery notes") – sendmail notes, recipient file, placeholders, ACK, normal downloads, single-use downloads
+6. [Example messages](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Examples.md "Example messages") – representative reminder, operator-warning, and escalation mails with practical explanation
+7. [Log guide](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Logs.md "Log guide") – how to read `totmann.log` and which lines require action
+8. [Troubleshooting](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Troubleshooting.md "Troubleshooting") – neutral page, missing mails, permissions, common failure modes
+9. [Changelog](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Changelog.md "Changelog") – release notes and version history
+10. [Roadmap](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Roadmap.md "Roadmap") – planned next features
+11. [Contribution guide](https://github.com/MacSteini/totmannschalter/blob/main/CONTRIBUTING.md "Contribution guide") – contribution workflow, quality checks, PR checklist
 ## Contributing
-[Contributions are welcome!](CONTRIBUTING.md "Contributions are welcome!")
+[Contributions are welcome!](https://github.com/MacSteini/totmannschalter/blob/main/CONTRIBUTING.md "Contributions are welcome!")
 ## Licence
 This project uses the [MIT Licence](LICENCE "MIT Licence"). You may use, change, and distribute it in compliance with the licence terms.

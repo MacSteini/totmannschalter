@@ -90,7 +90,7 @@ What to do first:
 2. follow the built-in “What to check next” hint from that mail
 3. run `php totmann-tick.php check` in your state directory
 4. inspect `totmann.log` for the same fingerprint or matching error text
-5. compare the affected values in `totmann.inc.php` and `totmann-recipients.php`
+5. compare the affected values in the live files `totmann.inc.php` and `totmann-recipients.php`
 6. if the warning refers to a bootstrap problem such as `CONFIG ERROR: ...`, also inspect `journalctl -u totmann.service`
 
 Throttle behaviour:
@@ -154,7 +154,7 @@ sudo rm -f /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/
 sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totmann-tick.php tick'
 sudo systemctl start totmann.timer
 ```
-The `rm` command uses the filenames from the template config. Adapt it if you changed them in `totmann.inc.php`.
+The `rm` command uses the filenames from the effective config. Adapt it if you changed them in live `totmann.inc.php`.
 
 > **Why `umask 0007` matters**
 > `umask 0007` makes newly created files group-writable but not world-accessible. In practice, files created by the tick (running as `root`) become `0660` and directories become `0770`. Combined with the setgid dir bit (`2770`), new files stay in `<WEB_GROUP>`, so your configured web endpoint (`web_file`) can write the configured state/lock files safely.

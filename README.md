@@ -1,15 +1,17 @@
 <!-- markdownlint-disable MD041 -->
 
-![totmann](https://raw.githubusercontent.com/MacSteini/totmannschalter/main/img/totmannschalter-xs.png)
+![totmann](https://github.com/MacSteini/totmannschalter/blob/main/img/totmannschalter-xs.png?raw=true)
 
 [![GitHub Release](https://img.shields.io/github/v/release/macsteini/totmannschalter?label=Release&color=red)](https://github.com/MacSteini/totmannschalter/releases/latest)
-[![Static Badge](https://img.shields.io/badge/PHP->=v8.0.0-red)](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Installation.md)
+[![Static Badge](https://img.shields.io/badge/PHP->=v8.0.0-red)](https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md)
 [![Licence: MIT](https://img.shields.io/github/license/macsteini/totmannschalter?label=License&color=red)](LICENCE)
 
 # totmann
 A fully self-hosted “dead man’s switch” for email: it sends periodic confirmation links from your own server, and if you do not confirm within a defined window (plus grace), it escalates to predefined recipients. No third-party services, no vendor lock-in – just `systemd`, PHP, and sendmail on infrastructure you control.
 
 **[Download the latest version from here.](https://github.com/MacSteini/totmannschalter/releases/latest)**
+
+The release archive contains the runtime sources and templates only. Full documentation remains available in the GitHub repository and on the project website.
 
 ## What this does
 - You regularly receive an email containing a **confirmation link**.
@@ -19,7 +21,7 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 - A successful confirmation **resets the cycle**.
 - The script sends reminder emails as one email per `to_self` recipient (no shared `To:` list).
 - If you do not confirm in time (plus grace), the script triggers **escalation** using conservative logic.
-- Escalation uses exactly one recipient file (`totmann-recipients.php` by default) with 3 flat top-level sections: `$files`, `$messages`, and `$recipients`.
+- Escalation uses exactly one live recipient file (`totmann-recipients.php` by default) with 3 flat top-level sections: `$files`, `$messages`, and `$recipients`.
 - Escalation emails are always sent individually (one mail per recipient).
 - Escalation emails can optionally include recipient-specific download links for files stored outside the webroot.
 - Escalation emails can include an optional **receipt acknowledgement (ACK)** link. Once **any** recipient acknowledges, no further escalation mails are sent for that escalation event.
@@ -36,19 +38,21 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 > One rule that matters:
 > The tick runs as `root`, but the web request does not. This means the state directory must be writable by both `root` and your real web user/group – and it must not be inside your webroot.
 ## Installation (step-by-step, happy path)
-1. Identify your real PHP runtime identity (`<WEB_USER>:<WEB_GROUP>`): [Installation guide](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Installation.md "Installation guide"), section “Before you start”.
+1. Identify your real PHP runtime identity (`<WEB_USER>:<WEB_GROUP>`): [Installation guide](https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md "Installation guide"), section “Before you start”.
 2. Create state dir + place files:
 	```sh
 	sudo mkdir -p /var/lib/totmann
 	sudo mkdir -p /var/lib/totmann/downloads
-	sudo cp totmann.inc.php totmann-tick.php totmann-lib.php totmann-recipients.php /var/lib/totmann/
+	sudo cp totmann.inc.dist.php totmann-tick.php totmann-lib.php totmann-recipients.dist.php /var/lib/totmann/
 	sudo cp -R l18n /var/lib/totmann/
-	# Place the web endpoint in your webroot (example):
-	# sudo cp totmann.php /var/www/html/totmann/totmann.php
-	# Optional but recommended for styled web pages:
-	# sudo cp totmann.css /var/www/html/totmann/totmann.css
+	cd /var/lib/totmann
+	sudo cp totmann.inc.dist.php totmann.inc.php
+	sudo cp totmann-recipients.dist.php totmann-recipients.php
+	sudo mkdir -p /var/www/html/totmann
+	sudo cp totmann.php /var/www/html/totmann/totmann.php
+	sudo cp totmann.css /var/www/html/totmann/totmann.css
 	```
-	If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` in `totmann.inc.php`, copy/rename files accordingly.
+	Edit only the live copies, not the `.dist.php` files. If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` in `totmann.inc.php`, copy/rename files accordingly.
 3. Set required config in `/var/lib/totmann/totmann.inc.php`:
 	- `base_url` (real HTTPS base URL without endpoint filename; the runtime appends `web_file` automatically)
 	- `hmac_secret_hex` (example: `openssl rand -hex 32`)
@@ -62,9 +66,9 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 	- Optional web stylesheet filename: `web_css_file` (same webroot folder as `web_file`; empty disables link)
 	- Logging target via `log_mode`: `none`, `syslog`, `file`, `both` (recommended: `both`)
 	- Operator warnings are separate mails to `to_self`; they are built in on purpose and cannot be disabled
-	- Use the test preset from [Timing](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Timing.md "Timing model and presets")
+	- Use the test preset from [Timing](https://github.com/MacSteini/totmannschalter/blob/main/docs/Timing.md "Timing model and presets")
 	- `{DOWNLOAD_LINKS}` renders the complete download block for that mail
-	- `totmann-recipients.php` defines files once in `$files`, reusable mail texts in `$messages`, and then assigns them in `$recipients`
+	- `totmann-recipients.php` defines live files once in `$files`, reusable mail texts in `$messages`, and then assigns them in `$recipients`
 	- every recipient row must reference a valid message key in field 3; there is no escalation fallback in `totmann.inc.php`
 	- normal downloads go into recipient field 4; single-use downloads go into recipient field 5
 	- you never write `single_use=true` yourself; field 5 is the single-use list
@@ -94,14 +98,14 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 	sudo rm -f /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totmann/totmann.log
 	sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totmann-tick.php tick'
 	```
-	The `rm` line uses the filenames shown in the template config; if you changed them in `totmann.inc.php`, adapt this command.
-8. Install + enable `systemd` unit/timer: follow [systemd](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Systemd.md "systemd").
-9. Run the smoke/E2E test with short timings: follow [Installation](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Installation.md "Installation guide") and [Timing](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Timing.md "Timing model and presets").
+	The `rm` line uses the filenames shown in the effective config; if you changed them in live `totmann.inc.php`, adapt this command.
+8. Install + enable `systemd` unit/timer: follow [systemd](https://github.com/MacSteini/totmannschalter/blob/main/docs/Systemd.md "systemd").
+9. Run the smoke/E2E test with short timings: follow [Installation](https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md "Installation guide") and [Timing](https://github.com/MacSteini/totmannschalter/blob/main/docs/Timing.md "Timing model and presets").
 10. During live testing, watch current activity in real time:
 	```sh
 	tail -f /var/lib/totmann/totmann.log
 	```
-	If you changed `log_file_name` or `log_file`, use that effective path instead. If `log_mode` is `syslog` or `none`, use `journalctl` instead of `tail`. For help reading file-log lines, journal bootstrap failures, and operator warning mails together, use [Log guide](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Logs.md "Log guide").
+	If you changed `log_file_name` or `log_file`, use that effective path instead. If `log_mode` is `syslog` or `none`, use `journalctl` instead of `tail`. For help reading file-log lines, journal bootstrap failures, and operator warning mails together, use [Log guide](https://github.com/MacSteini/totmannschalter/blob/main/docs/Logs.md "Log guide").
 ## Terms
 - ENV: environment variable (e. g., `totmann_STATE_DIR`).
 - GET/POST: HTTP request methods (`GET` shows the confirm page; `POST` performs the confirmation).
@@ -113,16 +117,16 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 - umask: process permission mask controlling default file modes.
 - fail-open: on limiter failure, allow the request (used for rate limiting to avoid accidental lockouts).
 ## Docs
-1. Read the [installation guide](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Installation.md "Installation guide") – layout, permissions, clean initialise, smoke test
-2. [Configure `systemd`](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Systemd.md "systemd") – service/timer units + operational checks
-3. [Configure the web endpoint](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Web.md "Web endpoint configuration") – state dir resolution, stealth responses, downloads, proxy trust, rate limiting
-4. [Understand the timing model and presets](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Timing.md "Timing model and presets") – timing model, presets, walkthrough
-5. [Mail delivery notes](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Mail.md "Mail delivery notes") – sendmail notes, recipient file, placeholders, ACK, normal downloads, single-use downloads
-6. [Example messages](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Examples.md "Example messages") – representative reminder, operator-warning, and escalation mails with practical explanation
-7. [Log guide](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Logs.md "Log guide") – how to read `totmann.log` and which lines require action
-8. [Troubleshooting](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Troubleshooting.md "Troubleshooting") – neutral page, missing mails, permissions, common failure modes
-9. [Changelog](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Changelog.md "Changelog") – release notes and version history
-10. [Roadmap](https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/docs/Roadmap.md "Roadmap") – planned next features
+1. Read the [installation guide](https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md "Installation guide") – layout, permissions, clean initialise, smoke test
+2. [Configure `systemd`](https://github.com/MacSteini/totmannschalter/blob/main/docs/Systemd.md "systemd") – service/timer units + operational checks
+3. [Configure the web endpoint](https://github.com/MacSteini/totmannschalter/blob/main/docs/Web.md "Web endpoint configuration") – state dir resolution, stealth responses, downloads, proxy trust, rate limiting
+4. [Understand the timing model and presets](https://github.com/MacSteini/totmannschalter/blob/main/docs/Timing.md "Timing model and presets") – timing model, presets, walkthrough
+5. [Mail delivery notes](https://github.com/MacSteini/totmannschalter/blob/main/docs/Mail.md "Mail delivery notes") – sendmail notes, recipient file, placeholders, ACK, normal downloads, single-use downloads
+6. [Example messages](https://github.com/MacSteini/totmannschalter/blob/main/docs/Examples.md "Example messages") – representative reminder, operator-warning, and escalation mails with practical explanation
+7. [Log guide](https://github.com/MacSteini/totmannschalter/blob/main/docs/Logs.md "Log guide") – how to read `totmann.log` and which lines require action
+8. [Troubleshooting](https://github.com/MacSteini/totmannschalter/blob/main/docs/Troubleshooting.md "Troubleshooting") – neutral page, missing mails, permissions, common failure modes
+9. [Changelog](https://github.com/MacSteini/totmannschalter/blob/main/docs/Changelog.md "Changelog") – release notes and version history
+10. [Roadmap](https://github.com/MacSteini/totmannschalter/blob/main/docs/Roadmap.md "Roadmap") – planned next features
 11. [Contribution guide](https://github.com/MacSteini/totmannschalter/blob/main/CONTRIBUTING.md "Contribution guide") – contribution workflow, quality checks, PR checklist
 ## Contributing
 [Contributions are welcome!](https://github.com/MacSteini/totmannschalter/blob/main/CONTRIBUTING.md "Contributions are welcome!")

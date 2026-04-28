@@ -33,7 +33,7 @@ The system works in repeating cycles. Each cycle is anchored at `cycle_start_at`
 - warning, but allowed: `remind_every_seconds > confirm_window_seconds`
 - warning, but allowed: ACK remind interval below 60 seconds, runtime clamps to 60 seconds
 ## Changing timings during operation
-You can change timing values in `totmann.inc.php` while `totmann.timer` is running.
+You can change timing values in the live `totmann.inc.php` while `totmann.timer` is running.
 A `systemctl stop` or `systemctl start` is not required for these config-only changes.
 
 How it applies:
@@ -144,7 +144,7 @@ After deadline + grace:
 	- escalation state and ACK state are reset
 - After confirming, reminders stop for that cycle.
 ## Practical testing checklist (fast and repeatable)
-1. Apply the test preset and set `to_self` plus all recipient addresses in `totmann-recipients.php` to your own addresses.
+1. Apply the test preset in live `totmann.inc.php` and set `to_self` plus all recipient addresses in live `totmann-recipients.php` to your own addresses.
 2. Factory-reset the runtime state for deterministic tests:
 	- remove the configured runtime files `state_file`, `lock_file`, and `log_file_name`
 	- initialise once with the correct umask, see [Installation](Installation.md "Installation guide"), section “Clean initialise”

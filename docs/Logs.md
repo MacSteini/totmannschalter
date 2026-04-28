@@ -62,10 +62,11 @@ Practical reading order:
 ## Early bootstrap and preflight failures
 These messages are important, but they are not guaranteed to appear in `totmann.log`.
 
-Typical STDERR / journal examples:
+Representative STDERR / journal examples:
 ```text
 CONFIG ERROR: Missing config key: download_valid_days
-BOOTSTRAP ERROR: missing/unreadable totmann.inc.php: /var/lib/totmann/totmann.inc.php
+CONFIG ERROR: Live config is missing: <state_dir>/totmann.inc.php
+BOOTSTRAP ERROR: missing live config: <state_dir>/totmann.inc.php; missing dist config: <state_dir>/totmann.inc.dist.php
 ```
 How to interpret them:
 - `CONFIG ERROR: ...` => configuration loaded far enough to check, but a required value or file structure is wrong
@@ -74,7 +75,8 @@ How to interpret them:
 What to do:
 - read the exact missing/invalid key or file path
 - run `php totmann-tick.php check` in your state directory
-- inspect `totmann.inc.php` and `totmann-recipients.php`
+- inspect the live files `totmann.inc.php` and `totmann-recipients.php`
+- restore the `.dist.php` files from the release archive if `check` reports them missing and your live config is incomplete
 - if the problem happens under `systemd`, confirm it again with `journalctl -u totmann.service`
 
 Important:

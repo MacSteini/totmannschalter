@@ -59,7 +59,7 @@ It helps because it tells you what failed, which values to inspect next, and whi
 What to do next:
 - read the `Original problem` line first
 - run `php totmann-tick.php check` in your state directory
-- compare the mentioned values in `totmann-recipients.php` and `totmann.inc.php`
+- compare the mentioned values in live `totmann-recipients.php` and live `totmann.inc.php`
 - use [Log guide](Logs.md "Log guide") and [Troubleshooting](Troubleshooting.md "Troubleshooting") if the problem is still unclear
 
 Example: unknown single-use file alias
@@ -84,7 +84,7 @@ Recommended next steps:
 1. Change into your state directory: /var/lib/totmann
 2. Run: php totmann-tick.php check
 3. Inspect totmann.log for matching lines.
-4. Compare the affected values in totmann.inc.php and totmann-recipients.php.
+4. Compare the affected values in live totmann.inc.php and live totmann-recipients.php.
 5. If you still have the project docs at hand, read docs/Logs.md and docs/Troubleshooting.md.
 ```
 
@@ -110,7 +110,7 @@ Recommended next steps:
 1. Change into your state directory: /var/lib/totmann
 2. Run: php totmann-tick.php check
 3. Inspect totmann.log for matching lines.
-4. Compare the affected values in totmann.inc.php and totmann-recipients.php.
+4. Compare the affected values in live totmann.inc.php and live totmann-recipients.php.
 5. If you still have the project docs at hand, read docs/Logs.md and docs/Troubleshooting.md.
 ```
 

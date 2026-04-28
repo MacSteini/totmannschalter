@@ -8,21 +8,24 @@
 ## Install order (recommended)
 1. Identify `<WEB_USER>:<WEB_GROUP>` first.
 2. Create the state directory and place the files.
-3. Set required `totmann.inc.php` values.
-4. Update `totmann-recipients.php`.
-5. Fix ownership/permissions.
-6. Run preflight checks.
-7. Clean initialise once.
-8. Install and enable the `systemd` timer.
-9. Run the smoke test with short timings.
+3. Copy the `.dist.php` templates to live filenames.
+4. Set required `totmann.inc.php` values.
+5. Update `totmann-recipients.php`.
+6. Fix ownership/permissions.
+7. Run preflight checks.
+8. Clean initialise once.
+9. Install and enable the `systemd` timer.
+10. Run the smoke test with short timings.
 ## Layout (recommended)
 Recommended base directory (not under `/home`): `/var/lib/totmann`
 
 In `/var/lib/totmann`:
-- `totmann.inc.php`
+- `totmann.inc.dist.php` (shipped defaults; do not edit)
+- `totmann.inc.php` (live config copied from `totmann.inc.dist.php`)
 - your configured `lib_file` (template default: `totmann-lib.php`)
 - your configured `l18n_dir_name` directory (template default: `l18n/`)
-- your configured `recipients_file` (template default: `totmann-recipients.php`)
+- `totmann-recipients.dist.php` (shipped recipient template; do not edit)
+- your configured live `recipients_file` (template default: `totmann-recipients.php`)
 - `totmann-tick.php`
 
 Runtime files created automatically (as needed) in `/var/lib/totmann`:
@@ -77,10 +80,16 @@ sudo mkdir -p /var/lib/totmann/downloads
 sudo mkdir -p /var/lib/totmann/l18n
 ```
 ## Place the files
-- Copy `totmann.inc.php`, your configured `lib_file`, your configured `recipients_file`, and `totmann-tick.php` to `/var/lib/totmann`:
+- Copy the shipped runtime files and `.dist.php` templates to `/var/lib/totmann`:
 ```sh
-sudo cp totmann.inc.php totmann-tick.php totmann-lib.php totmann-recipients.php /var/lib/totmann/
+sudo cp totmann.inc.dist.php totmann-tick.php totmann-lib.php totmann-recipients.dist.php /var/lib/totmann/
 sudo cp -R l18n /var/lib/totmann/
+```
+- Create live operator-owned copies from the templates:
+```sh
+cd /var/lib/totmann
+sudo cp totmann.inc.dist.php totmann.inc.php
+sudo cp totmann-recipients.dist.php totmann-recipients.php
 ```
 - Place your configured `web_file` into your webroot (e. g., `/var/www/html/totmann/totmann.php`):
 ```sh
@@ -90,8 +99,11 @@ sudo cp totmann.php /var/www/html/totmann/totmann.php
 ```sh
 sudo cp totmann.css /var/www/html/totmann/totmann.css
 ```
+Edit only `totmann.inc.php` and `totmann-recipients.php`. The `.dist.php` files are the shipped default/recovery layer and may be replaced by updates.
+
 If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` from the template names, adjust these copy/rename commands accordingly.
 ## Update `totmann.inc.php` (required values)
+- Do not edit `totmann.inc.dist.php`.
 - `state_dir` should match the directory where you placed `totmann.inc.php` (recommended: `/var/lib/totmann`)
 - Runtime names (filenames/directories only): `lib_file`, `l18n_dir_name`, `lock_file`, `log_file_name`, `recipients_file`, `state_file`, `web_file`
 - `download_base_dir` should point to a private directory outside your webroot
@@ -111,6 +123,8 @@ If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `w
 - If you plan to read file logs directly, also read [Log guide](Logs.md "Log guide") so you know how to interpret file-log lines, journal bootstrap failures, and operator warning mails together
 - Important: operator warning mails are built in on purpose, go to `to_self`, and cannot be disabled
 ## Update `totmann-recipients.php`
+- Do not edit `totmann-recipients.dist.php`.
+
 `totmann-recipients.php` contains exactly 3 flat top-level areas:
 - `$files`: file alias => relative path
 - `$messages`: message key => `subject` + `body`
@@ -299,7 +313,8 @@ Exit codes:
 `--web-user` is optional but recommended. It validates (read-only) whether the actual PHP runtime user can likely read config and create/update lock/state files based on POSIX mode bits.
 
 What `check` now validates:
-- filenames in `totmann.inc.php`
+- live and `.dist` config source status
+- filenames in the effective config
 - `l18n_dir_name` plus the shipped locale files (`de-DE`, `en-GB`, `en-US`, `fr-FR`, `it-IT`, `es-ES`)
 - timing values
 - `to_self`
@@ -348,15 +363,15 @@ sudo rm -f /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/
 # Initialise with umask 0007 so files become 0660 (group-writable).
 sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totmann-tick.php tick'
 ```
-The `rm`/`ls` examples use the filenames from the template config; if you changed them in `totmann.inc.php`, adapt these commands.
+The `rm`/`ls` examples use the filenames from the effective config; if you changed them in live `totmann.inc.php`, adapt these commands.
 
 Verify:
 ```sh
 ls -la /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totmann/totmann.log
 ```
 ## Smoke test (use only your own addresses)
-1. In `totmann.inc.php`, temporarily set short timings. See [Timing](Timing.md "Timing model and presets").
-2. Point `to_self` and all recipient addresses in `totmann-recipients.php` to your own mailboxes.
+1. In live `totmann.inc.php`, temporarily set short timings. See [Timing](Timing.md "Timing model and presets").
+2. Point `to_self` and all recipient addresses in live `totmann-recipients.php` to your own mailboxes.
 3. Ensure `totmann.timer` is active and wait for the reminder email.
 4. Open the confirmation link (`GET`): you should see a confirm button.
 5. Click Confirm (`POST`): the page should show the localised confirmation-success page, e. g., “Thank you.” plus “The cycle has been reset…”.

@@ -7,6 +7,9 @@ This project uses semantic versioning:
 - MAJOR: breaking changes
 - MINOR: new features (backwards compatible)
 - PATCH: bugfixes and small improvements (backwards compatible)
+## Unreleased
+- Added copy-first configuration: shipped defaults now live in `totmann.inc.dist.php` and `totmann-recipients.dist.php`, while operators edit live copies named `totmann.inc.php` and `totmann-recipients.php`.
+- Updated bootstrap and preflight so missing `.dist.php` files warn when live config is complete, but missing or incomplete live config blocks reminders and escalation.
 ## v3.0.2
 - Hardened outbound mail configuration checks so `mail_from` and optional `reply_to` must each contain exactly one valid mailbox string before sendmail handoff.
 - Extended preflight so invalid `mail_from` and `reply_to` values are reported explicitly during `php totmann-tick.php check`.
@@ -39,7 +42,7 @@ This project uses semantic versioning:
 - Added mandatory operator warning mails to `to_self` for operator-facing config/runtime problems that would otherwise only show up in the log.
 - Added `operator_alert_interval_hours` as the public throttle key for those warning mails; only whole hours `1..24` are accepted and invalid/missing values now fall back automatically to `2`.
 - Tightened mailbox-header serialisation for single-recipient `To:` headers by always quoting ASCII display names and keeping non-ASCII names RFC2047-encoded.
-- Verification: `php -l`, `phpstan`, and the project validation gate must be rerun after deployment because both runtime behaviour and documentation changed.
+- Verification: rerun the normal deployment checks after installing this release because both runtime behaviour and public documentation changed.
 ## v2.0.0
 - BREAKING: recipient-specific escalation configuration now lives in exactly one file: `totmann-recipients.php`.
 - BREAKING: removed the split model of `to_recipients` in `totmann.inc.php` plus separate `totmann-messages.php` and `totmann-downloads.php`.

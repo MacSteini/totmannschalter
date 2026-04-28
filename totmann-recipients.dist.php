@@ -6,6 +6,8 @@
  * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)
  *
+ * Copy this file to totmann-recipients.php and edit only the live copy.
+ *
  * This file is the operator-facing recipient template:
  * - `$files` defines each downloadable file once
  * - `$messages` defines reusable escalation subjects/bodies and optional single-use warnings
@@ -43,8 +45,8 @@
  * - `single_use=false` is always the implicit default.
  * - Use field 5 only for the special case where a file must be single-use.
  * - File aliases and message keys must match `^[a-z0-9_-]+$`.
- * - All file paths are relative to `download_base_dir` from `totmann.inc.php`.
- * - Download validity is global via `download_valid_days` in `totmann.inc.php`.
+ * - All file paths are relative to `download_base_dir` from live `totmann.inc.php`.
+ * - Download validity is global via `download_valid_days` in live `totmann.inc.php`.
  *
  * Supported mail placeholders:
  * - `{LAST_CONFIRM_ISO}`

@@ -25,7 +25,8 @@ Run syntax checks for changed PHP files before opening a pull request:
 php -l totmann-lib.php
 php -l totmann-tick.php
 php -l totmann.php
-php -l totmann.inc.php
+php -l totmann.inc.dist.php
+php -l totmann-recipients.dist.php
 ```
 If your change is docs-only, state this clearly in the pull request.
 ## Pull request checklist

@@ -30,39 +30,8 @@ if ($cmd === 'tick' && count($argv) > 2) {
     exit(2);
 }
 
-$configPath = $stateDir . '/totmann.inc.php';
-try {
-    if (!is_file($configPath) || !is_readable($configPath)) {
-        throw new RuntimeException("missing/unreadable totmann.inc.php: {$configPath}");
-    }
-    $cfg = require $configPath;
-    if (!is_array($cfg)) {
-        throw new RuntimeException('totmann.inc.php must return an array');
-    }
-
-    $libFile = trim((string)($cfg['lib_file'] ?? ''));
-    if ($libFile === '') {
-        throw new RuntimeException('Missing config key: lib_file');
-    }
-    if (str_contains($libFile, '/') || str_contains($libFile, '\\')) {
-        throw new RuntimeException('Invalid lib_file: filename must not contain slashes');
-    }
-    if ($libFile === '.' || $libFile === '..' || str_contains($libFile, '..') || preg_match('/[[:cntrl:]]/', $libFile)) {
-        throw new RuntimeException('Invalid lib_file: traversal/control chars not allowed');
-    }
-
-    $libPath = $stateDir . '/' . $libFile;
-    if (!is_file($libPath) || !is_readable($libPath)) {
-        throw new RuntimeException("missing/unreadable {$libFile} in {$stateDir}");
-    }
-    require $libPath;
-} catch (Throwable $e) {
-    fwrite(STDERR, 'BOOTSTRAP ERROR: ' . $e->getMessage() . "\n");
-    exit(1);
-}
-
+$webUser = null;
 if ($cmd === 'check') {
-    $webUser = null;
     $args = array_slice($argv, 2);
 
     for ($i = 0; $i < count($args); $i++) {
@@ -91,19 +60,148 @@ if ($cmd === 'check') {
         fwrite(STDERR, "Usage: php totmann-tick.php check [--web-user=<WEB_USER>]\n");
         exit(2);
     }
+}
 
+function dm_tick_bootstrap_load_array_file(string $path, string $label): array
+{
+    if (!is_file($path) || !is_readable($path)) {
+        throw new RuntimeException("missing/unreadable {$label}: {$path}");
+    }
+    $cfg = require $path;
+    if (!is_array($cfg)) {
+        throw new RuntimeException("{$label} must return an array");
+    }
+    return $cfg;
+}
+
+function dm_tick_bootstrap_load_effective_config(string $stateDir): array
+{
+    $livePath = $stateDir . '/totmann.inc.php';
+    $distPath = $stateDir . '/totmann.inc.dist.php';
+    $liveCfg = null;
+    $distCfg = null;
+    $liveError = null;
+    $distError = null;
+
+    if (file_exists($livePath)) {
+        try {
+            $liveCfg = dm_tick_bootstrap_load_array_file($livePath, 'totmann.inc.php');
+        } catch (Throwable $e) {
+            $liveError = $e->getMessage();
+        }
+    }
+
+    if (file_exists($distPath)) {
+        try {
+            $distCfg = dm_tick_bootstrap_load_array_file($distPath, 'totmann.inc.dist.php');
+        } catch (Throwable $e) {
+            $distError = $e->getMessage();
+        }
+    }
+
+    if ($liveCfg === null && $distCfg === null) {
+        $messages = [];
+        $messages[] = $liveError ?? "missing live config: {$livePath}";
+        $messages[] = $distError ?? "missing dist config: {$distPath}";
+        throw new RuntimeException(implode('; ', $messages));
+    }
+
+    if ($liveCfg !== null && $distCfg !== null) {
+        $cfg = array_replace($distCfg, $liveCfg);
+        $defaultedKeys = array_values(array_diff(array_keys($distCfg), array_keys($liveCfg)));
+        $source = 'live+dist';
+    } elseif ($liveCfg !== null) {
+        $cfg = $liveCfg;
+        $defaultedKeys = [];
+        $source = 'live';
+    } else {
+        $cfg = (array)$distCfg;
+        $defaultedKeys = array_keys($cfg);
+        $source = 'dist';
+    }
+
+    $cfg['_config_source'] = [
+    'effective_config_source' => $source,
+    'live_config_path' => $livePath,
+    'dist_config_path' => $distPath,
+    'live_config_loaded' => $liveCfg !== null,
+    'dist_config_loaded' => $distCfg !== null,
+    'live_config_error' => $liveError,
+    'dist_config_error' => $distError,
+    'live_config_keys' => $liveCfg !== null ? array_keys($liveCfg) : [],
+    'dist_config_keys' => $distCfg !== null ? array_keys($distCfg) : [],
+    'defaulted_config_keys' => $defaultedKeys,
+    ];
+
+    return $cfg;
+}
+
+function dm_tick_bootstrap_file_name(array $cfg, string $key): string
+{
+    $v = trim((string)($cfg[$key] ?? ''));
+    if ($v === '') {
+        throw new RuntimeException("Missing config key: {$key}");
+    }
+    if (str_contains($v, '/') || str_contains($v, '\\')) {
+        throw new RuntimeException("Invalid {$key}: filename must not contain slashes");
+    }
+    if ($v === '.' || $v === '..' || str_contains($v, '..') || preg_match('/[[:cntrl:]]/', $v)) {
+        throw new RuntimeException("Invalid {$key}: traversal/control chars not allowed");
+    }
+    return $v;
+}
+
+try {
+    $cfg = dm_tick_bootstrap_load_effective_config($stateDir);
+    $libFile = dm_tick_bootstrap_file_name($cfg, 'lib_file');
+
+    $libPath = $stateDir . '/' . $libFile;
+    if (!is_file($libPath) || !is_readable($libPath)) {
+        throw new RuntimeException("missing/unreadable {$libFile} in {$stateDir}");
+    }
+    require $libPath;
+} catch (Throwable $e) {
+    if ($cmd === 'check') {
+        $fallbackLibPath = $stateDir . '/totmann-lib.php';
+        if (is_file($fallbackLibPath) && is_readable($fallbackLibPath)) {
+            require $fallbackLibPath;
+            exit(dm_preflight_check($stateDir, $webUser, $e->getMessage()));
+        }
+        fwrite(STDERR, 'BOOTSTRAP ERROR: ' . $e->getMessage() . "\n");
+        exit(2);
+    }
+    fwrite(STDERR, 'BOOTSTRAP ERROR: ' . $e->getMessage() . "\n");
+    exit(1);
+}
+
+if ($cmd === 'check') {
     exit(dm_preflight_check($stateDir, $webUser));
 }
 
 $cfg['state_dir'] = $stateDir;
 $pendingOperatorAlerts = [];
+$readinessErrors = dm_config_readiness_errors($cfg);
+if ($readinessErrors !== []) {
+    $readinessMessage = implode(' ', $readinessErrors);
+    fwrite(STDERR, 'CONFIG ERROR: ' . $readinessMessage . "\n");
+    if (dm_config_has_live_operator_recipient($cfg)) {
+        dm_operator_alert_handle_from_statefile($cfg, 'config_source', $readinessMessage);
+    } else {
+        dm_log($cfg, 'Operator alert skipped: no valid live to_self is available for config-source problem.');
+    }
+    exit(1);
+}
 try {
     $runtimeCfg = dm_validate_runtime_config($cfg);
     $recipientErrors = [];
     $escalationRecipients = dm_escalation_recipients_runtime($cfg, $recipientErrors);
 } catch (Throwable $e) {
     fwrite(STDERR, 'CONFIG ERROR: ' . $e->getMessage() . "\n");
-    dm_operator_alert_handle_from_statefile($cfg, 'config_error', $e->getMessage());
+    if (dm_config_has_live_operator_recipient($cfg)) {
+        dm_operator_alert_handle_from_statefile($cfg, 'config_error', $e->getMessage());
+    } else {
+        dm_log($cfg, 'Operator alert skipped: no valid live to_self is available for config problem.');
+    }
     exit(1);
 }
 foreach ($recipientErrors as $recipientError) {

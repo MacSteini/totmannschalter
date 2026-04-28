@@ -20,7 +20,9 @@ The web endpoint resolves the state directory in this order:
 
 The shipped `totmann.php` template enables the `define(...)` fallback by default. Adjust it to your actual state dir if needed.
 
-If neither exists, the endpoint returns a neutral page. The endpoint intentionally has no implicit fallback to a local webroot or to `state_dir` from `totmann.inc.php`.
+If neither exists, the endpoint returns a neutral page. The endpoint intentionally has no implicit fallback to a local webroot or to `state_dir` from live `totmann.inc.php`.
+
+The endpoint loads live `totmann.inc.php` first and may use `totmann.inc.dist.php` only for non-critical defaults. If the live config or live recipient file is missing or incomplete, the endpoint stays neutral.
 ## Website language (`l18n/` + `Accept-Language`)
 `totmann.php` loads website text from your configured `l18n_dir_name` directory (template default: `l18n/` inside `state_dir`).
 
@@ -141,7 +143,7 @@ Expected paths exist:
 ```sh
 ls -la /var/lib/totmann
 ```
-Web identity can read config and write runtime files, replace `<WEB_USER>`:
+Web identity can read live config and write runtime files, replace `<WEB_USER>`:
 ```sh
 sudo -u <WEB_USER> php -r 'echo is_readable("/var/lib/totmann/totmann.inc.php") ? "config:OK\n" : "config:NO\n";'
 sudo -u <WEB_USER> php -r '$f="/var/lib/totmann/.permtest"; echo (file_put_contents($f,"x")!==false)?"write:OK\n":"write:NO\n"; @unlink($f);'

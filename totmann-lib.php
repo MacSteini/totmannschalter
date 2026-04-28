@@ -368,17 +368,17 @@ function dm_state_save(string $stateFile, array $state): void
 }
 
 /**
- * Bootstrap helper for loading totmann.inc.php in a guarded way.
+ * Bootstrap helper for loading one config PHP file in a guarded way.
  * Throws on missing/unreadable config or invalid return type.
  */
 function dm_bootstrap_load_config(string $configPath): array
 {
     if (!is_file($configPath) || !is_readable($configPath)) {
-        throw new RuntimeException("missing/unreadable totmann.inc.php: {$configPath}");
+        throw new RuntimeException("missing/unreadable config file: {$configPath}");
     }
     $cfg = require $configPath;
     if (!is_array($cfg)) {
-        throw new RuntimeException('totmann.inc.php must return an array');
+        throw new RuntimeException('Config file must return an array');
     }
     return $cfg;
 }
@@ -512,6 +512,7 @@ function dm_operator_alert_label(string $type): string
 {
     return match ($type) {
         'recipient_skipped' => 'Recipient skipped',
+        'config_source' => 'Configuration source problem',
         'config_error' => 'Configuration error',
         'runtime_error' => 'Runtime error',
         'delivery_error' => 'Mail delivery error',
@@ -524,6 +525,9 @@ function dm_operator_alert_label(string $type): string
  */
 function dm_operator_alert_hint(string $type, string $message): string
 {
+    if ($type === 'config_source') {
+        return 'Copy totmann.inc.dist.php to totmann.inc.php, copy totmann-recipients.dist.php to totmann-recipients.php, set the live values, and rerun php totmann-tick.php check.';
+    }
     if (str_contains($message, 'single_use_notice')) {
         return 'Open totmann-recipients.php, find the referenced message key in $messages, and add a non-empty single_use_notice because that message is used with field 5.';
     }
@@ -543,10 +547,10 @@ function dm_operator_alert_hint(string $type, string $message): string
         return 'Open totmann-recipients.php and make sure field 4 and field 5 are flat alias lists such as [\'letter\'] or [\'photos\'].';
     }
     if (str_contains($message, 'sendmail')) {
-        return 'Check sendmail_path in totmann.inc.php, verify the binary exists and is executable, and run php totmann-tick.php check in your state directory.';
+        return 'Check sendmail_path in live totmann.inc.php, verify the binary exists and is executable, and run php totmann-tick.php check in your state directory.';
     }
     if (str_contains($message, 'to_self')) {
-        return 'Check to_self in totmann.inc.php. Each entry must contain exactly one valid mailbox string.';
+        return 'Check to_self in live totmann.inc.php. Each entry must contain exactly one valid mailbox string.';
     }
     if (str_contains($message, 'recipients_file')) {
         return 'Open totmann-recipients.php, fix the referenced row or top-level structure, and rerun php totmann-tick.php check.';
@@ -554,7 +558,7 @@ function dm_operator_alert_hint(string $type, string $message): string
     if ($type === 'delivery_error') {
         return 'Check the affected recipient mailbox plus your local sendmail setup, then rerun php totmann-tick.php check and inspect totmann.log.';
     }
-    return 'Run php totmann-tick.php check in your state directory, inspect totmann.log, and compare the affected values in totmann.inc.php and totmann-recipients.php.';
+    return 'Run php totmann-tick.php check in your state directory, inspect totmann.log, and compare the affected values in the live config files.';
 }
 
 /**
@@ -673,7 +677,7 @@ function dm_operator_alert_render_mail(array $cfg, array $alert): array
         '1. Change into your state directory: ' . $stateDir,
         '2. Run: php totmann-tick.php check',
         '3. Inspect totmann.log for matching lines.',
-        '4. Compare the affected values in totmann.inc.php and totmann-recipients.php.',
+        '4. Compare the affected values in live totmann.inc.php and live totmann-recipients.php.',
         '5. If you still have the project docs at hand, read docs/Logs.md and docs/Troubleshooting.md.',
     ]) . "\n";
 
@@ -688,9 +692,15 @@ function dm_operator_alert_render_mail(array $cfg, array $alert): array
  */
 function dm_operator_alert_send(array $cfg, array $alert): array
 {
-    $selfRecipients = dm_recipient_entries_runtime((array)($cfg['to_self'] ?? []));
+    $candidateRecipients = dm_recipient_entries_runtime((array)($cfg['to_self'] ?? []));
+    $selfRecipients = [];
+    foreach ($candidateRecipients as $candidateRecipient) {
+        if (!dm_config_value_looks_placeholder($candidateRecipient)) {
+            $selfRecipients[] = $candidateRecipient;
+        }
+    }
     if ($selfRecipients === []) {
-        return ['sent' => 0, 'failed' => 1, 'errors' => ['to_self does not contain any valid mailbox entry for operator warnings']];
+        return ['sent' => 0, 'failed' => 1, 'errors' => ['to_self does not contain any valid non-placeholder mailbox entry for operator warnings']];
     }
 
     $mail = dm_operator_alert_render_mail($cfg, $alert);
@@ -2209,14 +2219,14 @@ function dm_download_content_type(string $path): string
  * Tick/bootstrap helper functions used by totmann-tick.php.
  */
 
-function dm_bootstrap_load_config_raw(string $configPath): array
+function dm_bootstrap_load_config_raw(string $configPath, string $label = 'totmann.inc.php'): array
 {
     if (!is_file($configPath) || !is_readable($configPath)) {
-        throw new RuntimeException("missing/unreadable totmann.inc.php: {$configPath}");
+        throw new RuntimeException("missing/unreadable {$label}: {$configPath}");
     }
     $cfg = require $configPath;
     if (!is_array($cfg)) {
-        throw new RuntimeException('totmann.inc.php must return an array');
+        throw new RuntimeException("{$label} must return an array");
     }
     return $cfg;
 }
@@ -2234,6 +2244,195 @@ function dm_bootstrap_file_name(array $cfg, string $key): string
         throw new RuntimeException("Invalid {$key}: traversal/control chars not allowed");
     }
     return $v;
+}
+
+function dm_bootstrap_load_effective_config(string $stateDir): array
+{
+    $livePath = rtrim($stateDir, '/') . '/totmann.inc.php';
+    $distPath = rtrim($stateDir, '/') . '/totmann.inc.dist.php';
+    $liveCfg = null;
+    $distCfg = null;
+    $liveError = null;
+    $distError = null;
+
+    if (file_exists($livePath)) {
+        try {
+            $liveCfg = dm_bootstrap_load_config_raw($livePath, 'totmann.inc.php');
+        } catch (Throwable $e) {
+            $liveError = $e->getMessage();
+        }
+    }
+
+    if (file_exists($distPath)) {
+        try {
+            $distCfg = dm_bootstrap_load_config_raw($distPath, 'totmann.inc.dist.php');
+        } catch (Throwable $e) {
+            $distError = $e->getMessage();
+        }
+    }
+
+    if ($liveCfg === null && $distCfg === null) {
+        $messages = [];
+        $messages[] = $liveError ?? "missing live config: {$livePath}";
+        $messages[] = $distError ?? "missing dist config: {$distPath}";
+        throw new RuntimeException(implode('; ', $messages));
+    }
+
+    if ($liveCfg !== null && $distCfg !== null) {
+        $cfg = array_replace($distCfg, $liveCfg);
+        $defaultedKeys = array_values(array_diff(array_keys($distCfg), array_keys($liveCfg)));
+        $source = 'live+dist';
+    } elseif ($liveCfg !== null) {
+        $cfg = $liveCfg;
+        $defaultedKeys = [];
+        $source = 'live';
+    } else {
+        $cfg = (array)$distCfg;
+        $defaultedKeys = array_keys($cfg);
+        $source = 'dist';
+    }
+
+    $cfg['_config_source'] = [
+    'effective_config_source' => $source,
+    'live_config_path' => $livePath,
+    'dist_config_path' => $distPath,
+    'live_config_loaded' => $liveCfg !== null,
+    'dist_config_loaded' => $distCfg !== null,
+    'live_config_error' => $liveError,
+    'dist_config_error' => $distError,
+    'live_config_keys' => $liveCfg !== null ? array_keys($liveCfg) : [],
+    'dist_config_keys' => $distCfg !== null ? array_keys($distCfg) : [],
+    'defaulted_config_keys' => $defaultedKeys,
+    ];
+
+    return $cfg;
+}
+
+function dm_config_source_meta(array $cfg): array
+{
+    $meta = $cfg['_config_source'] ?? [];
+    return is_array($meta) ? $meta : [];
+}
+
+function dm_config_key_from_live(array $cfg, string $key): bool
+{
+    $meta = dm_config_source_meta($cfg);
+    $keys = $meta['live_config_keys'] ?? [];
+    return is_array($keys) && in_array($key, $keys, true);
+}
+
+function dm_config_value_looks_placeholder(string $value): bool
+{
+    $v = strtolower(trim($value));
+    if ($v === '') {
+        return false;
+    }
+
+    if (preg_match('/^replace_with(?:_[a-z0-9]+)*$/', $v)) {
+        return true;
+    }
+
+    $templateValues = [
+    'https://example.com/totmann',
+    'https://example.com',
+    'my name <myname@example.com>',
+    'fallback mail <fallback@example.com>',
+    'totmannschalter <totmannschalter@example.com>',
+    ];
+    if (in_array($v, $templateValues, true)) {
+        return true;
+    }
+
+    $address = dm_mailbox_normalize_address($value);
+    if ($address !== '' && str_contains($address, '@')) {
+        $domain = substr(strrchr($address, '@') ?: '', 1);
+        if ($domain === 'example.com') {
+            return true;
+        }
+    }
+
+    $host = parse_url($value, PHP_URL_HOST);
+    if (is_string($host)) {
+        $host = strtolower(trim($host, '[]'));
+        return $host === 'example.com' || $host === 'localhost';
+    }
+
+    return false;
+}
+
+function dm_config_readiness_errors(array $cfg): array
+{
+    $meta = dm_config_source_meta($cfg);
+    $errors = [];
+    $liveLoaded = (bool)($meta['live_config_loaded'] ?? false);
+    $livePath = (string)($meta['live_config_path'] ?? 'totmann.inc.php');
+    $liveError = $meta['live_config_error'] ?? null;
+
+    if (!$liveLoaded) {
+        $errors[] = is_string($liveError) && $liveError !== ''
+            ? 'Live config is not usable: ' . $liveError
+            : 'Live config is missing: ' . $livePath;
+    }
+
+    foreach (['base_url', 'hmac_secret_hex', 'to_self', 'mail_from', 'recipients_file'] as $key) {
+        if (!dm_config_key_from_live($cfg, $key)) {
+            $errors[] = "Critical key must be set in live totmann.inc.php: {$key}";
+        }
+    }
+
+    $baseUrl = trim((string)($cfg['base_url'] ?? ''));
+    if ($baseUrl === '' || dm_config_value_looks_placeholder($baseUrl)) {
+        $errors[] = 'base_url must be a non-placeholder live HTTPS URL.';
+    }
+
+    $secret = trim((string)($cfg['hmac_secret_hex'] ?? ''));
+    if ($secret === '' || dm_config_value_looks_placeholder($secret)) {
+        $errors[] = 'hmac_secret_hex must be a non-placeholder live secret.';
+    }
+
+    $mailFrom = trim((string)($cfg['mail_from'] ?? ''));
+    if ($mailFrom === '' || dm_config_value_looks_placeholder($mailFrom) || !dm_mailbox_field_valid($mailFrom)) {
+        $errors[] = 'mail_from must be one valid non-placeholder live mailbox.';
+    }
+
+    $selfRecipients = dm_recipient_entries_runtime((array)($cfg['to_self'] ?? []));
+    $usableSelfRecipients = [];
+    foreach ($selfRecipients as $selfRecipient) {
+        if (!dm_config_value_looks_placeholder($selfRecipient)) {
+            $usableSelfRecipients[] = $selfRecipient;
+        }
+    }
+    if ($usableSelfRecipients === []) {
+        $errors[] = 'to_self must contain at least one valid non-placeholder live mailbox.';
+    }
+
+    try {
+        $recipientsFileName = dm_runtime_file_name($cfg, 'recipients_file');
+        if ($recipientsFileName === 'totmann-recipients.dist.php') {
+            $errors[] = 'recipients_file must point to a live recipient file, not totmann-recipients.dist.php.';
+        }
+        $recipientsPath = dm_path($cfg, $recipientsFileName);
+        if (!is_file($recipientsPath) || !is_readable($recipientsPath)) {
+            $errors[] = "Live recipients file missing/unreadable: {$recipientsPath}";
+        }
+    } catch (Throwable $e) {
+        $errors[] = $e->getMessage();
+    }
+
+    return array_values(array_unique($errors));
+}
+
+function dm_config_has_live_operator_recipient(array $cfg): bool
+{
+    if (!dm_config_key_from_live($cfg, 'to_self')) {
+        return false;
+    }
+    foreach (dm_recipient_entries_runtime((array)($cfg['to_self'] ?? [])) as $selfRecipient) {
+        if (!dm_config_value_looks_placeholder($selfRecipient)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function dm_cfg_int_required(array $cfg, string $key, int $min, ?int $max = null): int
@@ -2329,7 +2528,7 @@ function dm_validate_runtime_config(array $cfg): array
  * - 1: warnings only
  * - 2: at least one hard failure
  */
-function dm_preflight_check(string $stateDir, ?string $webUser = null): int
+function dm_preflight_check(string $stateDir, ?string $webUser = null, ?string $bootstrapError = null): int
 {
     $okCount = 0;
     $warnCount = 0;
@@ -2357,8 +2556,7 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
     };
 
     $looksPlaceholder = static function (string $value): bool {
-        $v = strtolower($value);
-        return str_contains($v, 'example.com') || str_contains($v, 'replace_with') || str_contains($v, 'localhost');
+        return dm_config_value_looks_placeholder($value);
     };
 
     $stateDir = rtrim($stateDir, '/');
@@ -2366,6 +2564,9 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
         $stateDir = '.';
     }
     $ok("Resolved state directory: {$stateDir}");
+    if (is_string($bootstrapError) && trim($bootstrapError) !== '') {
+        $fail('Runtime bootstrap failed before diagnostic fallback: ' . trim($bootstrapError));
+    }
 
     if (!is_dir($stateDir)) {
         $fail("State directory does not exist: {$stateDir}");
@@ -2383,8 +2584,9 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
     }
 
     $configPath = $stateDir . '/totmann.inc.php';
+    $distConfigPath = $stateDir . '/totmann.inc.dist.php';
     $tickPath = $stateDir . '/totmann-tick.php';
-    foreach (['totmann.inc.php' => $configPath, 'totmann-tick.php' => $tickPath] as $name => $path) {
+    foreach (['totmann-tick.php' => $tickPath] as $name => $path) {
         if (is_file($path) && is_readable($path)) {
             $ok("Found {$name}: {$path}");
         } else {
@@ -2393,19 +2595,54 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
     }
 
     $cfg = [];
-    if (is_file($configPath) && is_readable($configPath)) {
-        try {
-            $cfg = dm_bootstrap_load_config_raw($configPath);
-            $ok('Loaded totmann.inc.php');
-        } catch (Throwable $e) {
-            $fail('Loading totmann.inc.php failed: ' . $e->getMessage());
-        }
+    try {
+        $cfg = dm_bootstrap_load_effective_config($stateDir);
+    } catch (Throwable $e) {
+        $fail('Loading configuration failed: ' . $e->getMessage());
     }
 
     if ($cfg === []) {
         echo "Summary: {$okCount} OK, {$warnCount} WARN, {$failCount} FAIL\n";
         echo "Result: NOT READY FOR GOLIVE\n";
         return 2;
+    }
+    $configuredStateDir = array_key_exists('state_dir', $cfg) ? rtrim((string)$cfg['state_dir'], '/') : '';
+    $cfg['state_dir'] = $stateDir;
+
+    $sourceMeta = dm_config_source_meta($cfg);
+    if (!empty($sourceMeta['live_config_loaded'])) {
+        $ok("Loaded live config: {$configPath}");
+    } else {
+        $liveError = $sourceMeta['live_config_error'] ?? null;
+        if (is_string($liveError) && $liveError !== '') {
+            $fail('Live config failed to load: ' . $liveError);
+        } else {
+            $fail("Missing live config: {$configPath}");
+        }
+    }
+
+    if (!empty($sourceMeta['dist_config_loaded'])) {
+        $ok("Loaded dist config: {$distConfigPath}");
+    } else {
+        $distError = $sourceMeta['dist_config_error'] ?? null;
+        if (is_string($distError) && $distError !== '') {
+            $warn('Dist config failed to load: ' . $distError);
+        } else {
+            $warn("Missing dist config: {$distConfigPath}");
+        }
+    }
+
+    $defaultedKeys = $sourceMeta['defaulted_config_keys'] ?? [];
+    if (is_array($defaultedKeys) && $defaultedKeys !== []) {
+        $criticalDefaults = array_values(array_intersect($defaultedKeys, ['base_url', 'hmac_secret_hex', 'to_self', 'mail_from', 'recipients_file']));
+        $nonCriticalDefaults = array_values(array_diff($defaultedKeys, $criticalDefaults));
+        if ($nonCriticalDefaults !== []) {
+            $warn('Non-critical config values supplied from totmann.inc.dist.php: ' . implode(', ', $nonCriticalDefaults));
+        }
+    }
+
+    foreach (dm_config_readiness_errors($cfg) as $readinessError) {
+        $fail($readinessError);
     }
 
     $runtimeFileName = static function (array $cfg, string $key, callable $fail): string {
@@ -2476,13 +2713,25 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
         }
     }
 
-    $configuredStateDir = rtrim((string)($cfg['state_dir'] ?? ''), '/');
+    $configuredStateDirCompare = $configuredStateDir;
+    $stateDirCompare = $stateDir;
+    if ($configuredStateDir !== '') {
+        $configuredStateDirReal = realpath($configuredStateDir);
+        if (is_string($configuredStateDirReal)) {
+            $configuredStateDirCompare = rtrim($configuredStateDirReal, '/');
+        }
+    }
+    $stateDirReal = realpath($stateDir);
+    if (is_string($stateDirReal)) {
+        $stateDirCompare = rtrim($stateDirReal, '/');
+    }
+
     if ($configuredStateDir === '') {
-        $warn('totmann.inc.php state_dir is empty.');
-    } elseif ($configuredStateDir !== $stateDir) {
-        $warn("totmann.inc.php state_dir ({$configuredStateDir}) differs from resolved state dir ({$stateDir}).");
+        $warn('Effective config state_dir is empty.');
+    } elseif ($configuredStateDirCompare !== $stateDirCompare) {
+        $warn("Effective config state_dir ({$configuredStateDir}) differs from resolved state dir ({$stateDir}).");
     } else {
-        $ok('totmann.inc.php state_dir matches resolved state dir.');
+        $ok('Effective config state_dir matches resolved state dir.');
     }
 
     $secret = trim((string)($cfg['hmac_secret_hex'] ?? ''));
@@ -2767,7 +3016,7 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null): int
 
                 $stateDirOkWx = $requirePathPerm($stateDir, 0x3, 'state dir (w+x)', true);
                 $requirePathPerm($stateDir, 0x5, 'state dir (r+x)', true);
-                $requirePathPerm($configPath, 0x4, 'totmann.inc.php (read)', true);
+                $requirePathPerm($configPath, 0x4, 'live totmann.inc.php (read)', true);
                 $requirePathPerm($libPath, 0x4, "{$libFileName} (read)", true);
                 $requirePathPerm($recipientsPath, 0x4, "{$recipientsFileName} (read)", true);
 

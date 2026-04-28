@@ -33,15 +33,74 @@ function dm_resolve_state_dir(): ?string
     return null;
 }
 
-function dm_web_bootstrap_load_config(string $configPath): array
+function dm_web_bootstrap_load_array_file(string $path, string $label): array
 {
-    if (!is_file($configPath) || !is_readable($configPath)) {
-        throw new RuntimeException("missing/unreadable totmann.inc.php: {$configPath}");
+    if (!is_file($path) || !is_readable($path)) {
+        throw new RuntimeException("missing/unreadable {$label}: {$path}");
     }
-    $cfg = require $configPath;
+    $cfg = require $path;
     if (!is_array($cfg)) {
-        throw new RuntimeException('totmann.inc.php must return an array');
+        throw new RuntimeException("{$label} must return an array");
     }
+    return $cfg;
+}
+
+function dm_web_bootstrap_load_effective_config(string $stateDir): array
+{
+    $livePath = rtrim($stateDir, '/') . '/totmann.inc.php';
+    $distPath = rtrim($stateDir, '/') . '/totmann.inc.dist.php';
+    $liveCfg = null;
+    $distCfg = null;
+    $liveError = null;
+    $distError = null;
+
+    if (file_exists($livePath)) {
+        try {
+            $liveCfg = dm_web_bootstrap_load_array_file($livePath, 'totmann.inc.php');
+        } catch (Throwable $e) {
+            $liveError = $e->getMessage();
+        }
+    }
+
+    if (file_exists($distPath)) {
+        try {
+            $distCfg = dm_web_bootstrap_load_array_file($distPath, 'totmann.inc.dist.php');
+        } catch (Throwable $e) {
+            $distError = $e->getMessage();
+        }
+    }
+
+    if ($liveCfg === null && $distCfg === null) {
+        throw new RuntimeException(($liveError ?? "missing live config: {$livePath}") . '; ' . ($distError ?? "missing dist config: {$distPath}"));
+    }
+
+    if ($liveCfg !== null && $distCfg !== null) {
+        $cfg = array_replace($distCfg, $liveCfg);
+        $defaultedKeys = array_values(array_diff(array_keys($distCfg), array_keys($liveCfg)));
+        $source = 'live+dist';
+    } elseif ($liveCfg !== null) {
+        $cfg = $liveCfg;
+        $defaultedKeys = [];
+        $source = 'live';
+    } else {
+        $cfg = (array)$distCfg;
+        $defaultedKeys = array_keys($cfg);
+        $source = 'dist';
+    }
+
+    $cfg['_config_source'] = [
+    'effective_config_source' => $source,
+    'live_config_path' => $livePath,
+    'dist_config_path' => $distPath,
+    'live_config_loaded' => $liveCfg !== null,
+    'dist_config_loaded' => $distCfg !== null,
+    'live_config_error' => $liveError,
+    'dist_config_error' => $distError,
+    'live_config_keys' => $liveCfg !== null ? array_keys($liveCfg) : [],
+    'dist_config_keys' => $distCfg !== null ? array_keys($distCfg) : [],
+    'defaulted_config_keys' => $defaultedKeys,
+    ];
+
     return $cfg;
 }
 
@@ -529,9 +588,8 @@ if ($resolvedDir === null) {
     dm_render_neutral();
 }
 
-$configPath = rtrim($resolvedDir, '/') . '/totmann.inc.php';
 try {
-    $cfg = dm_web_bootstrap_load_config($configPath);
+    $cfg = dm_web_bootstrap_load_effective_config($resolvedDir);
     $libFile = dm_web_bootstrap_file_name($cfg, 'lib_file');
     $cssFile = dm_web_bootstrap_optional_file_name($cfg, 'web_css_file');
     dm_web_css_file_set($cssFile);
@@ -544,18 +602,19 @@ try {
     dm_render_neutral();
 }
 
-$cfgStateDir = rtrim((string)($cfg['state_dir'] ?? ''), '/');
-if ($resolvedDir !== null) {
-    $stateDir = rtrim($resolvedDir, '/');
-} elseif ($cfgStateDir !== '') {
-    $stateDir = $cfgStateDir;
-} else {
-    $stateDir = rtrim(dirname($configPath), '/');
-}
+$stateDir = rtrim((string)$resolvedDir, '/');
 if ($stateDir === '') {
     dm_render_neutral();
 }
 $cfg['state_dir'] = $stateDir;
+
+try {
+    if (dm_config_readiness_errors($cfg) !== []) {
+        dm_render_neutral();
+    }
+} catch (Throwable $e) {
+    dm_render_neutral();
+}
 
 try {
     dm_web_catalog_set(dm_web_load_catalog($cfg));

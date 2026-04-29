@@ -1,7 +1,7 @@
 <?php
 
 /**
- * totmannschalter – configuration defaults/template
+ * totmann – configuration defaults/template
  *
  * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)

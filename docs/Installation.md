@@ -101,7 +101,7 @@ sudo cp totmann.php /var/www/html/totmann/totmann.php
 ```sh
 sudo cp totmann.css /var/www/html/totmann/totmann.css
 ```
-The recommended operational pattern is to edit `totmann.inc.php` and `totmann-recipients.php`. You may instead keep real values directly in `totmann.inc.dist.php` and/or `totmann-recipients.dist.php`, but then you must merge future release changes consciously before replacing those files.
+The recommended operational pattern is to edit `totmann.inc.php` and `totmann-recipients.php`. You may instead keep real values directly in `totmann.inc.dist.php` and/or `totmann-recipients.dist.php`, but then you must merge future release changes consciously before replacing those files. In this `.dist.php`-only mode there is no separate default layer left for automatic drift detection, so `php totmann-tick.php check` after every update is mandatory.
 
 Only runtime filenames referenced from the effective config are configurable. If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` from the template names, adjust only those copy/rename commands accordingly.
 ## Update the main config (required values)

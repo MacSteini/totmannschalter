@@ -11,7 +11,7 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 
 **[Download the latest version from here.](https://github.com/MacSteini/totmannschalter/releases/latest)**
 
-The release archive contains the runtime sources and templates only. Full documentation remains available in the GitHub repository and on the project website.
+The release archive contains `README.md`, `LICENCE`, the runtime PHP/CSS files, the `.dist.php` templates, and the shipped `l18n/` locale files. Full documentation remains available in the GitHub repository and on the project website.
 
 ## What this does
 - You regularly receive an email containing a **confirmation link**.

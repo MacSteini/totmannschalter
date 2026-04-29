@@ -1,7 +1,7 @@
 <?php
 
 /**
- * totmannschalter – systemd tick entrypoint
+ * totmann – systemd tick entrypoint
  *
  * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)

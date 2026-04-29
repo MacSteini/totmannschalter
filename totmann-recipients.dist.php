@@ -1,7 +1,7 @@
 <?php
 
 /**
- * totmannschalter – recipients, reusable messages, and optional download files
+ * totmann – recipients, reusable messages, and optional download files
  *
  * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)

@@ -1084,20 +1084,6 @@ function dm_download_valid_days(array $cfg): int
     return $days;
 }
 
-function dm_recipients_message_looks_template(string $value): bool
-{
-    $markers = [
-        'EXAMPLE TEMPLATE',
-        'Please replace it with your own wording before production use.',
-    ];
-    foreach ($markers as $marker) {
-        if (str_contains($value, $marker)) {
-            return true;
-        }
-    }
-    return false;
-}
-
 /**
  * Parse the unified recipient file and optionally skip invalid recipient rows.
  *
@@ -1174,14 +1160,6 @@ function dm_recipients_parse(array $cfg, bool $skipInvalidRecipients): array
         $singleUseNotice = $entry['single_use_notice'] ?? '';
         if (!is_string($subject) || trim($subject) === '' || !is_string($body) || trim($body) === '') {
             $message = "recipients_file message {$messageKey} must contain non-empty subject and body";
-            if (!$skipInvalidRecipients) {
-                throw new RuntimeException($message);
-            }
-            $errors[] = $message;
-            continue;
-        }
-        if (dm_recipients_message_looks_template($subject) || dm_recipients_message_looks_template($body)) {
-            $message = "recipients_file message {$messageKey} still contains template example text";
             if (!$skipInvalidRecipients) {
                 throw new RuntimeException($message);
             }

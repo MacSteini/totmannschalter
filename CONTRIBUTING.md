@@ -4,23 +4,27 @@
 This guide defines the expected workflow for pull requests in this repository.
 ## Scope
 - Contributions are welcome for bug fixes, documentation improvements, tests, and focused feature work.
+- Useful issue reports, questions, and partial observations are welcome even if you cannot run local checks.
 - For breaking changes or larger refactors, open an issue first and agree scope before implementation.
 ## Workflow (step-by-step)
 1. Fork this repository.
 2. Create a branch using a descriptive name.
 3. Keep the change focused on one concern.
 4. Update user-facing documentation in parallel with code changes.
-5. Run local checks before opening a pull request.
+5. Run local checks if you can.
 6. Commit with a clear message that describes the change intent.
-7. Open a pull request with a concise summary and test evidence.
+7. Open a pull request with a concise summary and any checks or observations you can provide.
 ## Branch naming
 - Use one of these prefixes:
 	- `feature/<short-topic>`
 	- `fix/<short-topic>`
 	- `docs/<short-topic>`
 	- `chore/<short-topic>`
-## Local validation
-Run syntax checks for changed PHP files before opening a pull request:
+## Local checks
+If you are comfortable running PHP locally, these checks are useful before opening a pull request.
+They are not required for reporting a problem, asking a question, or sending a small documentation correction.
+
+For PHP changes, run syntax checks on the files you changed:
 ```sh
 php -l totmann-lib.php
 php -l totmann-tick.php
@@ -28,20 +32,17 @@ php -l totmann.php
 php -l totmann.inc.dist.php
 php -l totmann-recipients.dist.php
 ```
-Run the smoke/regression harness when changing runtime, config, recipient, web, or release-critical documentation behaviour:
-```sh
-php tests/audit-smoke.php
-```
-For install or config-flow changes, also verify the affected deployed-state scenario with:
+
+For install or configuration-flow changes, this deployed-state check is also useful:
 ```sh
 php totmann-tick.php check
 ```
-If your change is docs-only, state this clearly in the pull request.
+If you cannot run these commands, still open the issue or pull request and say what you changed or observed.
 ## Pull request checklist
 Before submitting, confirm:
 1. The change solves one clear problem.
 2. Documentation was updated where relevant.
-3. Validation commands were run and results are included.
+3. Any validation commands you could run are listed.
 4. No secrets, credentials, or private keys are included.
 5. The pull request description lists affected files and expected behaviour impact.
 ## Security and secrets

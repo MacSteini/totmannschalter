@@ -15,7 +15,6 @@ This project uses semantic versioning:
 - Prefixed runtime and static website page titles with `[totmann]`.
 - Stopped automatic state recovery for existing empty, invalid, or inconsistent state files; only a missing state file now triggers first-run initialisation.
 - Added shared frame protection headers to runtime web pages.
-- Added a dependency-free PHP smoke/regression harness for release-critical runtime checks.
 - Clarified release archive scope, update procedure, state-file recovery guidance, and the intentional external runtime logo image.
 ## v3.0.2
 - Hardened outbound mail configuration checks so `mail_from` and optional `reply_to` must each contain exactly one valid mailbox string before sendmail handoff.

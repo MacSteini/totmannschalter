@@ -35,9 +35,10 @@ Hello,
 
 This is a reminder to confirm that you are safe and able to respond.
 
-Please use this link to confirm:
+Please click this link to confirm:
 https://example.com/totmann.php?a=confirm&id=962bacf5998ec04d7cf8bd6f1303471d&sig=cd375c690d25d8cec913d54eb40df29912760373c1ccde008f1562ab724db59e
 
+You must click the link no later than the confirmation deadline.
 Confirmation deadline: Wednesday, 22 April 2026, 12:13:10 Europe/London
 Current cycle started: Wednesday, 22 April 2026, 12:04:10 Europe/London
 

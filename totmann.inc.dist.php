@@ -210,8 +210,10 @@ Hello,
 
 This is a reminder to confirm that you are safe and able to respond.
 
-Please use this link to confirm:
+Please click this link to confirm:
 {CONFIRM_URL}
+
+You must click the link no later than the confirmation deadline!
 
 Confirmation deadline: {DEADLINE_ISO}
 Current cycle started: {CYCLE_START_ISO}

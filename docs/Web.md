@@ -50,6 +50,15 @@ Important:
 
 - If the stylesheet exists, the endpoint renders styled pages.
 - If it is missing, or `web_css_file` is empty, pages remain functional but unstyled.
+## Product logo
+Runtime web pages render the product logo from this GitHub-hosted image URL:
+```text
+https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totmannschalter-s.png
+```
+
+This is a deliberate visual dependency. It does not affect confirmation, ACK, download, mail, state, or escalation logic.
+
+If a browser or network policy blocks that image, the page content and buttons remain usable.
 ## Stealth behaviour
 The endpoint is intentionally stealthy:
 - invalid or missing tokens get the neutral page

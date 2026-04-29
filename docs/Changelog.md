@@ -13,6 +13,10 @@ This project uses semantic versioning:
 - Allowed intentionally maintained `.dist.php` files to act as the effective runtime configuration, while template recipients and placeholder mailboxes remain blocked from real delivery.
 - Added an operator warning only for the update case where `totmann.inc.dist.php` supplies new top-level keys missing from an existing `totmann.inc.php`.
 - Prefixed runtime and static website page titles with `[totmann]`.
+- Stopped automatic state recovery for existing empty, invalid, or inconsistent state files; only a missing state file now triggers first-run initialisation.
+- Added shared frame protection headers to runtime web pages.
+- Added a dependency-free PHP smoke/regression harness for release-critical runtime checks.
+- Clarified release archive scope, update procedure, state-file recovery guidance, and the intentional external runtime logo image.
 ## v3.0.2
 - Hardened outbound mail configuration checks so `mail_from` and optional `reply_to` must each contain exactly one valid mailbox string before sendmail handoff.
 - Extended preflight so invalid `mail_from` and `reply_to` values are reported explicitly during `php totmann-tick.php check`.

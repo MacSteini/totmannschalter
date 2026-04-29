@@ -67,15 +67,18 @@ Representative STDERR / journal examples:
 CONFIG ERROR: Missing config key: download_valid_days
 CONFIG ERROR: recipients_file missing/unreadable: <state_dir>/totmann-recipients.php
 BOOTSTRAP ERROR: missing live config: <state_dir>/totmann.inc.php; missing dist config: <state_dir>/totmann.inc.dist.php
+ERROR: State sanity check failed: deadline_at must be later than next_check_at. Restore the state file from backup or perform a deliberate clean initialise.
 ```
 How to interpret them:
 - `CONFIG ERROR: ...` => configuration loaded far enough to check, but a required value or file structure is wrong
 - `BOOTSTRAP ERROR: ...` => the script failed before normal runtime setup completed
+- `State sanity check failed: ...` => the state file exists but is not safe to continue from automatically
 
 What to do:
 - read the exact missing/invalid key or file path
 - run `php totmann-tick.php check` in your state directory
 - inspect `totmann.inc.php` and/or `totmann.inc.dist.php`, then inspect the configured `recipients_file`
+- if the state file is the problem, restore it from backup or deliberately perform a clean initialise after confirming that you do not need to keep any existing escalation state
 - if you intentionally keep real values in `.dist.php` files, merge release updates consciously before replacing those files
 - if the problem happens under `systemd`, confirm it again with `journalctl -u totmann.service`
 

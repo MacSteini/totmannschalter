@@ -65,7 +65,7 @@ What to do next:
 
 Example: unknown single-use file alias
 ```text
-Subject: Operator warning: Recipient skipped
+Subject: [totmann] Operator warning: Recipient skipped
 
 totmann detected an operator-facing problem and continued in best-effort mode where possible.
 
@@ -91,7 +91,7 @@ Recommended next steps:
 
 Example: unknown normal file alias
 ```text
-Subject: Operator warning: Recipient skipped
+Subject: [totmann] Operator warning: Recipient skipped
 
 totmann detected an operator-facing problem and continued in best-effort mode where possible.
 

@@ -73,7 +73,7 @@ The shared `totmann.json` contains two top-level areas:
 - `runtime`
 - `downloads`
 
-If the timing fields in `runtime` are missing or inconsistent (`cycle_start_at`, `next_check_at`, `deadline_at`), the tick performs conservative state recovery (new cycle, no immediate escalation). Check logs for `State sanity recovery triggered…`.
+If the timing fields in `runtime` are missing or inconsistent (`cycle_start_at`, `next_check_at`, `deadline_at`), the tick stops instead of starting a fresh cycle. Restore the state file from backup, or perform a deliberate clean initialise after you have confirmed that you do not need to keep any escalation state.
 ```sh
 cat /var/lib/totmann/totmann.json
 ```

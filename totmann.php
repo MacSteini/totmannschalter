@@ -144,6 +144,8 @@ function dm_headers_common(): void
     header('Pragma: no-cache');
     header('X-Content-Type-Options: nosniff');
     header('Referrer-Policy: no-referrer');
+    header("Content-Security-Policy: frame-ancestors 'none'");
+    header('X-Frame-Options: DENY');
 }
 
 function dm_h(string $v): string

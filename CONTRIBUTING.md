@@ -28,6 +28,14 @@ php -l totmann.php
 php -l totmann.inc.dist.php
 php -l totmann-recipients.dist.php
 ```
+Run the smoke/regression harness when changing runtime, config, recipient, web, or release-critical documentation behaviour:
+```sh
+php tests/audit-smoke.php
+```
+For install or config-flow changes, also verify the affected deployed-state scenario with:
+```sh
+php totmann-tick.php check
+```
 If your change is docs-only, state this clearly in the pull request.
 ## Pull request checklist
 Before submitting, confirm:

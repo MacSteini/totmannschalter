@@ -344,25 +344,41 @@ function dm_lock_open(string $lockFile)
 
 /**
  * Load JSON state from disk.
- * - Missing/empty/invalid => return empty array.
- * - Caller decides whether "empty" means "initialise" or "error".
+ * - Missing => return empty array so the first tick can initialise.
+ * - Existing but empty, unreadable, invalid, or non-object => throw.
  *
  * No `@`:
  * - Pre-check `is_readable()` to avoid warnings.
  */
 function dm_state_load(string $stateFile): array
 {
-    if (!is_file($stateFile) || !is_readable($stateFile)) {
+    if (!file_exists($stateFile)) {
         return [];
+    }
+    if (!is_file($stateFile)) {
+        throw new RuntimeException("State path is not a regular file: {$stateFile}");
+    }
+    if (!is_readable($stateFile)) {
+        throw new RuntimeException("State file is not readable: {$stateFile}");
     }
 
     $raw = file_get_contents($stateFile);
-    if ($raw === false || trim($raw) === '') {
-        return [];
+    if ($raw === false) {
+        throw new RuntimeException("State file could not be read: {$stateFile}");
+    }
+    if (trim($raw) === '') {
+        throw new RuntimeException("State file is empty: {$stateFile}");
     }
 
     $data = json_decode($raw, true);
-    return is_array($data) ? $data : [];
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        throw new RuntimeException("State file contains invalid JSON: {$stateFile}");
+    }
+    if (!is_array($data)) {
+        throw new RuntimeException("State file must contain a JSON object: {$stateFile}");
+    }
+
+    return $data;
 }
 
 /**
@@ -2441,6 +2457,30 @@ function dm_config_readiness_errors(array $cfg): array
     return array_values(array_unique($errors));
 }
 
+function dm_state_runtime_sanity_errors(array $state): array
+{
+    $errors = [];
+
+    $cycleStart = (int)($state['cycle_start_at'] ?? 0);
+    $nextCheck = (int)($state['next_check_at'] ?? 0);
+    $deadline = (int)($state['deadline_at'] ?? 0);
+
+    if ($cycleStart <= 0) {
+        $errors[] = 'cycle_start_at is missing or invalid';
+    }
+    if ($nextCheck <= 0) {
+        $errors[] = 'next_check_at is missing or invalid';
+    }
+    if ($deadline <= 0) {
+        $errors[] = 'deadline_at is missing or invalid';
+    }
+    if ($nextCheck > 0 && $deadline > 0 && $deadline <= $nextCheck) {
+        $errors[] = 'deadline_at must be later than next_check_at';
+    }
+
+    return $errors;
+}
+
 function dm_config_has_live_operator_recipient(array $cfg): bool
 {
     if (!dm_config_key_from_live($cfg, 'to_self')) {
@@ -2760,6 +2800,30 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null, ?string $
         $warn("Effective config state_dir ({$configuredStateDir}) differs from resolved state dir ({$stateDir}).");
     } else {
         $ok('Effective config state_dir matches resolved state dir.');
+    }
+
+    if ($stateFileName !== '__invalid__') {
+        $stateFilePath = $stateDir . '/' . $stateFileName;
+        if (!file_exists($stateFilePath)) {
+            $ok("State file not present yet; the first tick will initialise it: {$stateFilePath}");
+        } else {
+            try {
+                $stateRoot = dm_state_load($stateFilePath);
+                $runtimeState = dm_state_runtime($stateRoot);
+                if ($runtimeState === []) {
+                    $fail("State file exists but does not contain runtime state: {$stateFilePath}");
+                } else {
+                    $stateErrors = dm_state_runtime_sanity_errors($runtimeState);
+                    if ($stateErrors === []) {
+                        $ok("State file runtime data looks consistent: {$stateFilePath}");
+                    } else {
+                        $fail('State file runtime data is inconsistent: ' . implode('; ', $stateErrors));
+                    }
+                }
+            } catch (Throwable $e) {
+                $fail('State file validation failed: ' . $e->getMessage());
+            }
+        }
     }
 
     $secret = trim((string)($cfg['hmac_secret_hex'] ?? ''));

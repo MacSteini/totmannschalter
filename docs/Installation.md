@@ -322,11 +322,60 @@ What `check` now validates:
 - `recipients_file`
 - `download_base_dir`
 - `base_url`
+- existing state file structure, when the state file is already present
 - message-specific `single_use_notice` requirements inside `recipients_file`
 - `mail_from`
 - `sendmail_path`
 - `log_mode`
 - `ip_mode` / trusted-proxy settings
+## Update / upgrade
+Use this sequence when totmann is already installed and you replace it with a newer release.
+
+1. Stop the timer while you replace files:
+	```sh
+	sudo systemctl stop totmann.timer
+	```
+2. Back up the state directory before changing anything:
+	```sh
+	sudo tar -C /var/lib -czf /var/lib/totmann-backup-$(date +%Y%m%d%H%M%S).tar.gz totmann
+	```
+3. Copy the shipped runtime files from the new release into the state directory:
+	```sh
+	sudo cp totmann-tick.php totmann-lib.php /var/lib/totmann/
+	sudo cp -R l18n /var/lib/totmann/
+	```
+4. Copy the web endpoint and stylesheet into the webroot:
+	```sh
+	sudo cp totmann.php /var/www/html/totmann/totmann.php
+	sudo cp totmann.css /var/www/html/totmann/totmann.css
+	```
+5. Merge configuration consciously:
+	- If you use the recommended live files, compare the new `totmann.inc.dist.php` with your existing `totmann.inc.php`, then add any new intended keys to `totmann.inc.php`.
+	- Compare the new `totmann-recipients.dist.php` with your configured `recipients_file` only for structural changes; keep your real recipients and message text.
+	- In live-file mode, copy the new `.dist.php` templates into the state directory after you have reviewed them:
+		```sh
+		sudo cp totmann.inc.dist.php totmann-recipients.dist.php /var/lib/totmann/
+		```
+	- If you intentionally use `.dist.php` as your effective runtime files, merge your real values into the new `.dist.php` files before replacing the old ones.
+6. Restore permissions:
+	```sh
+	sudo chown -R root:<WEB_GROUP> /var/lib/totmann
+	sudo find /var/lib/totmann -type d -exec chmod 2770 {} \;
+	sudo find /var/lib/totmann -type f -exec chmod 0660 {} \;
+	```
+7. Run preflight before re-enabling the timer:
+	```sh
+	cd /var/lib/totmann
+	php totmann-tick.php check
+	php totmann-tick.php check --web-user=<WEB_USER>
+	```
+8. Start the timer again only after `check` reports no hard failures:
+	```sh
+	sudo systemctl start totmann.timer
+	```
+9. Perform a short smoke test with your own mailboxes after larger updates.
+
+Do not delete the configured `state_file` during an update unless you have deliberately decided to reset the cycle.
 ## Changing config without restarting `systemd`
 For effective main-config changes (for example timing values), you do not need to restart `totmann.timer` or `totmann.service`.
 The runtime reads config on each tick, so it picks up updates automatically.

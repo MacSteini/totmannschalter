@@ -281,6 +281,11 @@ try {
     $nextCheck = (int)($state['next_check_at'] ?? 0);
     $deadline = (int)($state['deadline_at'] ?? 0);
 
+    $stateSanityErrors = dm_state_runtime_sanity_errors($state);
+    if ($stateSanityErrors !== []) {
+        throw new RuntimeException('State sanity check failed: ' . implode('; ', $stateSanityErrors) . '. Restore the state file from backup or perform a deliberate clean initialise.');
+    }
+
     if (empty($state['token']['id']) || empty($state['token']['sig'])) {
         $state['token'] = dm_make_token($cfg);
         dm_log($cfg, 'Token was missing; regenerated.');
@@ -300,20 +305,6 @@ try {
     if (!$tokenValid) {
         $state['token'] = dm_make_token($cfg);
         dm_log($cfg, 'Token was invalid; regenerated.');
-        $stateRoot = dm_state_with_runtime($stateRoot, $state);
-        dm_state_save($stateFile, $stateRoot);
-        exit(0);
-    }
-
-    $cycleStartCurrent = (int)($state['cycle_start_at'] ?? 0);
-    $stateBroken = ($cycleStartCurrent <= 0 || $nextCheck <= 0 || $deadline <= 0 || $deadline <= $nextCheck);
-    if ($stateBroken) {
-        dm_log($cfg, "State sanity recovery triggered (cycle_start_at={$cycleStartCurrent}, next_check_at={$nextCheck}, deadline_at={$deadline}).");
-        dm_state_start_cycle($cfg, $state, $now, $checkInterval, $confirmWindow);
-        $state['missed_cycles'] = 0;
-        $state['missed_cycle_deadline'] = null;
-        dm_state_clear_escalation($state);
-        $state['last_tick_at'] = $now;
         $stateRoot = dm_state_with_runtime($stateRoot, $state);
         dm_state_save($stateFile, $stateRoot);
         exit(0);
@@ -577,6 +568,10 @@ try {
             dm_log($cfg, 'Operator alert state save failed: ' . $saveError->getMessage());
         }
     } else {
+        if (is_resource($lockHandle)) {
+            fclose($lockHandle);
+            $lockHandle = null;
+        }
         dm_operator_alert_handle_from_statefile($cfg, 'runtime_error', $e->getMessage());
     }
     exit(1);

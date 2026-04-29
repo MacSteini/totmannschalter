@@ -464,6 +464,18 @@ function dm_cycles_current_text(int $count): string
     return dm_web_text('detail_missed_current_other', ['count' => (string)$count]);
 }
 
+function dm_web_page_title(string $title): string
+{
+    $title = trim($title);
+    if ($title === '') {
+        return '[totmann]';
+    }
+    if (str_starts_with($title, '[totmann]')) {
+        return $title;
+    }
+    return '[totmann] ' . $title;
+}
+
 function dm_render_page(string $title, string $bodyHtml, string $cardClass = ''): void
 {
     dm_headers_common();
@@ -475,7 +487,7 @@ function dm_render_page(string $title, string $bodyHtml, string $cardClass = '')
     if ($cardClass !== '') {
         $cardClassAttr .= ' ' . $cardClass;
     }
-    echo '<!doctype html><html lang="' . $htmlLang . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>' . dm_h($title) . '</title>' . $cssLink . '</head><body><main class="dm_shell"><section class="' . dm_h($cardClassAttr) . '">' . $logoHtml . $bodyHtml . '</section></main></body></html>';
+    echo '<!doctype html><html lang="' . $htmlLang . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>' . dm_h(dm_web_page_title($title)) . '</title>' . $cssLink . '</head><body><main class="dm_shell"><section class="' . dm_h($cardClassAttr) . '">' . $logoHtml . $bodyHtml . '</section></main></body></html>';
     exit;
 }
 

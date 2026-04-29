@@ -2,7 +2,7 @@
 ![totmann](../img/totmannschalter-icon.png)
 
 ## Mail delivery (prerequisite)
-The script sends mail via the configured sendmail binary (`sendmail_path` in live `totmann.inc.php`) in sendmail-compatible mode.
+The script sends mail via the configured sendmail binary (`sendmail_path` in the effective main config) in sendmail-compatible mode.
 
 If you want to see what reminder mails, operator warnings, and escalation mails actually look like for end users, go to [Example messages](Examples.md "Example messages").
 
@@ -12,7 +12,7 @@ Practical rule:
 
 Manual pipe test:
 ```sh
-# Adjust `/usr/sbin/sendmail` to match live totmann.inc.php sendmail_path
+# Adjust `/usr/sbin/sendmail` to match the effective sendmail_path
 printf "From: test <test@example.com>\nTo: you@example.com\nSubject: pipe-test\n\nhello\n" | /usr/sbin/sendmail -i -- you@example.com
 echo $?
 ```
@@ -32,7 +32,7 @@ Suggestions:
 - consider adding a stable plain-text footer (what this is and why the recipient gets it) so content looks less automated
 - for tests, use the provided test preset in [Timing](Timing.md "Timing model and presets")
 ## Reminder mails (`to_self`)
-Reminder mails are configured in the live `totmann.inc.php`. Do not edit `totmann.inc.dist.php`.
+Reminder mails are configured in the effective main config (`totmann.inc.php` or intentionally maintained `totmann.inc.dist.php`).
 
 Rules:
 - `to_self` is a list
@@ -57,7 +57,7 @@ Do not do this:
 ],
 ```
 ## The recipient file at a glance
-Everything recipient-related for live escalation delivery lives in `totmann-recipients.php`. Do not edit `totmann-recipients.dist.php`; copy it to the live filename first.
+Everything recipient-related for escalation delivery lives in the configured `recipients_file` (template default: `totmann-recipients.php`; `totmann-recipients.dist.php` is also valid if you intentionally keep that filename and replace all template recipients).
 
 The file has exactly 3 top-level areas:
 - `$files` => define each downloadable file once
@@ -90,7 +90,7 @@ Important rules:
 - you never write `single_use=true` yourself in this file
 - if field 5 is omitted, everything stays on the normal-download default
 - if a message is used with field 5 anywhere, that message must define `single_use_notice`
-## Enduser example for `totmann-recipients.php`
+## Enduser example for the configured recipient file
 ```php
 $files = [
 'letter' => 'shared/letter.pdf',
@@ -190,12 +190,12 @@ Practical rule:
 - keep `{ACK_BLOCK}` in every message that should allow receipt confirmation
 - if you remove `{ACK_BLOCK}` from one message, recipients using that message will not see an ACK link even if ACK is enabled globally
 ## Mail placeholders
-Reminder mails from live `totmann.inc.php` support:
+Reminder mails from the effective main config support:
 - `{CONFIRM_URL}`
 - `{DEADLINE_ISO}`
 - `{CYCLE_START_ISO}`
 
-Escalation mails from `$messages` in live `totmann-recipients.php` support:
+Escalation mails from `$messages` in the configured recipient file support:
 - `{LAST_CONFIRM_ISO}`
 - `{CYCLE_START_ISO}`
 - `{DEADLINE_ISO}`

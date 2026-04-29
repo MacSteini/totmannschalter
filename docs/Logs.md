@@ -65,7 +65,7 @@ These messages are important, but they are not guaranteed to appear in `totmann.
 Representative STDERR / journal examples:
 ```text
 CONFIG ERROR: Missing config key: download_valid_days
-CONFIG ERROR: Live config is missing: <state_dir>/totmann.inc.php
+CONFIG ERROR: recipients_file missing/unreadable: <state_dir>/totmann-recipients.php
 BOOTSTRAP ERROR: missing live config: <state_dir>/totmann.inc.php; missing dist config: <state_dir>/totmann.inc.dist.php
 ```
 How to interpret them:
@@ -75,8 +75,8 @@ How to interpret them:
 What to do:
 - read the exact missing/invalid key or file path
 - run `php totmann-tick.php check` in your state directory
-- inspect the live files `totmann.inc.php` and `totmann-recipients.php`
-- restore the `.dist.php` files from the release archive if `check` reports them missing and your live config is incomplete
+- inspect `totmann.inc.php` and/or `totmann.inc.dist.php`, then inspect the configured `recipients_file`
+- if you intentionally keep real values in `.dist.php` files, merge release updates consciously before replacing those files
 - if the problem happens under `systemd`, confirm it again with `journalctl -u totmann.service`
 
 Important:

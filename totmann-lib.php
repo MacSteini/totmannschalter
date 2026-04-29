@@ -131,6 +131,35 @@ function dm_runtime_file_name(array $cfg, string $key): string
 }
 
 /**
+ * Resolve the recipient file used by the current effective configuration.
+ *
+ * The template default keeps `recipients_file` at `totmann-recipients.php`.
+ * Operators may either create that live file or intentionally keep a fully
+ * configured `totmann-recipients.dist.php`; in the latter case the dist file is
+ * the effective recipient file as long as the default live filename is absent.
+ */
+function dm_effective_recipients_file_name(array $cfg): string
+{
+    $configured = dm_runtime_file_name($cfg, 'recipients_file');
+    if ($configured !== 'totmann-recipients.php') {
+        return $configured;
+    }
+
+    $configuredPath = dm_path($cfg, $configured);
+    if (is_file($configuredPath) && is_readable($configuredPath)) {
+        return $configured;
+    }
+
+    $distName = 'totmann-recipients.dist.php';
+    $distPath = dm_path($cfg, $distName);
+    if (is_file($distPath) && is_readable($distPath)) {
+        return $distName;
+    }
+
+    return $configured;
+}
+
+/**
  * Validate a runtime directory name from config.
  * Basename only, no traversal, no control chars.
  */
@@ -512,7 +541,7 @@ function dm_operator_alert_label(string $type): string
 {
     return match ($type) {
         'recipient_skipped' => 'Recipient skipped',
-        'config_source' => 'Configuration source problem',
+        'config_defaults_used' => 'Configuration defaults applied',
         'config_error' => 'Configuration error',
         'runtime_error' => 'Runtime error',
         'delivery_error' => 'Mail delivery error',
@@ -525,8 +554,8 @@ function dm_operator_alert_label(string $type): string
  */
 function dm_operator_alert_hint(string $type, string $message): string
 {
-    if ($type === 'config_source') {
-        return 'Copy totmann.inc.dist.php to totmann.inc.php, copy totmann-recipients.dist.php to totmann-recipients.php, set the live values, and rerun php totmann-tick.php check.';
+    if ($type === 'config_defaults_used') {
+        return 'Open totmann.inc.php, review the listed keys from totmann.inc.dist.php, add the intended live values, and rerun php totmann-tick.php check.';
     }
     if (str_contains($message, 'single_use_notice')) {
         return 'Open totmann-recipients.php, find the referenced message key in $messages, and add a non-empty single_use_notice because that message is used with field 5.';
@@ -547,18 +576,18 @@ function dm_operator_alert_hint(string $type, string $message): string
         return 'Open totmann-recipients.php and make sure field 4 and field 5 are flat alias lists such as [\'letter\'] or [\'photos\'].';
     }
     if (str_contains($message, 'sendmail')) {
-        return 'Check sendmail_path in live totmann.inc.php, verify the binary exists and is executable, and run php totmann-tick.php check in your state directory.';
+        return 'Check sendmail_path in the effective main config, verify the binary exists and is executable, and run php totmann-tick.php check in your state directory.';
     }
     if (str_contains($message, 'to_self')) {
-        return 'Check to_self in live totmann.inc.php. Each entry must contain exactly one valid mailbox string.';
+        return 'Check to_self in the effective main config. Each entry must contain exactly one valid mailbox string.';
     }
     if (str_contains($message, 'recipients_file')) {
-        return 'Open totmann-recipients.php, fix the referenced row or top-level structure, and rerun php totmann-tick.php check.';
+        return 'Open the configured recipients_file, fix the referenced row or top-level structure, and rerun php totmann-tick.php check.';
     }
     if ($type === 'delivery_error') {
         return 'Check the affected recipient mailbox plus your local sendmail setup, then rerun php totmann-tick.php check and inspect totmann.log.';
     }
-    return 'Run php totmann-tick.php check in your state directory, inspect totmann.log, and compare the affected values in the live config files.';
+    return 'Run php totmann-tick.php check in your state directory, inspect totmann.log, and compare the affected values in the effective config files.';
 }
 
 /**
@@ -677,7 +706,7 @@ function dm_operator_alert_render_mail(array $cfg, array $alert): array
         '1. Change into your state directory: ' . $stateDir,
         '2. Run: php totmann-tick.php check',
         '3. Inspect totmann.log for matching lines.',
-        '4. Compare the affected values in live totmann.inc.php and live totmann-recipients.php.',
+        '4. Compare the affected values in totmann.inc.php and the configured recipients_file.',
         '5. If you still have the project docs at hand, read docs/Logs.md and docs/Troubleshooting.md.',
     ]) . "\n";
 
@@ -1066,7 +1095,7 @@ function dm_download_valid_days(array $cfg): int
  */
 function dm_recipients_parse(array $cfg, bool $skipInvalidRecipients): array
 {
-    $fileName = dm_runtime_file_name($cfg, 'recipients_file');
+    $fileName = dm_effective_recipients_file_name($cfg);
     $path = dm_path($cfg, $fileName);
 
     if (!is_file($path) || !is_readable($path)) {
@@ -1179,6 +1208,9 @@ function dm_recipients_parse(array $cfg, bool $skipInvalidRecipients): array
             }
             if ($address === '' || !dm_mailbox_field_valid($address)) {
                 throw new RuntimeException("recipients_file contains invalid mailbox in recipient entry #{$index}: {$address}");
+            }
+            if (dm_config_value_looks_placeholder($address)) {
+                throw new RuntimeException("recipients_file contains placeholder mailbox in recipient entry #{$index}: {$address}");
             }
             if ($messageKey === '') {
                 throw new RuntimeException("recipients_file recipient entry #{$index} must reference a message key in field 3");
@@ -2098,7 +2130,7 @@ function dm_download_definition_get(array $recipients, string $recipientKey, str
  */
 function dm_download_recipients_runtime(array $cfg): array
 {
-    $fileName = dm_runtime_file_name($cfg, 'recipients_file');
+    $fileName = dm_effective_recipients_file_name($cfg);
     $path = dm_path($cfg, $fileName);
 
     if (!is_file($path) || !is_readable($path)) {
@@ -2137,7 +2169,7 @@ function dm_download_recipients_runtime(array $cfg): array
 
         $name = trim((string)($row[0] ?? ''));
         $address = trim(str_replace(["\r", "\n"], '', (string)($row[1] ?? '')));
-        if ($name === '' || $address === '' || !dm_mailbox_field_valid($address)) {
+        if ($name === '' || $address === '' || !dm_mailbox_field_valid($address) || dm_config_value_looks_placeholder($address)) {
             continue;
         }
 
@@ -2288,7 +2320,7 @@ function dm_bootstrap_load_effective_config(string $stateDir): array
         $source = 'live';
     } else {
         $cfg = (array)$distCfg;
-        $defaultedKeys = array_keys($cfg);
+        $defaultedKeys = [];
         $source = 'dist';
     }
 
@@ -2362,58 +2394,45 @@ function dm_config_value_looks_placeholder(string $value): bool
 
 function dm_config_readiness_errors(array $cfg): array
 {
-    $meta = dm_config_source_meta($cfg);
     $errors = [];
-    $liveLoaded = (bool)($meta['live_config_loaded'] ?? false);
-    $livePath = (string)($meta['live_config_path'] ?? 'totmann.inc.php');
-    $liveError = $meta['live_config_error'] ?? null;
-
-    if (!$liveLoaded) {
-        $errors[] = is_string($liveError) && $liveError !== ''
-            ? 'Live config is not usable: ' . $liveError
-            : 'Live config is missing: ' . $livePath;
-    }
-
-    foreach (['base_url', 'hmac_secret_hex', 'to_self', 'mail_from', 'recipients_file'] as $key) {
-        if (!dm_config_key_from_live($cfg, $key)) {
-            $errors[] = "Critical key must be set in live totmann.inc.php: {$key}";
-        }
-    }
 
     $baseUrl = trim((string)($cfg['base_url'] ?? ''));
     if ($baseUrl === '' || dm_config_value_looks_placeholder($baseUrl)) {
-        $errors[] = 'base_url must be a non-placeholder live HTTPS URL.';
+        $errors[] = 'base_url must be a non-placeholder HTTPS URL.';
     }
 
     $secret = trim((string)($cfg['hmac_secret_hex'] ?? ''));
     if ($secret === '' || dm_config_value_looks_placeholder($secret)) {
-        $errors[] = 'hmac_secret_hex must be a non-placeholder live secret.';
+        $errors[] = 'hmac_secret_hex must be a non-placeholder secret.';
     }
 
     $mailFrom = trim((string)($cfg['mail_from'] ?? ''));
     if ($mailFrom === '' || dm_config_value_looks_placeholder($mailFrom) || !dm_mailbox_field_valid($mailFrom)) {
-        $errors[] = 'mail_from must be one valid non-placeholder live mailbox.';
-    }
-
-    $selfRecipients = dm_recipient_entries_runtime((array)($cfg['to_self'] ?? []));
-    $usableSelfRecipients = [];
-    foreach ($selfRecipients as $selfRecipient) {
-        if (!dm_config_value_looks_placeholder($selfRecipient)) {
-            $usableSelfRecipients[] = $selfRecipient;
-        }
-    }
-    if ($usableSelfRecipients === []) {
-        $errors[] = 'to_self must contain at least one valid non-placeholder live mailbox.';
+        $errors[] = 'mail_from must be one valid non-placeholder mailbox.';
     }
 
     try {
-        $recipientsFileName = dm_runtime_file_name($cfg, 'recipients_file');
-        if ($recipientsFileName === 'totmann-recipients.dist.php') {
-            $errors[] = 'recipients_file must point to a live recipient file, not totmann-recipients.dist.php.';
+        $selfRecipients = dm_recipient_entries_runtime((array)($cfg['to_self'] ?? []));
+        $usableSelfRecipients = [];
+        foreach ($selfRecipients as $selfRecipient) {
+            if (!dm_config_value_looks_placeholder($selfRecipient)) {
+                $usableSelfRecipients[] = $selfRecipient;
+            }
         }
+        if ($usableSelfRecipients === []) {
+            $errors[] = 'to_self must contain at least one valid non-placeholder mailbox.';
+        }
+    } catch (Throwable $e) {
+        $errors[] = 'to_self validation failed: ' . $e->getMessage();
+    }
+
+    try {
+        $recipientsFileName = dm_effective_recipients_file_name($cfg);
         $recipientsPath = dm_path($cfg, $recipientsFileName);
         if (!is_file($recipientsPath) || !is_readable($recipientsPath)) {
-            $errors[] = "Live recipients file missing/unreadable: {$recipientsPath}";
+            $errors[] = "recipients_file missing/unreadable: {$recipientsPath}";
+        } else {
+            dm_recipients_load($cfg);
         }
     } catch (Throwable $e) {
         $errors[] = $e->getMessage();
@@ -2610,14 +2629,15 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null, ?string $
     $cfg['state_dir'] = $stateDir;
 
     $sourceMeta = dm_config_source_meta($cfg);
+    $effectiveConfigPath = !empty($sourceMeta['live_config_loaded']) ? $configPath : $distConfigPath;
     if (!empty($sourceMeta['live_config_loaded'])) {
         $ok("Loaded live config: {$configPath}");
     } else {
         $liveError = $sourceMeta['live_config_error'] ?? null;
         if (is_string($liveError) && $liveError !== '') {
-            $fail('Live config failed to load: ' . $liveError);
+            $ok('Live config not used; effective config source is available without it: ' . $liveError);
         } else {
-            $fail("Missing live config: {$configPath}");
+            $ok("Live config not present; effective config source is available without it: {$configPath}");
         }
     }
 
@@ -2626,19 +2646,15 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null, ?string $
     } else {
         $distError = $sourceMeta['dist_config_error'] ?? null;
         if (is_string($distError) && $distError !== '') {
-            $warn('Dist config failed to load: ' . $distError);
+            $ok('Dist config not used; effective config source is available without it: ' . $distError);
         } else {
-            $warn("Missing dist config: {$distConfigPath}");
+            $ok("Dist config not present; effective config source is available without it: {$distConfigPath}");
         }
     }
 
     $defaultedKeys = $sourceMeta['defaulted_config_keys'] ?? [];
     if (is_array($defaultedKeys) && $defaultedKeys !== []) {
-        $criticalDefaults = array_values(array_intersect($defaultedKeys, ['base_url', 'hmac_secret_hex', 'to_self', 'mail_from', 'recipients_file']));
-        $nonCriticalDefaults = array_values(array_diff($defaultedKeys, $criticalDefaults));
-        if ($nonCriticalDefaults !== []) {
-            $warn('Non-critical config values supplied from totmann.inc.dist.php: ' . implode(', ', $nonCriticalDefaults));
-        }
+        $warn('Config values supplied from totmann.inc.dist.php because live totmann.inc.php does not define them: ' . implode(', ', $defaultedKeys));
     }
 
     foreach (dm_config_readiness_errors($cfg) as $readinessError) {
@@ -2677,13 +2693,25 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null, ?string $
     $l18nDirName = $runtimeFileName($cfg, 'l18n_dir_name', $fail);
     $lockFileName = $runtimeFileName($cfg, 'lock_file', $fail);
     $logFileName = $runtimeFileName($cfg, 'log_file_name', $fail);
-    $recipientsFileName = $runtimeFileName($cfg, 'recipients_file', $fail);
+    $configuredRecipientsFileName = $runtimeFileName($cfg, 'recipients_file', $fail);
+    $recipientsFileName = $configuredRecipientsFileName;
+    if ($configuredRecipientsFileName !== '__invalid__') {
+        try {
+            $recipientsFileName = dm_effective_recipients_file_name($cfg);
+        } catch (Throwable $e) {
+            $fail($e->getMessage());
+        }
+    }
     $stateFileName = $runtimeFileName($cfg, 'state_file', $fail);
     $webFileName = $runtimeFileName($cfg, 'web_file', $fail);
     $webCssFileName = $optionalRuntimeFileName($cfg, 'web_css_file', $fail);
     if ($failCount === 0) {
         $cssMsg = ($webCssFileName === null) ? 'css=disabled' : "css={$webCssFileName}";
-        $ok("Runtime filenames: lib={$libFileName}, l18n={$l18nDirName}, lock={$lockFileName}, log={$logFileName}, recipients={$recipientsFileName}, state={$stateFileName}, web={$webFileName}, {$cssMsg}");
+        $recipientsMsg = $recipientsFileName;
+        if ($configuredRecipientsFileName !== $recipientsFileName) {
+            $recipientsMsg .= " (effective fallback for configured {$configuredRecipientsFileName})";
+        }
+        $ok("Runtime filenames: lib={$libFileName}, l18n={$l18nDirName}, lock={$lockFileName}, log={$logFileName}, recipients={$recipientsMsg}, state={$stateFileName}, web={$webFileName}, {$cssMsg}");
     }
 
     $libPath = $stateDir . '/' . $libFileName;
@@ -3016,7 +3044,7 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null, ?string $
 
                 $stateDirOkWx = $requirePathPerm($stateDir, 0x3, 'state dir (w+x)', true);
                 $requirePathPerm($stateDir, 0x5, 'state dir (r+x)', true);
-                $requirePathPerm($configPath, 0x4, 'live totmann.inc.php (read)', true);
+                $requirePathPerm($effectiveConfigPath, 0x4, 'effective main config (read)', true);
                 $requirePathPerm($libPath, 0x4, "{$libFileName} (read)", true);
                 $requirePathPerm($recipientsPath, 0x4, "{$recipientsFileName} (read)", true);
 

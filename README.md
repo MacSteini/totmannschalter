@@ -21,7 +21,7 @@ The release archive contains the runtime sources and templates only. Full docume
 - A successful confirmation **resets the cycle**.
 - The script sends reminder emails as one email per `to_self` recipient (no shared `To:` list).
 - If you do not confirm in time (plus grace), the script triggers **escalation** using conservative logic.
-- Escalation uses exactly one live recipient file (`totmann-recipients.php` by default) with 3 flat top-level sections: `$files`, `$messages`, and `$recipients`.
+- Escalation uses exactly one configured recipient file (`totmann-recipients.php` by default, or `totmann-recipients.dist.php` if you intentionally keep that filename) with 3 flat top-level sections: `$files`, `$messages`, and `$recipients`.
 - Escalation emails are always sent individually (one mail per recipient).
 - Escalation emails can optionally include recipient-specific download links for files stored outside the webroot.
 - Escalation emails can include an optional **receipt acknowledgement (ACK)** link. Once **any** recipient acknowledges, no further escalation mails are sent for that escalation event.
@@ -52,8 +52,9 @@ The release archive contains the runtime sources and templates only. Full docume
 	sudo cp totmann.php /var/www/html/totmann/totmann.php
 	sudo cp totmann.css /var/www/html/totmann/totmann.css
 	```
-	Edit only the live copies, not the `.dist.php` files. If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` in `totmann.inc.php`, copy/rename files accordingly.
-3. Set required config in `/var/lib/totmann/totmann.inc.php`:
+	The bootstrap config files must keep their exact supported names: `totmann.inc.php` and/or `totmann.inc.dist.php`. Names such as `totmann.inc.prod.php` are not supported. The recommended operational pattern is to edit `totmann.inc.php` and `totmann-recipients.php`; if you intentionally keep real values in `.dist.php` files instead, merge updates manually before replacing those files.
+	If you changed configurable runtime names such as `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` in the effective config, copy/rename only those referenced files accordingly.
+3. Set required config in `/var/lib/totmann/totmann.inc.php` or, if you intentionally use the `.dist.php` file as your runtime config, in `/var/lib/totmann/totmann.inc.dist.php`:
 	- `base_url` (real HTTPS base URL without endpoint filename; the runtime appends `web_file` automatically)
 	- `hmac_secret_hex` (example: `openssl rand -hex 32`)
 	- `to_self`
@@ -68,8 +69,8 @@ The release archive contains the runtime sources and templates only. Full docume
 	- Operator warnings are separate mails to `to_self`; they are built in on purpose and cannot be disabled
 	- Use the test preset from [Timing](https://github.com/MacSteini/totmannschalter/blob/main/docs/Timing.md "Timing model and presets")
 	- `{DOWNLOAD_LINKS}` renders the complete download block for that mail
-	- `totmann-recipients.php` defines live files once in `$files`, reusable mail texts in `$messages`, and then assigns them in `$recipients`
-	- every recipient row must reference a valid message key in field 3; there is no escalation fallback in `totmann.inc.php`
+	- the configured recipient file defines files once in `$files`, reusable mail texts in `$messages`, and then assigns them in `$recipients`
+	- every recipient row must reference a valid message key in field 3; there is no escalation fallback in the main config
 	- normal downloads go into recipient field 4; single-use downloads go into recipient field 5
 	- you never write `single_use=true` yourself; field 5 is the single-use list
 	- if a message should contain a receipt-confirmation link, keep `{ACK_BLOCK}` in that message body
@@ -98,7 +99,7 @@ The release archive contains the runtime sources and templates only. Full docume
 	sudo rm -f /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totmann/totmann.log
 	sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totmann-tick.php tick'
 	```
-	The `rm` line uses the filenames shown in the effective config; if you changed them in live `totmann.inc.php`, adapt this command.
+	The `rm` line uses the filenames shown in the effective config; if you changed them there, adapt this command.
 8. Install + enable `systemd` unit/timer: follow [systemd](https://github.com/MacSteini/totmannschalter/blob/main/docs/Systemd.md "systemd").
 9. Run the smoke/E2E test with short timings: follow [Installation](https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md "Installation guide") and [Timing](https://github.com/MacSteini/totmannschalter/blob/main/docs/Timing.md "Timing model and presets").
 10. During live testing, watch current activity in real time:

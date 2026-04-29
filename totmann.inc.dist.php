@@ -6,7 +6,8 @@
  * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)
  *
- * Copy this file to totmann.inc.php and edit only the live copy.
+ * You may either copy this file to totmann.inc.php or intentionally keep this
+ * exact .dist filename as your effective main config.
  * Template defaults cover runtime filenames, timing, mail, logging,
  * web behaviour, and optional download links.
  */
@@ -18,7 +19,7 @@ return [
 // Runtime links are built as: <base_url>/<web_file>?a=confirm|ack|download&...
 'base_url' => 'https://example.com/totmann',
 
-// State directory on disk (holds live totmann.inc.php, totmann-tick.php,
+// State directory on disk (holds totmann.inc.php and/or totmann.inc.dist.php, totmann-tick.php,
 // your configured lib_file, your configured recipients_file, and runtime files).
 // NOTE: Entry points do NOT use this value to locate the directory. They resolve it via:
 // - totmann-tick.php: ENV totmann_STATE_DIR (or __DIR__)
@@ -55,7 +56,7 @@ return [
 // Validity period for every download link (days).
 // This timer starts at the first escalation mail of that escalation event and then applies
 // to all later reminder URLs for the same recipient/file pair as well.
-// The setting is global on purpose, so the live recipient file stays simple.
+// The setting is global on purpose, so the configured recipient file stays simple.
 'download_valid_days' => 180,
 
 // Download action rate limiting.
@@ -95,7 +96,7 @@ return [
 // 3) At/after (deadline_at + grace):
 // - if you did NOT confirm during this cycle, the cycle counts as "missed".
 // - only after missed_cycles_before_fire missed cycles: escalation triggers.
-// - escalation email goes to recipients from the live recipients_file.
+// - escalation email goes to recipients from the configured recipients_file.
 //
 // NOTE: The systemd timer can tick every minute without changing these time windows.
 // It just checks whether a boundary has been reached.
@@ -119,7 +120,7 @@ return [
 // --- Recipient receipt acknowledgement (ACK) ---
 //
 // If enabled, escalation emails can include an ACK link via {ACK_BLOCK} or {ACK_URL}
-// inside the message bodies in the live recipient file.
+// inside the message bodies in the configured recipient file.
 // Once ANY recipient clicks the ACK link, the web endpoint records escalate_ack_at and
 // stops all further escalation mails for that escalation event.
 //
@@ -203,7 +204,7 @@ return [
 // Mail body templates.
 // Placeholders (rendered as human-readable timestamps in `mail_timezone`):
 // - reminder: {CONFIRM_URL}, {DEADLINE_ISO}, {CYCLE_START_ISO}
-// Escalation mail bodies live only in the live recipient file.
+// Escalation mail bodies live only in the configured recipient file.
 'body_reminder' => <<<TXT
 Hello,
 

@@ -84,7 +84,7 @@ function dm_web_bootstrap_load_effective_config(string $stateDir): array
         $source = 'live';
     } else {
         $cfg = (array)$distCfg;
-        $defaultedKeys = array_keys($cfg);
+        $defaultedKeys = [];
         $source = 'dist';
     }
 

@@ -49,7 +49,7 @@ return [
 'page_ack_ok_title' => 'Conferma di ricezione salvata.',
 'page_ack_ok_heading' => 'Grazie.',
 'page_ack_ok_body_1' => 'Il messaggio è stato contrassegnato come ricevuto.',
-'page_ack_ok_body_2' => 'Non riceverà ulteriori email. Il dead man’s switch è stato disattivato.',
+'page_ack_ok_body_2' => 'Non riceverà ulteriori email. Il dispositivo di sicurezza uomo morto è stato disattivato.',
 'page_ack_ok_body_3' => 'La preghiamo ora di seguire i desideri e le istruzioni contenuti nell’email ricevuta.',
 'page_ack_ok_body_4' => 'Importante! Se l’email conteneva un link per il download, si assicuri di avere scaricato quel documento.',
 'page_error_title' => 'Al momento non ha funzionato.',

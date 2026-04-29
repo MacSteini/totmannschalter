@@ -8,9 +8,9 @@
 ## Install order (recommended)
 1. Identify `<WEB_USER>:<WEB_GROUP>` first.
 2. Create the state directory and place the files.
-3. Copy the `.dist.php` templates to live filenames.
-4. Set required `totmann.inc.php` values.
-5. Update `totmann-recipients.php`.
+3. Decide whether you will use live filenames or intentionally maintain the `.dist.php` filenames.
+4. Set the required main-config values.
+5. Update the configured recipient file.
 6. Fix ownership/permissions.
 7. Run preflight checks.
 8. Clean initialise once.
@@ -20,12 +20,12 @@
 Recommended base directory (not under `/home`): `/var/lib/totmann`
 
 In `/var/lib/totmann`:
-- `totmann.inc.dist.php` (shipped defaults; do not edit)
-- `totmann.inc.php` (live config copied from `totmann.inc.dist.php`)
+- fixed bootstrap config name: `totmann.inc.dist.php` (supported effective config source)
+- fixed bootstrap config name: `totmann.inc.php` (supported effective config source)
 - your configured `lib_file` (template default: `totmann-lib.php`)
 - your configured `l18n_dir_name` directory (template default: `l18n/`)
-- `totmann-recipients.dist.php` (shipped recipient template; do not edit)
-- your configured live `recipients_file` (template default: `totmann-recipients.php`)
+- fixed recipient template name: `totmann-recipients.dist.php` (may be the configured `recipients_file` if you intentionally keep that filename)
+- your configured `recipients_file` (template default: `totmann-recipients.php`)
 - `totmann-tick.php`
 
 Runtime files created automatically (as needed) in `/var/lib/totmann`:
@@ -85,12 +85,14 @@ sudo mkdir -p /var/lib/totmann/l18n
 sudo cp totmann.inc.dist.php totmann-tick.php totmann-lib.php totmann-recipients.dist.php /var/lib/totmann/
 sudo cp -R l18n /var/lib/totmann/
 ```
-- Create live operator-owned copies from the templates:
+- Recommended: create operator-owned live copies from the templates:
 ```sh
 cd /var/lib/totmann
 sudo cp totmann.inc.dist.php totmann.inc.php
 sudo cp totmann-recipients.dist.php totmann-recipients.php
 ```
+The bootstrap loader recognises exactly these main-config filenames: `totmann.inc.php` and `totmann.inc.dist.php`. Alternative names such as `totmann.inc.prod.php` are not supported.
+
 - Place your configured `web_file` into your webroot (e. g., `/var/www/html/totmann/totmann.php`):
 ```sh
 sudo cp totmann.php /var/www/html/totmann/totmann.php
@@ -99,12 +101,12 @@ sudo cp totmann.php /var/www/html/totmann/totmann.php
 ```sh
 sudo cp totmann.css /var/www/html/totmann/totmann.css
 ```
-Edit only `totmann.inc.php` and `totmann-recipients.php`. The `.dist.php` files are the shipped default/recovery layer and may be replaced by updates.
+The recommended operational pattern is to edit `totmann.inc.php` and `totmann-recipients.php`. You may instead keep real values directly in `totmann.inc.dist.php` and/or `totmann-recipients.dist.php`, but then you must merge future release changes consciously before replacing those files.
 
-If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` from the template names, adjust these copy/rename commands accordingly.
-## Update `totmann.inc.php` (required values)
-- Do not edit `totmann.inc.dist.php`.
-- `state_dir` should match the directory where you placed `totmann.inc.php` (recommended: `/var/lib/totmann`)
+Only runtime filenames referenced from the effective config are configurable. If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` from the template names, adjust only those copy/rename commands accordingly.
+## Update the main config (required values)
+- Use exactly `totmann.inc.php` or `totmann.inc.dist.php` for the main config; the bootstrap loader does not read alternative config filenames.
+- `state_dir` should match the directory where you placed the effective config (recommended: `/var/lib/totmann`)
 - Runtime names (filenames/directories only): `lib_file`, `l18n_dir_name`, `lock_file`, `log_file_name`, `recipients_file`, `state_file`, `web_file`
 - `download_base_dir` should point to a private directory outside your webroot
 - `download_valid_days` sets one global validity period for all download links in the same escalation event
@@ -122,10 +124,9 @@ If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `w
 - `operator_alert_interval_hours` accepts only whole hours `1..24`; if you remove it or set an invalid value, totmann automatically falls back to `2`
 - If you plan to read file logs directly, also read [Log guide](Logs.md "Log guide") so you know how to interpret file-log lines, journal bootstrap failures, and operator warning mails together
 - Important: operator warning mails are built in on purpose, go to `to_self`, and cannot be disabled
-## Update `totmann-recipients.php`
-- Do not edit `totmann-recipients.dist.php`.
+## Update the configured recipient file
 
-`totmann-recipients.php` contains exactly 3 flat top-level areas:
+The configured recipient file contains exactly 3 flat top-level areas:
 - `$files`: file alias => relative path
 - `$messages`: message key => `subject` + `body`
 - `$recipients`: one flat recipient row per mailbox
@@ -313,7 +314,7 @@ Exit codes:
 `--web-user` is optional but recommended. It validates (read-only) whether the actual PHP runtime user can likely read config and create/update lock/state files based on POSIX mode bits.
 
 What `check` now validates:
-- live and `.dist` config source status
+- effective config source status
 - filenames in the effective config
 - `l18n_dir_name` plus the shipped locale files (`de-DE`, `en-GB`, `en-US`, `fr-FR`, `it-IT`, `es-ES`)
 - timing values
@@ -327,7 +328,7 @@ What `check` now validates:
 - `log_mode`
 - `ip_mode` / trusted-proxy settings
 ## Changing config without restarting `systemd`
-For `totmann.inc.php` changes (for example timing values), you do not need to restart `totmann.timer` or `totmann.service`.
+For effective main-config changes (for example timing values), you do not need to restart `totmann.timer` or `totmann.service`.
 The runtime reads config on each tick, so it picks up updates automatically.
 
 Only changes to unit files in `/etc/systemd/system/*.service` or `*.timer` require:
@@ -363,15 +364,15 @@ sudo rm -f /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/
 # Initialise with umask 0007 so files become 0660 (group-writable).
 sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totmann-tick.php tick'
 ```
-The `rm`/`ls` examples use the filenames from the effective config; if you changed them in live `totmann.inc.php`, adapt these commands.
+The `rm`/`ls` examples use the filenames from the effective config; if you changed them there, adapt these commands.
 
 Verify:
 ```sh
 ls -la /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totmann/totmann.log
 ```
 ## Smoke test (use only your own addresses)
-1. In live `totmann.inc.php`, temporarily set short timings. See [Timing](Timing.md "Timing model and presets").
-2. Point `to_self` and all recipient addresses in live `totmann-recipients.php` to your own mailboxes.
+1. In the effective main config, temporarily set short timings. See [Timing](Timing.md "Timing model and presets").
+2. Point `to_self` and all recipient addresses in the configured recipient file to your own mailboxes.
 3. Ensure `totmann.timer` is active and wait for the reminder email.
 4. Open the confirmation link (`GET`): you should see a confirm button.
 5. Click Confirm (`POST`): the page should show the localised confirmation-success page, e. g., “Thank you.” plus “The cycle has been reset…”.

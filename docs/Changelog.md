@@ -8,8 +8,10 @@ This project uses semantic versioning:
 - MINOR: new features (backwards compatible)
 - PATCH: bugfixes and small improvements (backwards compatible)
 ## Unreleased
-- Added copy-first configuration: shipped defaults now live in `totmann.inc.dist.php` and `totmann-recipients.dist.php`, while operators edit live copies named `totmann.inc.php` and `totmann-recipients.php`.
-- Updated bootstrap and preflight so missing `.dist.php` files warn when live config is complete, but missing or incomplete live config blocks reminders and escalation.
+- Added copy-first configuration: shipped defaults now live in `totmann.inc.dist.php` and `totmann-recipients.dist.php`, while the recommended live copies remain `totmann.inc.php` and `totmann-recipients.php`.
+- Updated bootstrap and preflight so missing `.dist.php` files are not a warning when the effective runtime configuration is complete.
+- Allowed intentionally maintained `.dist.php` files to act as the effective runtime configuration, while template recipients and placeholder mailboxes remain blocked from real delivery.
+- Added an operator warning only for the update case where `totmann.inc.dist.php` supplies new top-level keys missing from an existing `totmann.inc.php`.
 ## v3.0.2
 - Hardened outbound mail configuration checks so `mail_from` and optional `reply_to` must each contain exactly one valid mailbox string before sendmail handoff.
 - Extended preflight so invalid `mail_from` and `reply_to` values are reported explicitly during `php totmann-tick.php check`.

@@ -20,9 +20,9 @@ The web endpoint resolves the state directory in this order:
 
 The shipped `totmann.php` template enables the `define(...)` fallback by default. Adjust it to your actual state dir if needed.
 
-If neither exists, the endpoint returns a neutral page. The endpoint intentionally has no implicit fallback to a local webroot or to `state_dir` from live `totmann.inc.php`.
+If neither exists, the endpoint returns a neutral page. The endpoint intentionally has no implicit fallback to a local webroot or to `state_dir` from the main config.
 
-The endpoint loads live `totmann.inc.php` first and may use `totmann.inc.dist.php` only for non-critical defaults. If the live config or live recipient file is missing or incomplete, the endpoint stays neutral.
+The endpoint recognises exactly `totmann.inc.php` and `totmann.inc.dist.php` as main-config filenames. It prefers values from `totmann.inc.php` when both files exist, and it may use `totmann.inc.dist.php` as the complete effective config when you intentionally maintain that file. If the effective config or configured recipient file is missing, incomplete, or still contains template recipients, the endpoint stays neutral.
 ## Website language (`l18n/` + `Accept-Language`)
 `totmann.php` loads website text from your configured `l18n_dir_name` directory (template default: `l18n/` inside `state_dir`).
 
@@ -99,18 +99,18 @@ Downloads are served through the `download` action of `totmann.php`.
 
 Rules:
 - keep `download_base_dir` outside your webroot
-- keep the paths in `$files` inside `totmann-recipients.php` relative to `download_base_dir`
+- keep the paths in `$files` inside the configured `recipients_file` relative to `download_base_dir`
 - the runtime signs each link for one recipient and one configured download entry
 - if a file is defined for two recipients, the runtime still generates separate signed URLs per recipient
 - `{DOWNLOAD_LINKS}` expands to the complete download block for that mail
 - if a mail contains two or more downloads, the runtime adds `X Downloads:` and a blank line between download blocks automatically
 - if a download is single-use, the matching message entry supplies the warning text through `single_use_notice`
-- field 4 in `totmann-recipients.php` creates normal links
-- field 5 in `totmann-recipients.php` creates single-use links
+- field 4 in the configured `recipients_file` creates normal links
+- field 5 in the configured `recipients_file` creates single-use links
 - single-use applies to the whole escalation event for that recipient and link
 - ACK reminder mails do not create a fresh single-use allowance
 - download expiry is measured from the first escalation mail of that escalation event via the global `download_valid_days` setting
-- already issued valid download links still resolve even if an unrelated message or recipient row later breaks in `totmann-recipients.php`
+- already issued valid download links still resolve even if an unrelated message or recipient row later breaks in the configured `recipients_file`
 ## Proxy trust and client IP handling
 This is not just a comfort feature. It is security-relevant.
 
@@ -143,7 +143,7 @@ Expected paths exist:
 ```sh
 ls -la /var/lib/totmann
 ```
-Web identity can read live config and write runtime files, replace `<WEB_USER>`:
+Web identity can read the effective config and write runtime files, replace `<WEB_USER>`:
 ```sh
 sudo -u <WEB_USER> php -r 'echo is_readable("/var/lib/totmann/totmann.inc.php") ? "config:OK\n" : "config:NO\n";'
 sudo -u <WEB_USER> php -r '$f="/var/lib/totmann/.permtest"; echo (file_put_contents($f,"x")!==false)?"write:OK\n":"write:NO\n"; @unlink($f);'

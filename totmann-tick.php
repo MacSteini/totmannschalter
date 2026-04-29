@@ -116,7 +116,7 @@ function dm_tick_bootstrap_load_effective_config(string $stateDir): array
         $source = 'live';
     } else {
         $cfg = (array)$distCfg;
-        $defaultedKeys = array_keys($cfg);
+        $defaultedKeys = [];
         $source = 'dist';
     }
 
@@ -184,11 +184,7 @@ $readinessErrors = dm_config_readiness_errors($cfg);
 if ($readinessErrors !== []) {
     $readinessMessage = implode(' ', $readinessErrors);
     fwrite(STDERR, 'CONFIG ERROR: ' . $readinessMessage . "\n");
-    if (dm_config_has_live_operator_recipient($cfg)) {
-        dm_operator_alert_handle_from_statefile($cfg, 'config_source', $readinessMessage);
-    } else {
-        dm_log($cfg, 'Operator alert skipped: no valid live to_self is available for config-source problem.');
-    }
+    dm_log($cfg, 'Configuration readiness failed: ' . $readinessMessage);
     exit(1);
 }
 try {
@@ -197,16 +193,24 @@ try {
     $escalationRecipients = dm_escalation_recipients_runtime($cfg, $recipientErrors);
 } catch (Throwable $e) {
     fwrite(STDERR, 'CONFIG ERROR: ' . $e->getMessage() . "\n");
-    if (dm_config_has_live_operator_recipient($cfg)) {
-        dm_operator_alert_handle_from_statefile($cfg, 'config_error', $e->getMessage());
-    } else {
-        dm_log($cfg, 'Operator alert skipped: no valid live to_self is available for config problem.');
-    }
+    dm_log($cfg, 'Configuration validation failed: ' . $e->getMessage());
     exit(1);
 }
 foreach ($recipientErrors as $recipientError) {
     dm_log($cfg, 'Recipient skipped: ' . $recipientError);
     $pendingOperatorAlerts[] = ['type' => 'recipient_skipped', 'message' => $recipientError];
+}
+$sourceMeta = dm_config_source_meta($cfg);
+$defaultedConfigKeys = $sourceMeta['defaulted_config_keys'] ?? [];
+if (!empty($sourceMeta['live_config_loaded']) && is_array($defaultedConfigKeys) && $defaultedConfigKeys !== []) {
+    sort($defaultedConfigKeys, SORT_STRING);
+    $message = 'totmann.inc.dist.php supplied missing live config keys: ' . implode(', ', $defaultedConfigKeys);
+    dm_log($cfg, 'Configuration defaults used: ' . implode(', ', $defaultedConfigKeys));
+    if (dm_config_has_live_operator_recipient($cfg)) {
+        $pendingOperatorAlerts[] = ['type' => 'config_defaults_used', 'message' => $message];
+    } else {
+        dm_log($cfg, 'Operator alert skipped: no valid live to_self is available for config defaults used.');
+    }
 }
 $checkInterval = (int)$runtimeCfg['check_interval_seconds'];
 $confirmWindow = (int)$runtimeCfg['confirm_window_seconds'];

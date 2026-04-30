@@ -1,5 +1,5 @@
 # totmann – Installation
-![totmann](../img/totmannschalter-icon.png)
+![totmann](../img/totmann-icon.png)
 
 ## Prerequisites
 - PHP 8.0+.

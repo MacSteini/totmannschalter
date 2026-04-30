@@ -2,23 +2,21 @@
 color-scheme: dark light;
 --header-offset: 6rem;
 --brand-red: #B51700;
---brand-orange: #FF6900;
---brand-black: #000;
+--brand-white: #fff;
 --bg: #0d0d0f;
 --bg-elevated: #171413;
---bg-soft: #231916;
 --line: rgba(255, 255, 255, 0.12);
 --line-strong: rgba(255, 255, 255, 0.18);
 --text: #f5efe9;
 --muted: #c5b5ab;
+--hero-title: #e7d8cf;
 --accent: var(--brand-red);
---accent-strong: var(--brand-orange);
+--accent-text: #ff6b55;
+--accent-strong: var(--brand-white);
 --accent-soft: rgba(181, 23, 0, 0.16);
---accent-wash: rgba(255, 105, 0, 0.14);
 --focus: #ff9b4d;
 --shadow: 0 24px 60px rgba(0, 0, 0, 0.3);
 --radius-lg: 1.6rem;
---radius-md: 1rem;
 --radius-sm: 0.65rem;
 --shell-width: 72rem;
 }
@@ -27,15 +25,15 @@ color-scheme: dark light;
 :root {
 --bg: #fcf5ef;
 --bg-elevated: #fffaf6;
---bg-soft: #f7e7db;
 --line: rgba(0, 0, 0, 0.11);
 --line-strong: rgba(0, 0, 0, 0.18);
 --text: #18110f;
 --muted: #5f4a43;
+--hero-title: var(--text);
 --accent: var(--brand-red);
---accent-strong: var(--brand-orange);
+--accent-text: var(--brand-red);
+--accent-strong: var(--brand-red);
 --accent-soft: rgba(181, 23, 0, 0.1);
---accent-wash: rgba(255, 105, 0, 0.1);
 --shadow: 0 22px 48px rgba(36, 17, 10, 0.12);
 }
 }
@@ -76,7 +74,6 @@ color: var(--text);
 line-height: 1.6;
 -webkit-font-smoothing: antialiased;
 -moz-osx-font-smoothing: grayscale;
-font-smoothing: antialiased;
 text-rendering: optimizeLegibility;
 overflow-wrap: break-word;
 }
@@ -95,7 +92,7 @@ p, dd, dt, span, small, li, a {
 hyphens: auto;
 }
 
-p, dd, .link-card span, .lead, .section-intro, .card p, .scenario p, .summary-card p, .steps p {
+p, dd, .lead, .card p, .scenario p, .summary-card p, .steps p {
 text-wrap: pretty;
 }
 
@@ -160,11 +157,12 @@ gap: 0.08rem;
 }
 
 .brand-name {
-font-size: clamp(0.96rem, 2vw, 1.06rem);
+font-size: clamp(1.08rem, 2.25vw, 1.24rem);
 font-weight: 800;
 letter-spacing: 0.08em;
-text-transform: uppercase;
-color: var(--accent);
+color: var(--accent-text);
+hyphens: none;
+white-space: nowrap;
 }
 
 .brand-tag {
@@ -221,6 +219,17 @@ width: 100%;
 }
 }
 
+@media (max-width: 23rem) {
+.brand-copy {
+display: grid;
+gap: 0;
+}
+
+.brand-tag {
+white-space: normal;
+}
+}
+
 .hero {
 padding-block: clamp(3rem, 7vw, 5.25rem) clamp(2.5rem, 5vw, 3.6rem);
 }
@@ -246,7 +255,7 @@ font-size: clamp(0.8rem, 1.4vw, 0.9rem);
 font-weight: 800;
 letter-spacing: 0.14em;
 text-transform: uppercase;
-color: var(--accent);
+color: var(--accent-text);
 }
 
 h1, h2, h3 {
@@ -256,7 +265,7 @@ line-height: 1.08;
 h1 {
 font-size: clamp(3.1rem, 8vw, 5.9rem);
 letter-spacing: -0.055em;
-color: var(--accent-strong);
+color: var(--hero-title);
 }
 
 h2 {
@@ -270,7 +279,7 @@ letter-spacing: -0.03em;
 line-height: 1.15;
 }
 
-.lead, .card p, .scenario p, .summary-card p, .steps p, .section-intro, .link-card span {
+.lead, .card p, .scenario p, .summary-card p, .steps p {
 color: var(--muted);
 }
 
@@ -300,7 +309,7 @@ font-weight: 800;
 }
 
 .button-primary {
-background: var(--accent-strong);
+background: var(--accent);
 color: #fff;
 }
 
@@ -309,7 +318,7 @@ background: transparent;
 border-color: var(--line-strong);
 }
 
-.button-secondary:hover, .button-secondary:focus-visible {
+.button-primary:hover, .button-primary:focus-visible, .button-secondary:hover, .button-secondary:focus-visible {
 border-color: color-mix(in srgb, var(--accent) 40%, var(--line-strong));
 }
 
@@ -324,23 +333,10 @@ margin-bottom: clamp(1.3rem, 2.8vw, 1.8rem);
 max-width: min(100%, 68rem);
 }
 
-.section-intro {
-max-width: min(100%, 78ch);
-font-size: clamp(1rem, 1.95vw, 1.1rem);
-}
-
 .card-grid, .scenario-grid, .summary-grid, .roadmap-grid {
 display: grid;
-grid-template-columns: repeat(auto-fit, minmax(min(100%, 20.5rem), 1fr));
+grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
 gap: clamp(0.95rem, 2vw, 1.2rem);
-}
-
-.scenario-grid, .summary-grid, .roadmap-grid {
-grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
-}
-
-.card-grid-features {
-grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr));
 }
 
 .card, .scenario, .summary-card, .roadmap-card, .steps li {
@@ -351,7 +347,7 @@ box-shadow: var(--shadow);
 }
 
 .card h3, .scenario h3, .summary-card h3, .roadmap-card h3, .steps h3 {
-color: var(--accent);
+color: var(--accent-text);
 }
 
 .card, .scenario, .summary-card, .roadmap-card {
@@ -372,6 +368,7 @@ background: color-mix(in srgb, var(--bg-elevated) 88%, var(--accent-soft));
 }
 
 .steps {
+counter-reset: step;
 list-style: none;
 display: grid;
 gap: clamp(0.95rem, 2vw, 1.2rem);
@@ -396,10 +393,6 @@ font-size: clamp(2.6rem, 8vw, 4rem);
 font-weight: 900;
 line-height: 1;
 color: color-mix(in srgb, var(--accent-strong) 26%, transparent);
-}
-
-.steps {
-counter-reset: step;
 }
 
 .site-footer {

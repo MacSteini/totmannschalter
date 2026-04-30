@@ -1,5 +1,5 @@
 # totmann – Mail delivery notes
-![totmann](../img/totmannschalter-icon.png)
+![totmann](../img/totmann-icon.png)
 
 ## Mail delivery (prerequisite)
 The script sends mail via the configured sendmail binary (`sendmail_path` in the effective main config) in sendmail-compatible mode.

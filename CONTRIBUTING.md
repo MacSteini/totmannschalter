@@ -1,5 +1,5 @@
 # Contribution guide
-![totmannschalter](img/totmannschalter-xs.png)
+![totmannschalter](img/totmann-xs.png)
 
 This guide defines the expected workflow for pull requests in this repository.
 ## Scope

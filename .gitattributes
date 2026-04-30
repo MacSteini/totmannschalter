@@ -1,10 +1,10 @@
+.gitattributes export-ignore
 .github export-ignore
 .github/** export-ignore
-site export-ignore
-site/** export-ignore
+CONTRIBUTING.md export-ignore
 docs export-ignore
 docs/** export-ignore
 img export-ignore
 img/** export-ignore
-CONTRIBUTING.md export-ignore
-.gitattributes export-ignore
+site export-ignore
+site/** export-ignore

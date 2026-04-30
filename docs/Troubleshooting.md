@@ -1,5 +1,5 @@
 # totmann – Troubleshooting
-![totmann](../img/totmannschalter-icon.png)
+![totmann](../img/totmann-icon.png)
 
 ## Neutral page (“This page is not available.”)
 This is expected behaviour for:

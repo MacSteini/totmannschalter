@@ -1,5 +1,5 @@
 # totmann – Roadmap
-![totmann](../img/totmannschalter-icon.png)
+![totmann](../img/totmann-icon.png)
 
 This document lists planned next steps.
 ## Scope and intent

@@ -1,5 +1,5 @@
 # totmann – Example messages
-![totmann](../img/totmannschalter-icon.png)
+![totmann](../img/totmann-icon.png)
 
 This page shows representative messages that totmann can generate during normal use and during operator-facing problems.
 

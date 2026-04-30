@@ -1,5 +1,5 @@
 # totmann – Log guide
-![totmann](../img/totmannschalter-icon.png)
+![totmann](../img/totmann-icon.png)
 
 ## What `totmann.log` is for
 `totmann.log` records totmann activity in plain English.

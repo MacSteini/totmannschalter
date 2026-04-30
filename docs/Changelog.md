@@ -8,6 +8,8 @@ This project uses semantic versioning:
 - MINOR: new features (backwards compatible)
 - PATCH: bugfixes and small improvements (backwards compatible)
 ## Unreleased
+
+## v3.1.0
 - Added copy-first configuration: shipped defaults now live in `totmann.inc.dist.php` and `totmann-recipients.dist.php`, while the recommended live copies remain `totmann.inc.php` and `totmann-recipients.php`.
 - Updated bootstrap and preflight so missing `.dist.php` files are not a warning when the effective runtime configuration is complete.
 - Allowed intentionally maintained `.dist.php` files to act as the effective runtime configuration, while template recipients and placeholder mailboxes remain blocked from real delivery.

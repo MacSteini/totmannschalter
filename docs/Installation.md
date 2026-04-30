@@ -287,7 +287,8 @@ Behaviour:
 - field 4 is the default and behaves like `single_use=false`
 - field 5 is the single-use list
 - if a message is used with field 5, define `single_use_notice` in that message
-- if a mail contains 2 or more downloads, the runtime adds `X Downloads:` and leaves a blank line between the download blocks automatically
+- every download block starts with `1 Download:` or `X Downloads:`
+- if a mail contains several downloads, the runtime leaves a blank line between the download blocks automatically
 
 Minimal example:
 ```text

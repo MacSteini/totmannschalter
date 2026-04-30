@@ -76,7 +76,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 	- you never write `single_use=true` yourself; field 5 is the single-use list
 	- if a message should contain a receipt-confirmation link, keep `{ACK_BLOCK}` in that message body
 	- if a message is used with field-5 files, add `single_use_notice` to that message in `totmann-recipients.php`
-	- if a mail contains more than one download, the runtime adds `X Downloads:` and leaves a blank line between the download blocks automatically
+	- every download block starts with `1 Download:` or `X Downloads:`; when several downloads are present, the runtime leaves a blank line between the download blocks automatically
 	- If two recipients should receive the same file, repeat the same file alias in both recipient rows
 	- Public web pages use the browser language from `Accept-Language`; if only a base language such as `de` is sent, the runtime picks the closest supported locale such as `de-DE`
 	- If no supported browser language matches, the web endpoint falls back to `en-US`

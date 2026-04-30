@@ -16,6 +16,7 @@ This project uses semantic versioning:
 - Stopped automatic state recovery for existing empty, invalid, or inconsistent state files; only a missing state file now triggers first-run initialisation.
 - Added shared frame protection headers to runtime web pages.
 - Clarified release archive scope, update procedure, state-file recovery guidance, and the intentional external runtime logo image.
+- Added a visible `1 Download:` heading when an escalation mail contains exactly one download link.
 ## v3.0.2
 - Hardened outbound mail configuration checks so `mail_from` and optional `reply_to` must each contain exactly one valid mailbox string before sendmail handoff.
 - Extended preflight so invalid `mail_from` and `reply_to` values are reported explicitly during `php totmann-tick.php check`.
@@ -44,7 +45,7 @@ This project uses semantic versioning:
 - BREAKING: `totmann-recipients.php` uses 3 flat top-level sections (`$files`, `$messages`, `$recipients`) instead of the earlier PHP-DSL helper model.
 - BREAKING: escalation mail text no longer falls back to `subject_escalate` or `body_escalate` in `totmann.inc.php`; every recipient row must reference a valid message key in field 3.
 - BREAKING: `{DOWNLOAD_NOTICE}` and `download_notice_single_use` were removed; single-use warning text now lives as `single_use_notice` inside the affected message in `totmann-recipients.php`.
-- `{DOWNLOAD_LINKS}` now renders complete download blocks instead of raw URL lines and adds `X Downloads:` automatically when a mail contains more than one download.
+- `{DOWNLOAD_LINKS}` now renders complete download blocks instead of raw URL lines and adds a download-count heading automatically.
 - Added mandatory operator warning mails to `to_self` for operator-facing config/runtime problems that would otherwise only show up in the log.
 - Added `operator_alert_interval_hours` as the public throttle key for those warning mails; only whole hours `1..24` are accepted and invalid/missing values now fall back automatically to `2`.
 - Tightened mailbox-header serialisation for single-recipient `To:` headers by always quoting ASCII display names and keeping non-ASCII names RFC2047-encoded.

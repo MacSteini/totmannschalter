@@ -1491,7 +1491,7 @@ function dm_render_ack_block(string $ackUrl, bool $ackEnabled): string
  * Render download links as one optional plain-text block.
  *
  * Output is intentionally simple:
- * - one download => one block without heading
+ * - one download => "1 Download:" plus the block
  * - multiple downloads => "X Downloads:" plus one blank line between blocks
  * - single-use warning text appears directly above the affected URL
  */
@@ -1521,11 +1521,10 @@ function dm_render_download_links_block(array $links, string $singleUseNotice = 
     if ($blocks === []) {
         return '';
     }
-    if (count($blocks) === 1) {
-        return $blocks[0];
-    }
 
-    return count($blocks) . " Downloads:\n\n" . implode("\n\n", $blocks);
+    $count = count($blocks);
+    $label = $count === 1 ? '1 Download:' : "{$count} Downloads:";
+    return $label . "\n\n" . implode("\n\n", $blocks);
 }
 
 /**

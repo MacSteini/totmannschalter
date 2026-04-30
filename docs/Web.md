@@ -112,7 +112,8 @@ Rules:
 - the runtime signs each link for one recipient and one configured download entry
 - if a file is defined for two recipients, the runtime still generates separate signed URLs per recipient
 - `{DOWNLOAD_LINKS}` expands to the complete download block for that mail
-- if a mail contains two or more downloads, the runtime adds `X Downloads:` and a blank line between download blocks automatically
+- every download block starts with `1 Download:` or `X Downloads:`
+- if a mail contains several downloads, the runtime leaves a blank line between download blocks automatically
 - if a download is single-use, the matching message entry supplies the warning text through `single_use_notice`
 - field 4 in the configured `recipients_file` creates normal links
 - field 5 in the configured `recipients_file` creates single-use links

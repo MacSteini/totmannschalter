@@ -209,8 +209,8 @@ Practical meaning:
 - `{ACK_BLOCK}` expands to the complete ACK text plus URL, or stays empty
 - `{ACK_URL}` expands only to the raw ACK URL
 - `{DOWNLOAD_LINKS}` expands to the complete download block for that mail
-- with one download, the block contains only that one download
-- with two or more downloads, the runtime adds `X Downloads:` and inserts one blank line between the download blocks
+- every download block starts with `1 Download:` or `X Downloads:`
+- with several downloads, the runtime inserts one blank line between the download blocks
 - when a download is single-use, the message-specific `single_use_notice` appears directly above that one URL
 ## Normal downloads vs single-use downloads
 Escalation mails can include optional download links through field 4 and field 5 in each recipient row.

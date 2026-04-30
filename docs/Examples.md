@@ -159,6 +159,6 @@ https://example.com/totmann.php?a=download&rid=r_a5b1671cc90a333ce4ed14ae1d13052
 
 What to notice:
 - the ACK block appears only when the message uses `{ACK_BLOCK}`
-- `2 Downloads:` appears automatically when more than one download link is present
+- every download block has a heading: `1 Download:` for one link, `2 Downloads:` for this example
 - only the single-use link carries the extra warning text
 - the blank line between download blocks makes separate files easier to recognise

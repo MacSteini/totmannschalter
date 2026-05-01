@@ -53,7 +53,7 @@ Important:
 ## Product logo
 Runtime web pages render the product logo from this GitHub-hosted image URL:
 ```text
-https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totmannschalter-s.png
+https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totmann-s.png
 ```
 
 This is a deliberate visual dependency. It does not affect confirmation, ACK, download, mail, state, or escalation logic.
@@ -70,12 +70,16 @@ Exception:
 
 Ensure:
 - `display_errors=off` for the web endpoint
-## Confirmation flow (GET then POST)
+## Confirmation and ACK flows (GET then POST)
 Confirmation links are deliberately two-step to defeat mail link scanners:
 - `GET` shows a page with a Confirm button
 - only the `POST` resets the cycle
 
-ACK success pages follow the same locale selection as confirm pages.
+ACK links use the same pattern:
+- `GET` shows a page with an acknowledgement button
+- only the `POST` marks the escalation mail as received and stops ACK reminders for that escalation event
+
+ACK pages follow the same locale selection as confirm pages.
 
 - The ACK success page always confirms that the message was marked as received.
 - Once any recipient acknowledges, no further escalation mails are sent for that escalation event.
@@ -109,8 +113,9 @@ Downloads are served through the `download` action of `totmann.php`.
 Rules:
 - keep `download_base_dir` outside your webroot
 - keep the paths in `$files` inside the configured `recipients_file` relative to `download_base_dir`
-- the runtime signs each link for one recipient and one configured download entry
+- the runtime signs each link for one recipient, one configured download entry, one escalation event, and the current relative file path
 - if a file is defined for two recipients, the runtime still generates separate signed URLs per recipient
+- if the same alias is later changed to another relative file path, already issued links for the old path fail closed instead of serving the new file
 - `{DOWNLOAD_LINKS}` expands to the complete download block for that mail
 - every download block starts with `1 Download:` or `X Downloads:`
 - if a mail contains several downloads, the runtime leaves a blank line between download blocks automatically
@@ -120,7 +125,7 @@ Rules:
 - single-use applies to the whole escalation event for that recipient and link
 - ACK reminder mails do not create a fresh single-use allowance
 - download expiry is measured from the first escalation mail of that escalation event via the global `download_valid_days` setting
-- already issued valid download links still resolve even if an unrelated message or recipient row later breaks in the configured `recipients_file`
+- already issued valid download links still resolve if an unrelated message or recipient row later breaks in the configured `recipients_file`
 ## Proxy trust and client IP handling
 This is not just a comfort feature. It is security-relevant.
 

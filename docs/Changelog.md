@@ -7,6 +7,10 @@ This project uses semantic versioning:
 - MAJOR: breaking changes
 - MINOR: new features (backwards compatible)
 - PATCH: bugfixes and small improvements (backwards compatible)
+## v3.1.1
+- Changed ACK handling so `GET` opens a localised acknowledgement page and only the submitted `POST` marks receipt and stops ACK reminders.
+- Hardened download links with a signed relative-file binding so old links fail closed if an alias is later changed to another file.
+- Updated the operator documentation and examples to describe the two-step ACK flow and download alias-binding behaviour.
 ## v3.1.0
 - Added copy-first configuration: shipped defaults now live in `totmann.inc.dist.php` and `totmann-recipients.dist.php`, while the recommended live copies remain `totmann.inc.php` and `totmann-recipients.php`.
 - Updated bootstrap and preflight so missing `.dist.php` files are not a warning when the effective runtime configuration is complete.

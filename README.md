@@ -11,7 +11,7 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 
 **[Download the latest version from here.](https://github.com/MacSteini/totmannschalter/releases/latest)**
 
-The release archive is intentionally slim. It contains `README.md`, `LICENCE`, the runtime PHP/CSS files, the `.dist.php` templates, and the shipped `l18n/` locale files. It does not contain the full `docs/`, `site/`, or `img/` directories. Keep this README as the offline starting point, then use the linked GitHub documentation or project website for the full operator guide.
+The release archive is intentionally slim. It contains `README.md`, `LICENCE`, the runtime PHP/CSS files, the `.dist.php` templates, and the shipped `l18n/` locale files. It does not contain the full `docs/`, `site/`, or `img/` directories. The quick start below is the offline starting point; the linked GitHub documentation and project website provide the full operator guide when you have network access.
 
 ## What this does
 - You regularly receive an email containing a **confirmation link**.
@@ -24,7 +24,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 - Escalation uses exactly one configured recipient file (`totmann-recipients.php` by default, or `totmann-recipients.dist.php` if you intentionally keep that filename) with 3 flat top-level sections: `$files`, `$messages`, and `$recipients`.
 - Escalation emails are always sent individually (one mail per recipient).
 - Escalation emails can optionally include recipient-specific download links for files stored outside the webroot.
-- Escalation emails can include an optional **receipt acknowledgement (ACK)** link. Once **any** recipient acknowledges, no further escalation mails are sent for that escalation event.
+- Escalation emails can include an optional **receipt acknowledgement (ACK)** link. The link opens an acknowledgement page first; only the submitted acknowledgement stops further escalation mails for that escalation event.
 - Web requests without a valid current token always show a **neutral page** (stealth).
 - Public web pages follow the browser language via `Accept-Language` (`de-DE`, `en-GB`, `en-US`, `fr-FR`, `it-IT`, `es-ES`; fallback: `en-US`).
 - Web timestamps stay in your configured `mail_timezone`, even when the browser language changes.
@@ -77,6 +77,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 	- if a message should contain a receipt-confirmation link, keep `{ACK_BLOCK}` in that message body
 	- if a message is used with field-5 files, add `single_use_notice` to that message in `totmann-recipients.php`
 	- every download block starts with `1 Download:` or `X Downloads:`; when several downloads are present, the runtime leaves a blank line between the download blocks automatically
+	- download links are signed for the recipient, alias, escalation event, and current relative file path; if that alias is later changed to another file, the old link fails closed
 	- If two recipients should receive the same file, repeat the same file alias in both recipient rows
 	- Public web pages use the browser language from `Accept-Language`; if only a base language such as `de` is sent, the runtime picks the closest supported locale such as `de-DE`
 	- If no supported browser language matches, the web endpoint falls back to `en-US`
@@ -110,8 +111,8 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 	If you changed `log_file_name` or `log_file`, use that effective path instead. If `log_mode` is `syslog` or `none`, use `journalctl` instead of `tail`. For help reading file-log lines, journal bootstrap failures, and operator warning mails together, use [Log guide](https://github.com/MacSteini/totmannschalter/blob/main/docs/Logs.md "Log guide").
 ## Terms
 - ENV: environment variable (e. g., `totmann_STATE_DIR`).
-- GET/POST: HTTP request methods (`GET` shows the confirm page; `POST` performs the confirmation).
-- ACK: recipient receipt acknowledgement link (stops further escalation mails for that escalation event once any recipient clicks).
+- GET/POST: HTTP request methods (`GET` shows the confirm or ACK page; `POST` performs the confirmation or acknowledgement).
+- ACK: recipient receipt acknowledgement link (`GET` opens the ACK page; only the submitted `POST` stops further escalation mails for that escalation event).
 - HMAC: keyed hash used to sign tokens (tamper-resistant).
 - MTA: Mail Transfer Agent (server-side mailer, e. g., Postfix/Exim).
 - PHP-FPM: PHP FastCGI Process Manager (common PHP runtime behind nginx).

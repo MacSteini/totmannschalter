@@ -289,6 +289,7 @@ Behaviour:
 - if a message is used with field 5, define `single_use_notice` in that message
 - every download block starts with `1 Download:` or `X Downloads:`
 - if a mail contains several downloads, the runtime leaves a blank line between the download blocks automatically
+- each download link is signed for the recipient, alias, escalation event, and current relative file path; if that alias is later changed to another file, the old link fails closed
 
 Minimal example:
 ```text
@@ -432,7 +433,8 @@ ls -la /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totm
 	- a single-use download from recipient field 5
 	- the same file for two different recipients
 	- an ACK reminder mail for the same escalation event (the single-use file must still remain single-use)
-8. With random/invalid/stale tokens: the endpoint should show a neutral page.
+8. If ACK is enabled, open the ACK link (`GET`): you should see an acknowledgement button. Submit it (`POST`): ACK reminders should stop for that escalation event.
+9. With random/invalid/stale tokens: the endpoint should show a neutral page.
 
 For live debugging during the smoke test, keep one of these running in a second shell:
 ```sh

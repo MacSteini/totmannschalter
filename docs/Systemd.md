@@ -11,7 +11,7 @@ Replace `<WEB_GROUP>`:
 ```sh
 sudo tee /etc/systemd/system/totmann.service >/dev/null <<'EOF'
 [Unit]
-Description=totmannschalter
+Description=totmann
 
 [Service]
 ExecStart=/usr/bin/php /var/lib/totmann/totmann-tick.php tick
@@ -31,7 +31,7 @@ EOF
 ```sh
 sudo tee /etc/systemd/system/totmann.timer >/dev/null <<'EOF'
 [Unit]
-Description=Run totmannschalter every minute
+Description=Run totmann every minute
 
 [Timer]
 OnBootSec=30s
@@ -53,7 +53,7 @@ sudo nano /etc/systemd/system/totmann.service
 Paste:
 ```text
 [Unit]
-Description=totmannschalter
+Description=totmann
 
 [Service]
 ExecStart=/usr/bin/php /var/lib/totmann/totmann-tick.php tick
@@ -75,7 +75,7 @@ sudo nano /etc/systemd/system/totmann.timer
 Paste:
 ```text
 [Unit]
-Description=Run totmannschalter every minute
+Description=Run totmann every minute
 
 [Timer]
 OnBootSec=30s

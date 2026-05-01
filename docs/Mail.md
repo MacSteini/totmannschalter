@@ -175,7 +175,7 @@ How to read those rows:
 ACK means receipt acknowledgement.
 
 Practical meaning:
-- the recipient clicks one link to confirm that the escalation mail was received
+- the recipient opens one link, reviews the ACK page, and submits the acknowledgement to confirm that the escalation mail was received
 - once any recipient acknowledges, no further escalation mails are sent for that escalation event
 - ACK is useful when you want at least one recipient to confirm that the message arrived
 - ACK does not mean that every recipient has read every attachment; it only confirms receipt by one person
@@ -225,7 +225,9 @@ Operational behaviour:
 - the runtime still sends one escalation mail per recipient
 - if two or more recipients should receive the same file, each recipient still gets a separate signed link
 - if one recipient downloads a single-use file, that does not consume another recipient’s separate link
-- already issued valid download links still resolve even if an unrelated message or recipient row later breaks in `totmann-recipients.php`
+- each download link is signed for the recipient, alias, escalation event, and current relative file path
+- if the same alias is later changed to another relative file path, already issued links for the old path fail closed instead of serving the new file
+- already issued valid download links still resolve if an unrelated message or recipient row later breaks in `totmann-recipients.php`
 - the link lifetime is measured from the first escalation mail of that escalation event, not from each ACK reminder mail
 - `download_valid_days` in `totmann.inc.php` controls that lifetime globally for all files
 - single-use applies to the whole escalation event for that recipient/file pair, not to each newly generated reminder URL

@@ -16,7 +16,7 @@ The system works in repeating cycles. Each cycle is anchored at `cycle_start_at`
 	- if the threshold is not yet met, the tick starts a new cycle immediately, so the cadence shifts to “from now”
 	- once `missed_cycles_before_fire` is reached, escalation triggers and a mail is sent to the recipients defined in `recipients_file`
 		- if ACK is enabled, the escalation mail contains the ACK link
-		- until any recipient clicks ACK, optional ACK reminders are re-sent, see `escalate_ack_*`
+		- until any recipient opens the ACK page and submits the acknowledgement, optional ACK reminders are re-sent, see `escalate_ack_*`
 		- `escalate_ack_max_reminds = 0` disables ACK reminder re-sends, the initial escalation mail is still sent
 		- after the configured ACK reminder limit is reached, one final log marker is written and recurring escalation logs pause until ACK or reset
 
@@ -155,7 +155,7 @@ After deadline + grace:
 4. Test scenarios:
 	- Scenario A, confirm: confirm within the window -> cycle resets, escalation never triggers
 	- Scenario B, no confirm: wait past deadline plus grace -> escalation mail arrives and ACK reminders follow
-	- Scenario C, ACK: click ACK link -> ACK reminders stop immediately
+	- Scenario C, ACK: open the ACK link and submit the acknowledgement -> ACK reminders stop immediately
 	- Scenario D, downloads: test at least one normal download from recipient field 4, one single-use download from recipient field 5, and the same file for two different recipients
 
 > Tip: when testing deliverability, do not use tiny intervals in seconds. Google, Microsoft, and others treat rapid identical emails as suspicious.

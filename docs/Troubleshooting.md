@@ -110,10 +110,11 @@ Check these points in order:
 7. `{DOWNLOAD_LINKS}` is present in the relevant escalation mail body
 8. if field 5 is used, remember that only the first successful download of that escalation event is allowed
 9. if field 5 is used, confirm that the referenced message defines `single_use_notice`
+10. if the link used to work before a recipient-file edit, confirm that the same alias still points to the same relative file path
 
 If a recipient’s download aliases cannot be resolved, that recipient’s escalation mail is still sent without those links. Check logs for the underlying reason.
 
-Already issued valid download links still resolve even if an unrelated message or recipient row in `totmann-recipients.php` is later broken.
+Already issued valid download links still resolve if an unrelated message or recipient row in `totmann-recipients.php` is later broken. They fail closed if the same alias is later changed to another relative file path.
 
 If you are unsure how field 4, field 5, `{DOWNLOAD_LINKS}`, and `single_use_notice` work together, go back to [Mail delivery notes](Mail.md "Mail delivery notes").
 ## Website language is wrong or always English

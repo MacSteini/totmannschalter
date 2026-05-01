@@ -210,6 +210,10 @@ function dm_web_fallback_catalog(): array
             'page_confirm_ok_heading' => 'Thank you.',
             'page_confirm_ok_intro' => 'The cycle has been reset…',
             'page_confirm_ok_details_heading' => 'What happens next:',
+            'page_ack_confirm_title' => 'Confirm receipt?',
+            'page_ack_confirm_heading' => 'Confirm receipt?',
+            'page_ack_confirm_intro' => 'Please confirm that you have received this message.',
+            'page_ack_confirm_button' => 'Confirm receipt',
             'page_ack_ok_title' => 'Acknowledgment saved.',
             'page_ack_ok_heading' => 'Thank you.',
             'page_ack_ok_body_1' => 'The message has been marked as received.',
@@ -484,7 +488,7 @@ function dm_render_page(string $title, string $bodyHtml, string $cardClass = '')
     $cssFile = dm_web_css_file_get();
     $cssLink = $cssFile !== null ? '<link rel="stylesheet" href="' . dm_h($cssFile) . '">' : '';
     $htmlLang = dm_h((string)(dm_web_catalog()['html_lang'] ?? 'en-US'));
-    $logoHtml = '<div class="dm_logo_wrap"><img class="dm_logo" src="https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totmannschalter-s.png" alt="totmann"></div>';
+    $logoHtml = '<div class="dm_logo_wrap"><img class="dm_logo" src="https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totmann-s.png" alt="totmann"></div>';
     $cardClassAttr = 'dm_card';
     if ($cardClass !== '') {
         $cardClassAttr .= ' ' . $cardClass;
@@ -553,6 +557,20 @@ function dm_render_confirm_ok(array $cfg, array $state): void
     }
 
     dm_render_page(dm_web_text('page_confirm_ok_title'), $body);
+}
+
+function dm_render_ack_prompt(string $id, string $sig): void
+{
+    http_response_code(200);
+    $body = '<h1>' . dm_h(dm_web_text('page_ack_confirm_heading')) . '</h1>';
+    $body .= '<p>' . dm_h(dm_web_text('page_ack_confirm_intro')) . '</p>';
+    $body .= '<form method="post">';
+    $body .= '<input type="hidden" name="a" value="ack">';
+    $body .= '<input type="hidden" name="id" value="' . dm_h($id) . '">';
+    $body .= '<input type="hidden" name="sig" value="' . dm_h($sig) . '">';
+    $body .= '<button type="submit">' . dm_h(dm_web_text('page_ack_confirm_button')) . '</button>';
+    $body .= '</form>';
+    dm_render_page(dm_web_text('page_ack_confirm_title'), $body, 'dm_card_centered');
 }
 
 function dm_render_ack_ok(bool $hasDownloads): void
@@ -659,6 +677,7 @@ if ($a === 'download') {
     $downloadRecipients = [];
     $recipientId = trim((string)($_GET['rid'] ?? ''));
     $linkId = trim((string)($_GET['lid'] ?? ''));
+    $fileBinding = trim((string)($_GET['fb'] ?? ''));
     $eventAt = (int)($_GET['evt'] ?? 0);
     $expiresAt = (int)($_GET['exp'] ?? 0);
     $nonce = trim((string)($_GET['n'] ?? ''));
@@ -669,7 +688,7 @@ if ($a === 'download') {
     $downloadHandle = null;
 
     try {
-        if (!dm_download_token_valid($cfg, $recipientId, $linkId, $eventAt, $expiresAt, $nonce, $sig)) {
+        if (!dm_download_token_valid($cfg, $recipientId, $linkId, $fileBinding, $eventAt, $expiresAt, $nonce, $sig)) {
             dm_render_neutral();
         }
     } catch (Throwable $e) {
@@ -692,6 +711,18 @@ if ($a === 'download') {
     $definition = dm_download_definition_get($downloadRecipients, $recipientId, $linkId);
     if (!is_array($definition)) {
         dm_log($cfg, "download: mapping missing rid={$recipientId} lid={$linkId} ip={$ip}");
+        dm_render_unavailable();
+    }
+
+    $expectedFileBinding = '';
+    try {
+        $expectedFileBinding = dm_download_file_binding((string)($definition['file'] ?? ''));
+    } catch (Throwable $e) {
+        dm_log($cfg, 'download: file binding unavailable rid=' . $recipientId . ' lid=' . $linkId . ' ip=' . $ip . ' exception=' . $e->getMessage());
+        dm_render_unavailable();
+    }
+    if (!hash_equals($expectedFileBinding, $fileBinding)) {
+        dm_log($cfg, "download: file binding mismatch rid={$recipientId} lid={$linkId} ip={$ip}");
         dm_render_unavailable();
     }
 
@@ -901,6 +932,10 @@ try {
             dm_render_neutral();
         }
         dm_render_error('E_TOKEN_STALE_' . bin2hex(random_bytes(4)));
+    }
+
+    if ($method !== 'POST') {
+        dm_render_ack_prompt($id, $sig);
     }
 
     $state['escalate_ack_at'] = $now;

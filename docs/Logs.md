@@ -110,13 +110,13 @@ ack: stale-or-noncurrent token used ip=203.0.113.10
 ack: recipient token missing for recipient@example.com during reminder phase; skipping recipient.
 ```
 How to interpret them:
-- `ack: OK ...` => one recipient confirmed receipt successfully
+- `ack: OK ...` => one recipient submitted the ACK page and confirmed receipt successfully
 - `no further escalation mails ...` => the current escalation event is finished from the system’s point of view
 - `stale-or-noncurrent token used` => an older ACK link was used
 - `recipient token missing ... skipping recipient` => the reminder phase could not build an ACK link for that one recipient
 
 What to do:
-- `ack: OK ...` => expected success; no more escalation mails should follow for that event
+- `ack: OK ...` => expected success after the ACK form is submitted; no more escalation mails should follow for that event
 - stale/non-current token => check whether the recipient used an older reminder
 - `recipient token missing ...` => inspect the relevant recipient row and mail body; other valid recipients continue
 ## Escalation mail delivery
@@ -205,7 +205,10 @@ Practical checks:
 1. confirm that the intended alias exists in `$files`
 2. confirm that the recipient row uses that alias in field 4 or field 5
 3. confirm that the real file exists under `download_base_dir`
-4. confirm that the link is still inside `download_valid_days`
+4. confirm that the alias still points to the same relative file path that was used when the link was issued
+5. confirm that the link is still inside `download_valid_days`
+
+If an already issued link stops working after you changed `$files`, check whether the same alias now points to a different relative path. That mismatch is intentionally rejected so an old link cannot deliver a newly mapped file.
 
 If you need the full operator model for fields 4 and 5, go back to [Mail delivery notes](Mail.md "Mail delivery notes").
 ## When a line is harmless
@@ -228,7 +231,7 @@ Pay attention when you see:
 - `Operator alert state save failed ...`
 - repeated `ERROR: ...`
 - no `confirm: OK ...` line even though you completed the confirmation button flow
-- no `ack: OK ...` line even though a recipient clicked the ACK link
+- no `ack: OK ...` line even though a recipient submitted the ACK page
 
 Recommended response:
 1. compare the affected mailbox and message key with `totmann-recipients.php`

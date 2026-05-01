@@ -121,8 +121,8 @@ return [
 //
 // If enabled, escalation emails can include an ACK link via {ACK_BLOCK} or {ACK_URL}
 // inside the message bodies in the configured recipient file.
-// Once ANY recipient clicks the ACK link, the web endpoint records escalate_ack_at and
-// stops all further escalation mails for that escalation event.
+// Once ANY recipient opens the ACK page and submits the acknowledgement, the web endpoint
+// records escalate_ack_at and stops all further escalation mails for that escalation event.
 //
 // ACK reminders:
 // - after escalation was sent, if not yet acknowledged, the same escalation email is re-sent
@@ -182,12 +182,12 @@ return [
 // be easy to miss in the log or journal.
 //
 // Allowed values: whole hours 1..24
-// If you remove this key or set an invalid value, totmannschalter falls back to 2.
+// If you remove this key or set an invalid value, totmann falls back to 2.
 // The warning mail itself is built in on purpose and cannot be disabled.
 'operator_alert_interval_hours' => 2,
 
 // Mail From + optional Reply-To.
-'mail_from' => 'totmannschalter <totmannschalter@example.com>',
+'mail_from' => 'totmann <totmann@example.com>',
 'reply_to' => '',
 
 // Reminder subject.

@@ -127,12 +127,12 @@ This message goes to one configured escalation recipient, not to `to_self`.
 
 It helps because it can combine 3 things in one place:
 - the actual escalation text
-- an ACK link so one recipient can confirm receipt
+- an ACK link that opens a confirmation page so one recipient can confirm receipt
 - optional download links, including a visible warning for single-use downloads
 
 What to do next:
 - read the message body first
-- if you are a recipient and the sender expects receipt confirmation, use the ACK link
+- if you are a recipient and the sender expects receipt confirmation, open the ACK link and submit the acknowledgement page
 - if download links are included, save the required files before forwarding or closing the mail
 
 Example:
@@ -151,14 +151,15 @@ https://example.com/totmann.php?a=ack&id=0268c2ac58bb5f4c2ba981e12631dffc&sig=a5
 
 2 Downloads:
 
-https://example.com/totmann.php?a=download&rid=r_a5b1671cc90a333ce4ed14ae1d130529&lid=d_063a550af6022b0a2cab503157df9ff6&evt=1776856832&exp=1792408832&n=94cd0af3e24469fc5802e5ed47bd25f3&sig=8a2ae2d473a9c8f46fc80ccad484a42fad5b67a144da9fcae2793d7e9e1d4eaa
+https://example.com/totmann.php?a=download&rid=r_a5b1671cc90a333ce4ed14ae1d130529&lid=d_063a550af6022b0a2cab503157df9ff6&fb=0e014fdc9141f36d0b7d2d15fa7047b4&evt=1776856832&exp=1792408832&n=94cd0af3e24469fc5802e5ed47bd25f3&sig=8a2ae2d473a9c8f46fc80ccad484a42fad5b67a144da9fcae2793d7e9e1d4eaa
 
 Please save this file straight away. This download link works only once.
-https://example.com/totmann.php?a=download&rid=r_a5b1671cc90a333ce4ed14ae1d130529&lid=d_e42562fa5cd81141818febe4a52a0f73&evt=1776856832&exp=1792408832&n=cb98eae425739b8d1e49a5f101a834fd&sig=0d32a1b02963541cbe922457ec39b8ee33f4772c1dde85ced3c644e4056a1e4f
+https://example.com/totmann.php?a=download&rid=r_a5b1671cc90a333ce4ed14ae1d130529&lid=d_e42562fa5cd81141818febe4a52a0f73&fb=237ed037cbe6b2a34bc7bb41fcfb0e5f&evt=1776856832&exp=1792408832&n=cb98eae425739b8d1e49a5f101a834fd&sig=0d32a1b02963541cbe922457ec39b8ee33f4772c1dde85ced3c644e4056a1e4f
 ```
 
 What to notice:
 - the ACK block appears only when the message uses `{ACK_BLOCK}`
 - every download block has a heading: `1 Download:` for one link, `2 Downloads:` for this example
+- each download URL carries a signed file binding, so an old link cannot silently follow an alias that is later changed to a different file
 - only the single-use link carries the extra warning text
 - the blank line between download blocks makes separate files easier to recognise

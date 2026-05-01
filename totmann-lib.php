@@ -897,15 +897,18 @@ function dm_ack_url(array $cfg, array $token): string
 }
 
 /**
- * Create a signed download token bound to recipient ID, link ID, escalation event, expiry, and nonce.
+ * Create a signed download token bound to recipient ID, link ID, file binding, escalation event, expiry, and nonce.
  */
-function dm_download_token_make(array $cfg, string $recipientId, string $linkId, int $eventAt, int $expiresAt): array
+function dm_download_token_make(array $cfg, string $recipientId, string $linkId, string $fileBinding, int $eventAt, int $expiresAt): array
 {
     if (!dm_mail_id_valid($recipientId)) {
         throw new RuntimeException("Invalid recipient download ID: {$recipientId}");
     }
     if (!dm_mail_id_valid($linkId)) {
         throw new RuntimeException("Invalid download link ID: {$linkId}");
+    }
+    if (!preg_match('/^[a-f0-9]{32}$/', $fileBinding)) {
+        throw new RuntimeException('Invalid download file binding');
     }
     if ($eventAt < 1) {
         throw new RuntimeException('Invalid download event timestamp');
@@ -915,12 +918,13 @@ function dm_download_token_make(array $cfg, string $recipientId, string $linkId,
     }
 
     $nonce = bin2hex(random_bytes(16));
-    $payload = $recipientId . "\n" . $linkId . "\n" . $eventAt . "\n" . $expiresAt . "\n" . $nonce;
+    $payload = $recipientId . "\n" . $linkId . "\n" . $fileBinding . "\n" . $eventAt . "\n" . $expiresAt . "\n" . $nonce;
     $sig = hash_hmac('sha256', $payload, dm_secret_bin($cfg));
 
     return [
     'rid' => $recipientId,
     'lid' => $linkId,
+    'fb' => $fileBinding,
     'evt' => $eventAt,
     'exp' => $expiresAt,
     'n' => $nonce,
@@ -931,9 +935,12 @@ function dm_download_token_make(array $cfg, string $recipientId, string $linkId,
 /**
  * Verify download token format and signature.
  */
-function dm_download_token_valid(array $cfg, string $recipientId, string $linkId, int $eventAt, int $expiresAt, string $nonce, string $sig): bool
+function dm_download_token_valid(array $cfg, string $recipientId, string $linkId, string $fileBinding, int $eventAt, int $expiresAt, string $nonce, string $sig): bool
 {
     if (!dm_mail_id_valid($recipientId) || !dm_mail_id_valid($linkId)) {
+        return false;
+    }
+    if (!preg_match('/^[a-f0-9]{32}$/', $fileBinding)) {
         return false;
     }
     if ($eventAt < 1 || $expiresAt < 1) {
@@ -943,7 +950,7 @@ function dm_download_token_valid(array $cfg, string $recipientId, string $linkId
         return false;
     }
 
-    $payload = $recipientId . "\n" . $linkId . "\n" . $eventAt . "\n" . $expiresAt . "\n" . $nonce;
+    $payload = $recipientId . "\n" . $linkId . "\n" . $fileBinding . "\n" . $eventAt . "\n" . $expiresAt . "\n" . $nonce;
     $expected = hash_hmac('sha256', $payload, dm_secret_bin($cfg));
     return hash_equals($expected, $sig);
 }
@@ -991,6 +998,18 @@ function dm_download_rel_path_valid(string $path): bool
         return false;
     }
     return true;
+}
+
+/**
+ * Build a stable signed binding from the validated configured relative file path.
+ */
+function dm_download_file_binding(string $relativePath): string
+{
+    $normalised = trim(str_replace('\\', '/', $relativePath));
+    if (!dm_download_rel_path_valid($normalised)) {
+        throw new RuntimeException('Invalid download file binding path');
+    }
+    return substr(hash('sha256', $normalised), 0, 32);
 }
 
 /**
@@ -1461,7 +1480,8 @@ function dm_download_links_for_recipient(array $cfg, array $recipient, int $even
             continue;
         }
 
-        $token = dm_download_token_make($cfg, $mailId, $linkId, $eventAt, $expiresAt);
+        $fileBinding = dm_download_file_binding((string)($entry['file'] ?? ''));
+        $token = dm_download_token_make($cfg, $mailId, $linkId, $fileBinding, $eventAt, $expiresAt);
         $out[] = [
             'id' => $linkId,
             'alias' => (string)($entry['alias'] ?? ''),

@@ -431,6 +431,20 @@ justify-self: center;
 justify-self: end;
 }
 
+@media (max-width: 48rem) {
+.footer-nav {
+display: flex;
+flex-wrap: wrap;
+justify-content: center;
+text-align: center;
+}
+
+.footer-nav a {
+max-width: 100%;
+width: auto;
+}
+}
+
 :focus-visible {
 outline: 3px solid var(--focus);
 outline-offset: 3px;

@@ -92,11 +92,15 @@ p, dd, dt, span, small, li, a {
 hyphens: auto;
 }
 
-p, dd, .lead, .card p, .scenario p, .summary-card p, .steps p {
+p, dd, .lead, .steps p {
 text-wrap: pretty;
 }
 
 h1, h2, h3 {
+text-wrap: balance;
+}
+
+.card p, .scenario p, .summary-card p, .roadmap-card p {
 text-wrap: balance;
 }
 

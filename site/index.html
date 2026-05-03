@@ -1,13 +1,13 @@
 <!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>[totmann] A fully self-hosted dead man's switch for email</title>
-<meta name="description" content="totmann sends regular check-in emails to you. If you stop confirming for long enough, it contacts the people you chose in advance, from infrastructure you control.">
+<meta name="description" content="totmann is a self-hosted dead man's switch with granular timing, HMAC-signed links, recipient-specific messages, private downloads, and operator-visible logs.">
 <meta property="og:title" content="[totmann] A fully self-hosted dead man's switch for email">
-<meta property="og:description" content="Regular check-in emails. Nothing happens while you keep confirming. If confirmations stop for long enough, totmann contacts the people you chose in advance.">
+<meta property="og:description" content="Self-hosted check-ins, granular timing, HMAC-signed links, recipient-specific messages, private downloads, and clear runtime diagnostics.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://macsteini.github.io/totmannschalter/">
 <meta property="og:image" content="https://macsteini.github.io/totmannschalter/totmann.png">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="[totmann] A fully self-hosted dead man's switch for email">
-<meta name="twitter:description" content="Regular check-in emails. Nothing happens while you keep confirming. If confirmations stop for long enough, totmann contacts the people you chose in advance.">
+<meta name="twitter:description" content="Self-hosted check-ins, granular timing, HMAC-signed links, recipient-specific messages, private downloads, and clear runtime diagnostics.">
 <meta name="twitter:image" content="https://macsteini.github.io/totmannschalter/totmann.png">
 <link rel="canonical" href="https://macsteini.github.io/totmannschalter/">
 <link rel="icon" href="./totmann.png" type="image/png">
@@ -25,6 +25,7 @@
 </div>
 </a>
 <nav class="site-nav" aria-label="Primary">
+<a href="#why-totmann">Why totmann</a>
 <a href="#features">Features</a>
 <a href="#use-cases">Use cases</a>
 <a href="#how-it-works">How it works</a>
@@ -39,7 +40,7 @@
 <div class="hero-copy">
 <p class="eyebrow">A fully self-hosted dead man’s switch for email</p>
 <h1>Your message, delivered when needed most.</h1>
-<p class="lead">totmann sends regular check-in emails to you. As long as you keep confirming that you are still there, nothing else happens. If those confirmations stop for long enough, it contacts the people you chose in advance.</p>
+<p class="lead">totmann turns a private handover plan into a precise, self-hosted routine. It checks in on your schedule, waits through your configured safety windows, and sends recipient-specific messages and files only when confirmations stop for long enough.</p>
 <div class="hero-actions">
 <a class="button button-primary" href="https://github.com/MacSteini/totmannschalter/releases/latest">Download</a>
 <a class="button button-secondary" href="https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md">Installation</a>
@@ -51,19 +52,52 @@
 <img class="showcase-image" src="./showcase.png" alt="Stacked preview of totmann message pages.">
 </section>
 
+<section class="section shell" id="why-totmann" aria-labelledby="why-totmann-title">
+<div class="section-head">
+<p class="section-kicker">Why totmann</p>
+<h2 id="why-totmann-title">Built for private, precise handover, not generic reminders.</h2>
+</div>
+<div class="card-grid">
+<article class="card">
+<h3>Granular timing</h3>
+<p>Control the reminder interval, confirmation window, grace period, missed-cycle threshold, and ACK follow-up timing.</p>
+</article>
+<article class="card">
+<h3>Individual handover</h3>
+<p>Prepare different messages for different recipients instead of sending one generic broadcast to everyone.</p>
+</article>
+<article class="card">
+<h3>Signed actions</h3>
+<p>Confirmation, acknowledgement, and download URLs are HMAC-signed so important actions depend on valid tokens.</p>
+</article>
+<article class="card">
+<h3>Private downloads</h3>
+<p>Deliver selected files from outside the public web root, bind download links to the intended file, and make links single-use when needed.</p>
+</article>
+<article class="card">
+<h3>Visible diagnostics</h3>
+<p>Use granular logs, the built-in check command, clear failure states, and operator warnings to see problems before they matter.</p>
+</article>
+<article class="card">
+<h3>Self-hosted control</h3>
+<p>Keep the switch, recipient data, message content, and files on infrastructure you operate, without a service vendor in the middle.</p>
+</article>
+</div>
+</section>
+
 <section class="section shell" id="features" aria-labelledby="features-title">
 <div class="section-head">
 <p class="section-kicker">Key features</p>
-<h2 id="features-title">What totmann handles, and what stays in your control.</h2>
+<h2 id="features-title">The practical controls behind the handover.</h2>
 </div>
 <div class="card-grid">
 <article class="card">
 <h3>Fully self-hosted</h3>
-<p>Runs on infrastructure you control, without a third-party service sitting in the middle.</p>
+<p>Runs from your own PHP and mail environment, so the operational setup stays under your control.</p>
 </article>
 <article class="card">
 <h3>You choose the rhythm</h3>
-<p>Set the check-in schedule that fits your life, instead of adapting yourself to a fixed cadence.</p>
+<p>Set the check-in schedule and escalation thresholds that fit your life, instead of adapting yourself to a fixed cadence.</p>
 </article>
 <article class="card">
 <h3>Intentional confirmation</h3>
@@ -71,7 +105,7 @@
 </article>
 <article class="card">
 <h3>Protected links</h3>
-<p>Confirmation and recipient links are protected so unsuitable or accidental requests do not trigger the real action.</p>
+<p>Confirmation, acknowledgement, and recipient links are signed so unsuitable or accidental requests do not trigger the real action.</p>
 </article>
 <article class="card">
 <h3>Grace before escalation</h3>
@@ -91,7 +125,7 @@
 </article>
 <article class="card">
 <h3>Private file delivery</h3>
-<p>Optional private files can be included for selected recipients when they are part of the plan.</p>
+<p>Optional private files can be included for selected recipients when they are part of the plan, without putting them in the public web tree.</p>
 </article>
 </div>
 </section>
@@ -166,7 +200,7 @@
 </article>
 <article class="summary-card">
 <h3>Prepared before it is needed</h3>
-<p>The timing, recipient list, messages, and optional files are all decided in advance, before there is any urgency.</p>
+<p>The timing, recipient list, individual messages, and optional files are all decided in advance, before there is any urgency.</p>
 </article>
 <article class="summary-card">
 <h3>Problems do not stay hidden</h3>
@@ -174,7 +208,7 @@
 </article>
 <article class="summary-card">
 <h3>Protected links, clear trail</h3>
-<p>Detailed logs help you review what happened, and the action links are protected with signed tokens, including HMAC-based signing.</p>
+<p>Detailed logs help you review what happened, and confirmation, ACK, and download links are protected with HMAC-based signing.</p>
 </article>
 <article class="summary-card">
 <h3>Personal rather than broadcast</h3>

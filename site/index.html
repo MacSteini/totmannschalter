@@ -1,12 +1,12 @@
-<!doctype html><html lang="en-GB"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>[totmann] A fully self-hosted dead man's switch for email</title>
-<meta name="description" content="totmann is a self-hosted dead man's switch with granular timing, HMAC-signed links, recipient-specific messages, private downloads, and operator-visible logs.">
-<meta property="og:title" content="[totmann] A fully self-hosted dead man's switch for email">
+<!doctype html><html lang="en-US"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>[totmann] A fully self-hosted dead man&#x27;s switch for email</title>
+<meta name="description" content="totmann is a self-hosted dead man&#x27;s switch with granular timing, HMAC-signed links, recipient-specific messages, private downloads, and operator-visible logs.">
+<meta property="og:title" content="[totmann] A fully self-hosted dead man&#x27;s switch for email">
 <meta property="og:description" content="Self-hosted check-ins, granular timing, HMAC-signed links, recipient-specific messages, private downloads, and clear runtime diagnostics.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://macsteini.github.io/totmannschalter/">
 <meta property="og:image" content="https://macsteini.github.io/totmannschalter/totmann.png">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="[totmann] A fully self-hosted dead man's switch for email">
+<meta name="twitter:title" content="[totmann] A fully self-hosted dead man&#x27;s switch for email">
 <meta name="twitter:description" content="Self-hosted check-ins, granular timing, HMAC-signed links, recipient-specific messages, private downloads, and clear runtime diagnostics.">
 <meta name="twitter:image" content="https://macsteini.github.io/totmannschalter/totmann.png">
 <link rel="canonical" href="https://macsteini.github.io/totmannschalter/">
@@ -14,21 +14,21 @@
 <link rel="stylesheet" href="./css.css">
 <script src="./js.js" defer></script>
 </head><body>
-<a class="skip-link" href="#main-content">Skip to content</a>
+<a class="skip-link" href="#main-content" data-i18n="skip">Skip to content</a>
 <header class="site-header">
 <div class="wrap shell">
-<a class="brand" href="#top" aria-label="totmann homepage">
+<a class="brand" href="#top" aria-label="totmann homepage" data-i18n-attr="aria-label:brandAria">
 <img src="./totmann.png" alt="totmann">
 <div class="brand-copy">
 <span class="brand-name">totmann</span>
-<span class="brand-tag">A dead man’s switch for email.</span>
+<span class="brand-tag" data-i18n="brandTag">A dead man’s switch for email.</span>
 </div>
 </a>
-<nav class="site-nav" aria-label="Primary">
-<a href="#why-totmann">Why totmann</a>
+<nav class="site-nav" aria-label="Primary" data-i18n-attr="aria-label:navAria" data-i18n-list="nav">
+<a href="#why-totmann">Why</a>
 <a href="#features">Features</a>
-<a href="#use-cases">Use cases</a>
-<a href="#how-it-works">How it works</a>
+<a href="#use-cases">Uses</a>
+<a href="#how-it-works">Flow</a>
 <a href="#summary">Summary</a>
 <a href="#roadmap">Roadmap</a>
 </nav>
@@ -38,21 +38,21 @@
 <main id="main-content">
 <section class="hero shell" id="top">
 <div class="hero-copy">
-<p class="eyebrow">A fully self-hosted dead man’s switch for email</p>
-<h1>Your message, delivered when needed most.</h1>
-<p class="lead">totmann turns a private handover plan into a precise, self-hosted routine. It checks in on your schedule, waits through your configured safety windows, and sends recipient-specific messages and files only when confirmations stop for long enough.</p>
-<div class="hero-actions">
+<p class="eyebrow" data-i18n="eyebrow">A fully self-hosted dead man’s switch for email</p>
+<h1 data-i18n="h1">Your message, delivered when needed most.</h1>
+<p class="lead" data-i18n="lead">totmann turns a private handover plan into a precise, self-hosted routine. It checks in on your schedule, waits through your configured safety windows, and sends recipient-specific messages and files only when confirmations stop for long enough.</p>
+<div class="hero-actions" data-i18n-list="buttons">
 <a class="button button-primary" href="https://github.com/MacSteini/totmannschalter/releases/latest">Download</a>
 <a class="button button-secondary" href="https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md">Installation</a>
 <a class="button button-secondary" href="https://github.com/MacSteini/totmannschalter">Repository</a>
 </div>
 </div>
 </section>
-<section class="shell showcase-section" aria-label="totmann showcase">
-<img class="showcase-image" src="./showcase.png" alt="Stacked preview of totmann message pages.">
+<section class="shell showcase-section" aria-label="totmann showcase" data-i18n-attr="aria-label:showcaseAria">
+<img class="showcase-image" src="./showcase.png" alt="Stacked preview of totmann message pages." data-i18n-attr="alt:showcaseAlt">
 </section>
 
-<section class="section shell" id="why-totmann" aria-labelledby="why-totmann-title">
+<section class="section shell" id="why-totmann" aria-labelledby="why-totmann-title" data-section="why-totmann">
 <div class="section-head">
 <p class="section-kicker">Why totmann</p>
 <h2 id="why-totmann-title">Built for private, precise handover, not generic reminders.</h2>
@@ -68,7 +68,7 @@
 </article>
 <article class="card">
 <h3>Signed actions</h3>
-<p>Confirmation, acknowledgement, and download URLs are HMAC-signed so important actions depend on valid tokens.</p>
+<p>Confirmation, acknowledgment, and download URLs are HMAC-signed so important actions depend on valid tokens.</p>
 </article>
 <article class="card">
 <h3>Private downloads</h3>
@@ -85,7 +85,7 @@
 </div>
 </section>
 
-<section class="section shell" id="features" aria-labelledby="features-title">
+<section class="section shell" id="features" aria-labelledby="features-title" data-section="features">
 <div class="section-head">
 <p class="section-kicker">Key features</p>
 <h2 id="features-title">The practical controls behind the handover.</h2>
@@ -105,7 +105,7 @@
 </article>
 <article class="card">
 <h3>Protected links</h3>
-<p>Confirmation, acknowledgement, and recipient links are signed so unsuitable or accidental requests do not trigger the real action.</p>
+<p>Confirmation, acknowledgment, and recipient links are signed so unsuitable or accidental requests do not trigger the real action.</p>
 </article>
 <article class="card">
 <h3>Grace before escalation</h3>
@@ -130,7 +130,7 @@
 </div>
 </section>
 
-<section class="section shell" id="use-cases" aria-labelledby="use-cases-title">
+<section class="section shell" id="use-cases" aria-labelledby="use-cases-title" data-section="use-cases">
 <div class="section-head">
 <p class="section-kicker">Why it matters</p>
 <h2 id="use-cases-title">Where this can actually be useful.</h2>
@@ -163,7 +163,7 @@
 </div>
 </section>
 
-<section class="section shell" id="how-it-works" aria-labelledby="how-it-works-title">
+<section class="section shell" id="how-it-works" aria-labelledby="how-it-works-title" data-steps>
 <div class="section-head">
 <p class="section-kicker">How it works</p>
 <h2 id="how-it-works-title">What happens in practice.</h2>
@@ -188,7 +188,7 @@
 </ol>
 </section>
 
-<section class="section shell" id="summary" aria-labelledby="summary-title">
+<section class="section shell" id="summary" aria-labelledby="summary-title" data-summary>
 <div class="section-head">
 <p class="section-kicker">Summary</p>
 <h2 id="summary-title">What totmann actually does for you.</h2>
@@ -220,7 +220,7 @@
 </article>
 </div>
 </section>
-<section class="section shell" id="roadmap" aria-labelledby="roadmap-title">
+<section class="section shell" id="roadmap" aria-labelledby="roadmap-title" data-roadmap>
 <div class="section-head">
 <p class="section-kicker">Roadmap</p>
 <h2 id="roadmap-title">Where totmann could go next.</h2>
@@ -254,4 +254,11 @@
 </section>
 </main>
 
-<footer class="site-footer"><nav class="wrap shell footer-nav" aria-label="Footer"><a href="https://github.com/MacSteini/totmannschalter/">GitHub</a><a href="https://github.com/MacSteini/">MacSteini &copy; 2026</a><a href="https://github.com/MacSteini/totmannschalter/tree/main/docs">Documentation</a></nav></footer></body></html>
+<footer class="site-footer"><div class="wrap shell footer-nav" aria-label="Footer" data-i18n-attr="aria-label:footer.aria"><a href="https://github.com/MacSteini/totmannschalter">GitHub</a><a href="https://github.com/MacSteini/">MacSteini &copy; 2026</a><a href="https://github.com/MacSteini/totmannschalter/tree/main/docs" data-i18n="footer.docs">Documentation</a><nav class="language-switch" aria-label="Language" data-i18n-attr="aria-label:language.aria" data-language-switch>
+<a href="#" hreflang="en-US" lang="en-US" title="English (US)" data-locale="en-US" aria-label="English (US) (Current language)" aria-current="page"><span aria-hidden="true">🇺🇸</span></a>
+<a href="#" hreflang="en-GB" lang="en-GB" title="English (UK)" data-locale="en-GB" aria-label="English (UK)"><span aria-hidden="true">🇬🇧</span></a>
+<a href="#" hreflang="de-DE" lang="de-DE" title="Deutsch" data-locale="de-DE" aria-label="Deutsch"><span aria-hidden="true">🇩🇪</span></a>
+<a href="#" hreflang="es-ES" lang="es-ES" title="Español" data-locale="es-ES" aria-label="Español"><span aria-hidden="true">🇪🇸</span></a>
+<a href="#" hreflang="fr-FR" lang="fr-FR" title="Français" data-locale="fr-FR" aria-label="Français"><span aria-hidden="true">🇫🇷</span></a>
+<a href="#" hreflang="it-IT" lang="it-IT" title="Italiano" data-locale="it-IT" aria-label="Italiano"><span aria-hidden="true">🇮🇹</span></a>
+</nav></div></footer></body></html>

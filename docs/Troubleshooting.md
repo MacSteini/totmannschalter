@@ -19,7 +19,7 @@ Typical causes:
 ## Fast checks (90 seconds)
 ### Check ownership and permissions (state dir and runtime files)
 ```sh
-ls -la /var/lib/totmann
+ls -la /var/lib/totman
 ```
 Expected (conceptually):
 - directory: `root:<WEB_GROUP>` and mode like `drwxrws---` (`2770`)
@@ -29,13 +29,13 @@ Expected (conceptually):
 sudo systemctl show totman.service -p Environment -p WorkingDirectory -p ExecStart -p UMask
 ```
 Make sure you see:
-- `Environment=totmann_STATE_DIR=/var/lib/totmann`
-- `WorkingDirectory=/var/lib/totmann`
+- `Environment=TOTMAN_STATE_DIR=/var/lib/totman`
+- `WorkingDirectory=/var/lib/totman`
 - `UMask=0007`
 ### Confirm the real web identity can write
 Replace `<WEB_USER>` with the PHP runtime user (e. g., `www-data`).
 ```sh
-sudo -u <WEB_USER> php -r '$f="/var/lib/totmann/.permtest"; echo (file_put_contents($f,"x")!==false)?"write:OK\n":"write:NO\n"; @unlink($f);'
+sudo -u <WEB_USER> php -r '$f="/var/lib/totman/.permtest"; echo (file_put_contents($f,"x")!==false)?"write:OK\n":"write:NO\n"; @unlink($f);'
 ```
 If you do not know `<WEB_USER>` (PHP-FPM):
 ```sh
@@ -54,7 +54,7 @@ Those warning mails are mandatory on purpose, are throttled by `operator_alert_i
 ```sh
 systemctl list-timers | grep totman
 journalctl -u totman.service -n 200 --no-pager
-tail -n 200 /var/lib/totmann/totman.log
+tail -n 200 /var/lib/totman/totman.log
 ```
 Choose log commands according to `log_mode`:
 - `syslog` => rely on `journalctl`
@@ -75,7 +75,7 @@ The shared `totman.json` contains two top-level areas:
 
 If the timing fields in `runtime` are missing or inconsistent (`cycle_start_at`, `next_check_at`, `deadline_at`), the tick stops instead of starting a fresh cycle. Restore the state file from backup, or perform a deliberate clean initialise after you have confirmed that you do not need to keep any escalation state.
 ```sh
-cat /var/lib/totmann/totman.json
+cat /var/lib/totman/totman.json
 ```
 If `next_reminder_at` does not move forward, the tick likely failed before saving state. Check logs for an exception.
 
@@ -151,8 +151,8 @@ If this is set incorrectly, request attribution in logs can be spoofed.
 If you want to restart completely:
 ```sh
 sudo systemctl stop totman.timer
-sudo rm -f /var/lib/totmann/totman.json /var/lib/totmann/totman.lock /var/lib/totmann/totman.log
-sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totman-tick.php tick'
+sudo rm -f /var/lib/totman/totman.json /var/lib/totman/totman.lock /var/lib/totman/totman.log
+sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totman/totman-tick.php tick'
 sudo systemctl start totman.timer
 ```
 The `rm` command uses the filenames from the effective config. Adapt it if you changed them there.

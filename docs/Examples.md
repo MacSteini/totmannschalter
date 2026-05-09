@@ -82,7 +82,7 @@ What to check next:
 Open the configured recipients_file, fix the referenced row or top-level structure, and rerun php totman-tick.php check.
 
 Recommended next steps:
-1. Change into your state directory: /var/lib/totmann
+1. Change into your state directory: /var/lib/totman
 2. Run: php totman-tick.php check
 3. Inspect totman.log for matching lines.
 4. Compare the affected values in totman.inc.php and the configured recipients_file.
@@ -108,7 +108,7 @@ What to check next:
 Open totman-recipients.php and compare the affected alias with $files plus the field-4/field-5 lists in the affected recipient row.
 
 Recommended next steps:
-1. Change into your state directory: /var/lib/totmann
+1. Change into your state directory: /var/lib/totman
 2. Run: php totman-tick.php check
 3. Inspect totman.log for matching lines.
 4. Compare the affected values in totman.inc.php and the configured recipients_file.

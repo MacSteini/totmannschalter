@@ -7,8 +7,8 @@
  * Licence: MIT (see LICENCE)
  *
  * State dir resolution order:
- * 1) ENV: totmann_STATE_DIR
- * 2) define('TOTMANN_STATE_DIR', '/var/lib/totmann'); // fallback if you cannot set ENV
+ * 1) ENV: TOTMAN_STATE_DIR
+ * 2) define('TOTMAN_STATE_DIR', '/var/lib/totman'); // fallback if you cannot set ENV
  *
  * If neither exists, endpoint stays neutral (no implicit fallback to webroot/config state_dir).
  */
@@ -16,17 +16,19 @@
 declare(strict_types=1);
 
 // Fallback define for installations without webserver ENV injection.
-define('TOTMANN_STATE_DIR', '/var/lib/totmann');
+if (!defined('TOTMAN_STATE_DIR')) {
+    define('TOTMAN_STATE_DIR', '/var/lib/totman');
+}
 
 function dm_resolve_state_dir(): ?string
 {
-    $v = rtrim((string)getenv('totmann_STATE_DIR'), '/');
+    $v = rtrim((string)getenv('TOTMAN_STATE_DIR'), '/');
     if ($v !== '') {
         return $v;
     }
 
-    if (defined('TOTMANN_STATE_DIR')) {
-        $v = rtrim((string)constant('TOTMANN_STATE_DIR'), '/');
+    if (defined('TOTMAN_STATE_DIR')) {
+        $v = rtrim((string)constant('TOTMAN_STATE_DIR'), '/');
         return $v;
     }
 

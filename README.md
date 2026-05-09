@@ -13,8 +13,6 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 
 The release archive is intentionally slim. It contains `README.md`, `LICENCE`, the runtime PHP/CSS files, the `.dist.php` templates, and the shipped `l18n/` locale files. It does not contain the full `docs/`, `site/`, or `img/` directories. The quick start below is the offline starting point; the linked GitHub documentation and project website provide the full operator guide when you have network access.
 
-Upgrade note: releases from the `totman` filename migration use `totman*` runtime and config filenames only. Existing installations with older `totmann*` files must rename their live files during the update; the runtime does not fall back to old filenames.
-
 ## What this does
 - You regularly receive an email containing a **confirmation link**.
 - Confirmation is **two-step** (`GET` shows a button, `POST` confirms) to defeat mail link scanners.
@@ -44,11 +42,11 @@ Upgrade note: releases from the `totman` filename migration use `totman*` runtim
 1. Identify your real PHP runtime identity (`<WEB_USER>:<WEB_GROUP>`): [Installation guide](https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md "Installation guide"), section “Before you start”.
 2. Create state dir + place files:
 	```sh
-	sudo mkdir -p /var/lib/totmann
-	sudo mkdir -p /var/lib/totmann/downloads
-	sudo cp totman.inc.dist.php totman-tick.php totman-lib.php totman-recipients.dist.php /var/lib/totmann/
-	sudo cp -R l18n /var/lib/totmann/
-	cd /var/lib/totmann
+	sudo mkdir -p /var/lib/totman
+	sudo mkdir -p /var/lib/totman/downloads
+	sudo cp totman.inc.dist.php totman-tick.php totman-lib.php totman-recipients.dist.php /var/lib/totman/
+	sudo cp -R l18n /var/lib/totman/
+	cd /var/lib/totman
 	sudo cp totman.inc.dist.php totman.inc.php
 	sudo cp totman-recipients.dist.php totman-recipients.php
 	sudo mkdir -p /var/www/html/totman
@@ -57,7 +55,7 @@ Upgrade note: releases from the `totman` filename migration use `totman*` runtim
 	```
 	The bootstrap config files must keep their exact supported names: `totman.inc.php` and/or `totman.inc.dist.php`. Names such as `totman.inc.prod.php` are not supported. The recommended operational pattern is to edit `totman.inc.php` and `totman-recipients.php`; if you intentionally keep real values in `.dist.php` files instead, merge updates manually before replacing those files.
 	If you changed configurable runtime names such as `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` in the effective config, copy/rename only those referenced files accordingly.
-3. Set required config in `/var/lib/totmann/totman.inc.php` or, if you intentionally use the `.dist.php` file as your runtime config, in `/var/lib/totmann/totman.inc.dist.php`:
+3. Set required config in `/var/lib/totman/totman.inc.php` or, if you intentionally use the `.dist.php` file as your runtime config, in `/var/lib/totman/totman.inc.dist.php`:
 	- `base_url` (real HTTPS base URL without endpoint filename; the runtime appends `web_file` automatically)
 	- `hmac_secret_hex` (example: `openssl rand -hex 32`)
 	- `to_self`
@@ -85,34 +83,34 @@ Upgrade note: releases from the `totman` filename migration use `totman*` runtim
 	- If no supported browser language matches, the web endpoint falls back to `en-US`
 4. Set permissions:
 	```sh
-	sudo chown -R root:<WEB_GROUP> /var/lib/totmann
-	sudo find /var/lib/totmann -type d -exec chmod 2770 {} \;
-	sudo find /var/lib/totmann -type f -exec chmod 0660 {} \;
+	sudo chown -R root:<WEB_GROUP> /var/lib/totman
+	sudo find /var/lib/totman -type d -exec chmod 2770 {} \;
+	sudo find /var/lib/totman -type f -exec chmod 0660 {} \;
 	```
 5. Ensure the web runtime resolves the same state dir:
-	- Prefer ENV `totmann_STATE_DIR=/var/lib/totmann` in your PHP runtime.
-	- `totman.php` in this repo ships with `define('TOTMANN_STATE_DIR', '/var/lib/totmann')` enabled by default. Adjust this value if your state dir differs.
+	- Prefer ENV `TOTMAN_STATE_DIR=/var/lib/totman` in your PHP runtime.
+	- `totman.php` in this repo ships with `define('TOTMAN_STATE_DIR', '/var/lib/totman')` enabled by default. Adjust this value if your state dir differs.
 6. Run preflight in the deployed state dir:
 	```sh
-	cd /var/lib/totmann
+	cd /var/lib/totman
 	php totman-tick.php check
 	php totman-tick.php check --web-user=<WEB_USER>
 	```
 7. Clean initialise once:
 	```sh
-	sudo rm -f /var/lib/totmann/totman.json /var/lib/totmann/totman.lock /var/lib/totmann/totman.log
-	sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totman-tick.php tick'
+	sudo rm -f /var/lib/totman/totman.json /var/lib/totman/totman.lock /var/lib/totman/totman.log
+	sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totman/totman-tick.php tick'
 	```
 	The `rm` line uses the filenames shown in the effective config; if you changed them there, adapt this command.
 8. Install + enable `systemd` unit/timer: follow [systemd](https://github.com/MacSteini/totmannschalter/blob/main/docs/Systemd.md "systemd").
 9. Run the smoke/E2E test with short timings: follow [Installation](https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md "Installation guide") and [Timing](https://github.com/MacSteini/totmannschalter/blob/main/docs/Timing.md "Timing model and presets").
 10. During live testing, watch current activity in real time:
 	```sh
-	tail -f /var/lib/totmann/totman.log
+	tail -f /var/lib/totman/totman.log
 	```
 	If you changed `log_file_name` or `log_file`, use that effective path instead. If `log_mode` is `syslog` or `none`, use `journalctl` instead of `tail`. For help reading file-log lines, journal bootstrap failures, and operator warning mails together, use [Log guide](https://github.com/MacSteini/totmannschalter/blob/main/docs/Logs.md "Log guide").
 ## Terms
-- ENV: environment variable (e. g., `totmann_STATE_DIR`).
+- ENV: environment variable (e. g., `TOTMAN_STATE_DIR`).
 - GET/POST: HTTP request methods (`GET` shows the confirm or ACK page; `POST` performs the confirmation or acknowledgement).
 - ACK: recipient receipt acknowledgement link (`GET` opens the ACK page; only the submitted `POST` stops further escalation mails for that escalation event).
 - HMAC: keyed hash used to sign tokens (tamper-resistant).

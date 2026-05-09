@@ -18,7 +18,7 @@ Important:
 
 If you want to see a full operator warning mail in context, go to [Example messages](Examples.md "Example messages").
 
-If you use `log_mode = file` or `log_mode = both`, the default file is `/var/lib/totmann/totman.log`.
+If you use `log_mode = file` or `log_mode = both`, the default file is `/var/lib/totman/totman.log`.
 
 If you changed `log_file_name` or `log_file` in `totman.inc.php`, use that effective path instead.
 ## What belongs where
@@ -45,7 +45,7 @@ Choose your log command according to `log_mode`:
 
 Useful commands:
 ```sh
-tail -f /var/lib/totmann/totman.log
+tail -f /var/lib/totman/totman.log
 journalctl -u totman.service -f
 ```
 ## How one log line is structured

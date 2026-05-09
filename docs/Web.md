@@ -15,8 +15,8 @@ This means:
 - the runtime appends `web_file` automatically
 ## State dir resolution
 The web endpoint resolves the state directory in this order:
-1. ENV `totmann_STATE_DIR`
-2. `define('TOTMANN_STATE_DIR', '/var/lib/totmann');`
+1. ENV `TOTMAN_STATE_DIR`
+2. `define('TOTMAN_STATE_DIR', '/var/lib/totman');`
 
 The shipped `totman.php` template enables the `define(...)` fallback by default. Adjust it to your actual state dir if needed.
 
@@ -156,10 +156,10 @@ This trust model affects:
 ## Quick permission sanity checks
 Expected paths exist:
 ```sh
-ls -la /var/lib/totmann
+ls -la /var/lib/totman
 ```
 Web identity can read the effective config and write runtime files, replace `<WEB_USER>`:
 ```sh
-sudo -u <WEB_USER> php -r 'echo is_readable("/var/lib/totmann/totman.inc.php") ? "config:OK\n" : "config:NO\n";'
-sudo -u <WEB_USER> php -r '$f="/var/lib/totmann/.permtest"; echo (file_put_contents($f,"x")!==false)?"write:OK\n":"write:NO\n"; @unlink($f);'
+sudo -u <WEB_USER> php -r 'echo is_readable("/var/lib/totman/totman.inc.php") ? "config:OK\n" : "config:NO\n";'
+sudo -u <WEB_USER> php -r '$f="/var/lib/totman/.permtest"; echo (file_put_contents($f,"x")!==false)?"write:OK\n":"write:NO\n"; @unlink($f);'
 ```

@@ -17,9 +17,9 @@
 9. Install and enable the `systemd` timer.
 10. Run the smoke test with short timings.
 ## Layout (recommended)
-Recommended base directory (not under `/home`): `/var/lib/totmann`
+Recommended base directory (not under `/home`): `/var/lib/totman`
 
-In `/var/lib/totmann`:
+In `/var/lib/totman`:
 - fixed bootstrap config name: `totman.inc.dist.php` (supported effective config source)
 - fixed bootstrap config name: `totman.inc.php` (supported effective config source)
 - your configured `lib_file` (template default: `totman-lib.php`)
@@ -28,14 +28,14 @@ In `/var/lib/totmann`:
 - your configured `recipients_file` (template default: `totman-recipients.php`)
 - `totman-tick.php`
 
-Runtime files created automatically (as needed) in `/var/lib/totmann`:
+Runtime files created automatically (as needed) in `/var/lib/totman`:
 - `totman.json`
 - `totman.lock`
 - `ratelimit/`
 - `totman.log`
 
 Private download directory (outside webroot):
-- your configured `download_base_dir` (template default: `/var/lib/totmann/downloads`)
+- your configured `download_base_dir` (template default: `/var/lib/totman/downloads`)
 
 In your webroot:
 - your configured `web_file` (template default: `totman.php`)
@@ -75,19 +75,19 @@ From here on:
 - `<WEB_GROUP>` = your PHP runtime group
 ## Create the state directory
 ```sh
-sudo mkdir -p /var/lib/totmann
-sudo mkdir -p /var/lib/totmann/downloads
-sudo mkdir -p /var/lib/totmann/l18n
+sudo mkdir -p /var/lib/totman
+sudo mkdir -p /var/lib/totman/downloads
+sudo mkdir -p /var/lib/totman/l18n
 ```
 ## Place the files
-- Copy the shipped runtime files and `.dist.php` templates to `/var/lib/totmann`:
+- Copy the shipped runtime files and `.dist.php` templates to `/var/lib/totman`:
 ```sh
-sudo cp totman.inc.dist.php totman-tick.php totman-lib.php totman-recipients.dist.php /var/lib/totmann/
-sudo cp -R l18n /var/lib/totmann/
+sudo cp totman.inc.dist.php totman-tick.php totman-lib.php totman-recipients.dist.php /var/lib/totman/
+sudo cp -R l18n /var/lib/totman/
 ```
 - Recommended: create operator-owned live copies from the templates:
 ```sh
-cd /var/lib/totmann
+cd /var/lib/totman
 sudo cp totman.inc.dist.php totman.inc.php
 sudo cp totman-recipients.dist.php totman-recipients.php
 ```
@@ -106,7 +106,7 @@ The recommended operational pattern is to edit `totman.inc.php` and `totman-reci
 Only runtime filenames referenced from the effective config are configurable. If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` from the template names, adjust only those copy/rename commands accordingly.
 ## Update the main config (required values)
 - Use exactly `totman.inc.php` or `totman.inc.dist.php` for the main config; the bootstrap loader does not read alternative config filenames.
-- `state_dir` should match the directory where you placed the effective config (recommended: `/var/lib/totmann`)
+- `state_dir` should match the directory where you placed the effective config (recommended: `/var/lib/totman`)
 - Runtime names (filenames/directories only): `lib_file`, `l18n_dir_name`, `lock_file`, `log_file_name`, `recipients_file`, `state_file`, `web_file`
 - `download_base_dir` should point to a private directory outside your webroot
 - `download_valid_days` sets one global validity period for all download links in the same escalation event
@@ -303,7 +303,7 @@ Practical rule:
 ## Preflight check (recommended before enabling timer)
 Run the built-in preflight in your deployed state dir:
 ```sh
-cd /var/lib/totmann
+cd /var/lib/totman
 php totman-tick.php check
 php totman-tick.php check --web-user=<WEB_USER>
 echo $?
@@ -330,71 +330,6 @@ What `check` now validates:
 - `sendmail_path`
 - `log_mode`
 - `ip_mode` / trusted-proxy settings
-## Update / upgrade
-Use this sequence when totman is already installed and you replace it with a newer release.
-
-### Filename migration from older releases
-
-Releases using the `totman` product name no longer load old `totmann*` runtime or config filenames. If your existing state directory still uses the old filenames, rename the live files before you run `check`:
-
-```sh
-cd /var/lib/totmann
-sudo mv totmann.inc.php totman.inc.php
-sudo mv totmann.inc.dist.php totman.inc.dist.php
-sudo mv totmann-recipients.php totman-recipients.php
-sudo mv totmann-recipients.dist.php totman-recipients.dist.php
-sudo mv totmann.json totman.json
-sudo mv totmann.lock totman.lock
-sudo mv totmann.log totman.log
-```
-
-Only run a `mv` command for files that exist in your installation. If your effective config uses custom values for `lib_file`, `recipients_file`, `state_file`, `lock_file`, `log_file_name`, `web_file`, or `web_css_file`, keep those configured names aligned with the files you actually deploy.
-
-1. Stop the timer while you replace files:
-	```sh
-	sudo systemctl stop totman.timer
-	```
-2. Back up the state directory before changing anything:
-	```sh
-	sudo tar -C /var/lib -czf /var/lib/totmann-backup-$(date +%Y%m%d%H%M%S).tar.gz totmann
-	```
-3. Copy the shipped runtime files from the new release into the state directory:
-	```sh
-	sudo cp totman-tick.php totman-lib.php /var/lib/totmann/
-	sudo cp -R l18n /var/lib/totmann/
-	```
-4. Copy the web endpoint and stylesheet into the webroot:
-	```sh
-	sudo cp totman.php /var/www/html/totman/totman.php
-	sudo cp totman.css /var/www/html/totman/totman.css
-	```
-5. Merge configuration consciously:
-	- If you use the recommended live files, compare the new `totman.inc.dist.php` with your existing `totman.inc.php`, then add any new intended keys to `totman.inc.php`.
-	- Compare the new `totman-recipients.dist.php` with your configured `recipients_file` only for structural changes; keep your real recipients and message text.
-	- In live-file mode, copy the new `.dist.php` templates into the state directory after you have reviewed them:
-		```sh
-		sudo cp totman.inc.dist.php totman-recipients.dist.php /var/lib/totmann/
-		```
-	- If you intentionally use `.dist.php` as your effective runtime files, merge your real values into the new `.dist.php` files before replacing the old ones.
-6. Restore permissions:
-	```sh
-	sudo chown -R root:<WEB_GROUP> /var/lib/totmann
-	sudo find /var/lib/totmann -type d -exec chmod 2770 {} \;
-	sudo find /var/lib/totmann -type f -exec chmod 0660 {} \;
-	```
-7. Run preflight before re-enabling the timer:
-	```sh
-	cd /var/lib/totmann
-	php totman-tick.php check
-	php totman-tick.php check --web-user=<WEB_USER>
-	```
-8. Start the timer again only after `check` reports no hard failures:
-	```sh
-	sudo systemctl start totman.timer
-	```
-9. Perform a short smoke test with your own mailboxes after larger updates.
-
-Do not delete the configured `state_file` during an update unless you have deliberately decided to reset the cycle.
 ## Changing config without restarting `systemd`
 For effective main-config changes (for example timing values), you do not need to restart `totman.timer` or `totman.service`.
 The runtime reads config on each tick, so it picks up updates automatically.
@@ -409,34 +344,34 @@ Do NOT use `root:root`. Use `root:<WEB_GROUP>` so the web identity can access se
 
 Owner: `root`, Group: `<WEB_GROUP>`:
 ```sh
-sudo chown -R root:<WEB_GROUP> /var/lib/totmann
+sudo chown -R root:<WEB_GROUP> /var/lib/totman
 ```
 > Ensure `<WEB_USER>` is in `<WEB_GROUP>` (or that both are the same identity).
 
 Directories: setgid so new files stay in group `<WEB_GROUP>`; group-write enabled:
 ```sh
-sudo find /var/lib/totmann -type d -exec chmod 2770 {} \;
+sudo find /var/lib/totman -type d -exec chmod 2770 {} \;
 ```
 Files: readable+writable by group `<WEB_GROUP>`; not world-readable:
 ```sh
-sudo find /var/lib/totmann -type f -exec chmod 0660 {} \;
+sudo find /var/lib/totman -type f -exec chmod 0660 {} \;
 ```
 > Why setgid matters: files created later by `root` will still land in group `<WEB_GROUP>`.
 > Why `0660` matters: the web identity must be able to write your configured state file.
 ## Clean initialise (ensures correct runtime perms)
 Delete any old runtime files, then initialise once.
 ```sh
-sudo rm -f /var/lib/totmann/totman.json /var/lib/totmann/totman.lock /var/lib/totmann/totman.log
+sudo rm -f /var/lib/totman/totman.json /var/lib/totman/totman.lock /var/lib/totman/totman.log
 
 # IMPORTANT:
 # Initialise with umask 0007 so files become 0660 (group-writable).
-sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totman-tick.php tick'
+sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totman/totman-tick.php tick'
 ```
 The `rm`/`ls` examples use the filenames from the effective config; if you changed them there, adapt these commands.
 
 Verify:
 ```sh
-ls -la /var/lib/totmann/totman.json /var/lib/totmann/totman.lock /var/lib/totmann/totman.log
+ls -la /var/lib/totman/totman.json /var/lib/totman/totman.lock /var/lib/totman/totman.log
 ```
 ## Smoke test (use only your own addresses)
 1. In the effective main config, temporarily set short timings. See [Timing](Timing.md "Timing model and presets").
@@ -458,6 +393,6 @@ For live debugging during the smoke test, keep one of these running in a second 
 journalctl -u totman.service -f
 ```
 ```sh
-tail -f /var/lib/totmann/totman.log
+tail -f /var/lib/totman/totman.log
 ```
 If you are not yet familiar with the log lines, keep [Log guide](Logs.md "Log guide") open in parallel.

@@ -150,7 +150,7 @@ After deadline + grace:
 	- initialise once with the correct umask, see [Installation](Installation.md "Installation guide"), section “Clean initialise”
 3. Watch logs while testing:
 	- `journalctl -u totman.service -f`
-	- `tail -f /var/lib/totmann/totman.log`
+	- `tail -f /var/lib/totman/totman.log`
 	- If you are not yet familiar with the log lines, keep [Log guide](Logs.md "Log guide") open alongside the test.
 4. Test scenarios:
 	- Scenario A, confirm: confirm within the window -> cycle resets, escalation never triggers

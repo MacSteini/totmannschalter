@@ -8,10 +8,11 @@ This project uses semantic versioning:
 - MINOR: new features (backwards compatible)
 - PATCH: bugfixes and small improvements (backwards compatible)
 ## v4.0.0
-- BREAKING: Renamed the visible product from `totmann` to `totman`.
-- BREAKING: Renamed shipped runtime, config, recipient, state, log, lock, web endpoint, stylesheet, and logo filenames from `totmann*` to `totman*`.
-- Removed runtime support for old `totmann*` filenames; existing installations must rename their live files during the update.
-- Kept repository URLs, the repository slug, `totmann_STATE_DIR`, `TOTMANN_STATE_DIR`, and the recommended `/var/lib/totmann` state directory unchanged for this release.
+- BREAKING: Standardised the visible product name, shipped filenames, runtime defaults, service examples, website text, documentation, and internal maintainer paths on `totman`.
+- BREAKING: Removed runtime support for legacy product-prefixed filenames and compatibility identifiers.
+- Switched the single supported state-directory identifier to `TOTMAN_STATE_DIR`.
+- Set the recommended state directory to `/var/lib/totman`.
+- Kept the GitHub repository URL unchanged until the separately planned repository rename.
 ## v3.1.1
 - Changed ACK handling so `GET` opens a localised acknowledgement page and only the submitted `POST` marks receipt and stops ACK reminders.
 - Hardened download links with a signed relative-file binding so old links fail closed if an alias is later changed to another file.

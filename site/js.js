@@ -1,4 +1,4 @@
-var TOTMANN_LOCALES = {
+var TOTMAN_LOCALES = {
   "en-US": {
     "meta": {
       "title": "[totman] A fully self-hosted dead man's switch for email",
@@ -1535,7 +1535,7 @@ var TOTMANN_LOCALES = {
 var supportedLocales = ['en-US', 'en-GB', 'de-DE', 'es-ES', 'fr-FR', 'it-IT'];
 var primaryLocaleByLanguage = {en: 'en-US', de: 'de-DE', es: 'es-ES', fr: 'fr-FR', it: 'it-IT'};
 var defaultLocale = 'en-US';
-var storageKey = 'totmann-site-locale';
+var storageKey = 'totman-site-locale';
 var languageMeta = {
 'en-US': {flag: '🇺🇸', name: 'English (US)'},
 'en-GB': {flag: '🇬🇧', name: 'English (UK)'},
@@ -1655,7 +1655,7 @@ return '<a href="#" hreflang="' + item + '" lang="' + item + '" title="' + meta.
 }
 
 function applyLocale(locale) {
-var localeData = TOTMANN_LOCALES[locale] || TOTMANN_LOCALES[defaultLocale];
+var localeData = TOTMAN_LOCALES[locale] || TOTMAN_LOCALES[defaultLocale];
 document.documentElement.lang = locale;
 document.title = localeData.meta.title;
 ['description', 'ogTitle', 'ogDescription', 'twitterTitle', 'twitterDescription'].forEach(function (key) {

@@ -22,10 +22,10 @@ return [
 // State directory on disk (holds totman.inc.php and/or totman.inc.dist.php, totman-tick.php,
 // your configured lib_file, your configured recipients_file, and runtime files).
 // NOTE: Entry points do NOT use this value to locate the directory. They resolve it via:
-// - totman-tick.php: ENV totmann_STATE_DIR (or __DIR__)
-// - totman.php: ENV totmann_STATE_DIR (or define('totmann_STATE_DIR', ...))
-// Keep this value aligned with totmann_STATE_DIR purely for clarity.
-'state_dir' => '/var/lib/totmann',
+// - totman-tick.php: ENV TOTMAN_STATE_DIR (or __DIR__)
+// - totman.php: ENV TOTMAN_STATE_DIR (or define('TOTMAN_STATE_DIR', ...))
+// Keep this value aligned with TOTMAN_STATE_DIR purely for clarity.
+'state_dir' => '/var/lib/totman',
 
 // Runtime file names (filenames only, no paths).
 // Files loaded from state_dir: lib_file, recipients_file, state_file, lock_file, log_file_name
@@ -51,7 +51,7 @@ return [
 // Private directory for downloadable files.
 // Files served through the `download` action must live inside this directory.
 // Keep this OUTSIDE your webroot.
-'download_base_dir' => '/var/lib/totmann/downloads',
+'download_base_dir' => '/var/lib/totman/downloads',
 
 // Validity period for every download link (days).
 // This timer starts at the first escalation mail of that escalation event and then applies

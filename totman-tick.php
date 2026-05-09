@@ -7,12 +7,12 @@
  * Licence: MIT (see LICENCE)
  *
  * State dir resolution:
- * - ENV totmann_STATE_DIR, otherwise __DIR__ (so it works when placed in /var/lib/totmann).
+ * - ENV TOTMAN_STATE_DIR, otherwise __DIR__ (so it works when placed in /var/lib/totman).
  */
 
 declare(strict_types=1);
 
-$stateDir = rtrim((string)(getenv('totmann_STATE_DIR') ?: __DIR__), '/');
+$stateDir = rtrim((string)(getenv('TOTMAN_STATE_DIR') ?: __DIR__), '/');
 
 $argv = $_SERVER['argv'] ?? [];
 if (!is_array($argv)) {

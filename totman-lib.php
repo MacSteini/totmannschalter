@@ -2405,8 +2405,6 @@ function dm_config_value_looks_placeholder(string $value): bool
     'my name <myname@example.com>',
     'fallback mail <fallback@example.com>',
     'totman <totman@example.com>',
-    'totmann <totmann@example.com>',
-    'totmannschalter <totmannschalter@example.com>',
     ];
     if (in_array($v, $templateValues, true)) {
         return true;

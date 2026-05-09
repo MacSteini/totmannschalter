@@ -14,16 +14,16 @@ sudo tee /etc/systemd/system/totman.service >/dev/null <<'EOF'
 Description=totman
 
 [Service]
-ExecStart=/usr/bin/php /var/lib/totmann/totman-tick.php tick
+ExecStart=/usr/bin/php /var/lib/totman/totman-tick.php tick
 User=root
 Group=<WEB_GROUP>
 Type=oneshot
-WorkingDirectory=/var/lib/totmann
-Environment=totmann_STATE_DIR=/var/lib/totmann
+WorkingDirectory=/var/lib/totman
+Environment=TOTMAN_STATE_DIR=/var/lib/totman
 UMask=0007
 
 ProtectSystem=strict
-ReadWritePaths=/var/lib/totmann
+ReadWritePaths=/var/lib/totman
 EOF
 ```
 > **Critical**: `UMask=0007` ensures runtime files created by root become group-writable (`0660`).
@@ -56,16 +56,16 @@ Paste:
 Description=totman
 
 [Service]
-ExecStart=/usr/bin/php /var/lib/totmann/totman-tick.php tick
+ExecStart=/usr/bin/php /var/lib/totman/totman-tick.php tick
 User=root
 Group=<WEB_GROUP>
 Type=oneshot
-WorkingDirectory=/var/lib/totmann
-Environment=totmann_STATE_DIR=/var/lib/totmann
+WorkingDirectory=/var/lib/totman
+Environment=TOTMAN_STATE_DIR=/var/lib/totman
 UMask=0007
 
 ProtectSystem=strict
-ReadWritePaths=/var/lib/totmann
+ReadWritePaths=/var/lib/totman
 ```
 > **Critical**: `UMask=0007` ensures runtime files created by root become group-writable (`0660`).
 ### Create the timer
@@ -110,7 +110,7 @@ sudo systemctl show totman.service -p Environment -p WorkingDirectory -p ExecSta
 ## Logs
 ```sh
 journalctl -u totman.service -n 200 --no-pager
-tail -n 50 /var/lib/totmann/totman.log
+tail -n 50 /var/lib/totman/totman.log
 ```
 Use according to `log_mode`:
 - `syslog` => `journalctl` only
@@ -121,9 +121,9 @@ If you changed `log_file_name` or `log_file`, use that effective file log path f
 If you are unsure how to read the script log lines, use [Log guide](Logs.md "Log guide").
 If `journalctl` shows a bootstrap problem such as `CONFIG ERROR: ...`, treat that as a journal-only failure first and then compare it with the same guides.
 
-The same `/var/lib/totmann` state directory should also contain your configured `l18n/` directory, because the web endpoint loads its public page texts from there.
+The same `/var/lib/totman` state directory should also contain your configured `l18n/` directory, because the web endpoint loads its public page texts from there.
 
 Live stream (useful during test runs):
 ```sh
-tail -f /var/lib/totmann/totman.log
+tail -f /var/lib/totman/totman.log
 ```

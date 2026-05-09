@@ -1,5 +1,5 @@
 # Contribution guide
-![totmannschalter](img/totmann-xs.png)
+![totman](img/totman-xs.png)
 
 This guide defines the expected workflow for pull requests in this repository.
 ## Scope
@@ -26,16 +26,16 @@ They are not required for reporting a problem, asking a question, or sending a s
 
 For PHP changes, run syntax checks on the files you changed:
 ```sh
-php -l totmann-lib.php
-php -l totmann-tick.php
-php -l totmann.php
-php -l totmann.inc.dist.php
-php -l totmann-recipients.dist.php
+php -l totman-lib.php
+php -l totman-tick.php
+php -l totman.php
+php -l totman.inc.dist.php
+php -l totman-recipients.dist.php
 ```
 
 For install or configuration-flow changes, this deployed-state check is also useful:
 ```sh
-php totmann-tick.php check
+php totman-tick.php check
 ```
 If you cannot run these commands, still open the issue or pull request and say what you changed or observed.
 ## Pull request checklist

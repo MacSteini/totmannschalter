@@ -1,7 +1,7 @@
 <?php
 
 /**
- * totmann – runtime library
+ * totman – runtime library
  *
  * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)
@@ -133,15 +133,15 @@ function dm_runtime_file_name(array $cfg, string $key): string
 /**
  * Resolve the recipient file used by the current effective configuration.
  *
- * The template default keeps `recipients_file` at `totmann-recipients.php`.
+ * The template default keeps `recipients_file` at `totman-recipients.php`.
  * Operators may either create that live file or intentionally keep a fully
- * configured `totmann-recipients.dist.php`; in the latter case the dist file is
+ * configured `totman-recipients.dist.php`; in the latter case the dist file is
  * the effective recipient file as long as the default live filename is absent.
  */
 function dm_effective_recipients_file_name(array $cfg): string
 {
     $configured = dm_runtime_file_name($cfg, 'recipients_file');
-    if ($configured !== 'totmann-recipients.php') {
+    if ($configured !== 'totman-recipients.php') {
         return $configured;
     }
 
@@ -150,7 +150,7 @@ function dm_effective_recipients_file_name(array $cfg): string
         return $configured;
     }
 
-    $distName = 'totmann-recipients.dist.php';
+    $distName = 'totman-recipients.dist.php';
     $distPath = dm_path($cfg, $distName);
     if (is_file($distPath) && is_readable($distPath)) {
         return $distName;
@@ -307,7 +307,7 @@ function dm_log(array $cfg, string $msg): void
 
     // Syslog logging (best effort, never fatal)
         if ($toSyslog && function_exists('syslog')) {
-            openlog('totmann', LOG_PID, LOG_USER);
+            openlog('totman', LOG_PID, LOG_USER);
             syslog(LOG_INFO, $msg);
             closelog();
         }
@@ -571,39 +571,39 @@ function dm_operator_alert_label(string $type): string
 function dm_operator_alert_hint(string $type, string $message): string
 {
     if ($type === 'config_defaults_used') {
-        return 'Open totmann.inc.php, review the listed keys from totmann.inc.dist.php, add the intended live values, and rerun php totmann-tick.php check.';
+        return 'Open totman.inc.php, review the listed keys from totman.inc.dist.php, add the intended live values, and rerun php totman-tick.php check.';
     }
     if (str_contains($message, 'single_use_notice')) {
-        return 'Open totmann-recipients.php, find the referenced message key in $messages, and add a non-empty single_use_notice because that message is used with field 5.';
+        return 'Open totman-recipients.php, find the referenced message key in $messages, and add a non-empty single_use_notice because that message is used with field 5.';
     }
     if (str_contains($message, 'unknown message key')) {
-        return 'Open totmann-recipients.php and check field 3 in the affected recipient row. It must point to an existing key in $messages.';
+        return 'Open totman-recipients.php and check field 3 in the affected recipient row. It must point to an existing key in $messages.';
     }
     if (str_contains($message, 'unknown file alias')) {
-        return 'Open totmann-recipients.php and compare the affected alias with $files plus the field-4/field-5 lists in the affected recipient row.';
+        return 'Open totman-recipients.php and compare the affected alias with $files plus the field-4/field-5 lists in the affected recipient row.';
     }
     if (str_contains($message, 'invalid mailbox')) {
-        return 'Open totmann-recipients.php and correct field 2. Supported forms are recipient@example.com, <recipient@example.com>, or Recipient Name <recipient@example.com>.';
+        return 'Open totman-recipients.php and correct field 2. Supported forms are recipient@example.com, <recipient@example.com>, or Recipient Name <recipient@example.com>.';
     }
     if (str_contains($message, 'duplicate recipient mailbox')) {
-        return 'Open totmann-recipients.php and keep each real mailbox only once. One recipient row must represent exactly one mailbox.';
+        return 'Open totman-recipients.php and keep each real mailbox only once. One recipient row must represent exactly one mailbox.';
     }
     if (str_contains($message, 'invalid normal file alias list') || str_contains($message, 'invalid single-use file alias list')) {
-        return 'Open totmann-recipients.php and make sure field 4 and field 5 are flat alias lists such as [\'letter\'] or [\'photos\'].';
+        return 'Open totman-recipients.php and make sure field 4 and field 5 are flat alias lists such as [\'letter\'] or [\'photos\'].';
     }
     if (str_contains($message, 'sendmail')) {
-        return 'Check sendmail_path in the effective main config, verify the binary exists and is executable, and run php totmann-tick.php check in your state directory.';
+        return 'Check sendmail_path in the effective main config, verify the binary exists and is executable, and run php totman-tick.php check in your state directory.';
     }
     if (str_contains($message, 'to_self')) {
         return 'Check to_self in the effective main config. Each entry must contain exactly one valid mailbox string.';
     }
     if (str_contains($message, 'recipients_file')) {
-        return 'Open the configured recipients_file, fix the referenced row or top-level structure, and rerun php totmann-tick.php check.';
+        return 'Open the configured recipients_file, fix the referenced row or top-level structure, and rerun php totman-tick.php check.';
     }
     if ($type === 'delivery_error') {
-        return 'Check the affected recipient mailbox plus your local sendmail setup, then rerun php totmann-tick.php check and inspect totmann.log.';
+        return 'Check the affected recipient mailbox plus your local sendmail setup, then rerun php totman-tick.php check and inspect totman.log.';
     }
-    return 'Run php totmann-tick.php check in your state directory, inspect totmann.log, and compare the affected values in the effective config files.';
+    return 'Run php totman-tick.php check in your state directory, inspect totman.log, and compare the affected values in the effective config files.';
 }
 
 /**
@@ -700,11 +700,11 @@ function dm_operator_alert_mark_sent(array &$state, string $fingerprint, int $no
 function dm_operator_alert_render_mail(array $cfg, array $alert): array
 {
     $label = (string)$alert['label'];
-    $subject = '[totmann] Operator warning: ' . $label;
+    $subject = '[totman] Operator warning: ' . $label;
     $stateDir = dm_state_dir($cfg);
 
     $body = implode("\n", [
-        'totmann detected an operator-facing problem and continued in best-effort mode where possible.',
+        'totman detected an operator-facing problem and continued in best-effort mode where possible.',
         '',
         'Alert type: ' . $label,
         'Fingerprint: ' . (string)$alert['fingerprint'],
@@ -720,9 +720,9 @@ function dm_operator_alert_render_mail(array $cfg, array $alert): array
         '',
         'Recommended next steps:',
         '1. Change into your state directory: ' . $stateDir,
-        '2. Run: php totmann-tick.php check',
-        '3. Inspect totmann.log for matching lines.',
-        '4. Compare the affected values in totmann.inc.php and the configured recipients_file.',
+        '2. Run: php totman-tick.php check',
+        '3. Inspect totman.log for matching lines.',
+        '4. Compare the affected values in totman.inc.php and the configured recipients_file.',
         '5. If you still have the project docs at hand, read docs/Logs.md and docs/Troubleshooting.md.',
     ]) . "\n";
 
@@ -2283,10 +2283,10 @@ function dm_download_content_type(string $path): string
 
 
 /**
- * Tick/bootstrap helper functions used by totmann-tick.php.
+ * Tick/bootstrap helper functions used by totman-tick.php.
  */
 
-function dm_bootstrap_load_config_raw(string $configPath, string $label = 'totmann.inc.php'): array
+function dm_bootstrap_load_config_raw(string $configPath, string $label = 'totman.inc.php'): array
 {
     if (!is_file($configPath) || !is_readable($configPath)) {
         throw new RuntimeException("missing/unreadable {$label}: {$configPath}");
@@ -2315,8 +2315,8 @@ function dm_bootstrap_file_name(array $cfg, string $key): string
 
 function dm_bootstrap_load_effective_config(string $stateDir): array
 {
-    $livePath = rtrim($stateDir, '/') . '/totmann.inc.php';
-    $distPath = rtrim($stateDir, '/') . '/totmann.inc.dist.php';
+    $livePath = rtrim($stateDir, '/') . '/totman.inc.php';
+    $distPath = rtrim($stateDir, '/') . '/totman.inc.dist.php';
     $liveCfg = null;
     $distCfg = null;
     $liveError = null;
@@ -2324,7 +2324,7 @@ function dm_bootstrap_load_effective_config(string $stateDir): array
 
     if (file_exists($livePath)) {
         try {
-            $liveCfg = dm_bootstrap_load_config_raw($livePath, 'totmann.inc.php');
+            $liveCfg = dm_bootstrap_load_config_raw($livePath, 'totman.inc.php');
         } catch (Throwable $e) {
             $liveError = $e->getMessage();
         }
@@ -2332,7 +2332,7 @@ function dm_bootstrap_load_effective_config(string $stateDir): array
 
     if (file_exists($distPath)) {
         try {
-            $distCfg = dm_bootstrap_load_config_raw($distPath, 'totmann.inc.dist.php');
+            $distCfg = dm_bootstrap_load_config_raw($distPath, 'totman.inc.dist.php');
         } catch (Throwable $e) {
             $distError = $e->getMessage();
         }
@@ -2400,10 +2400,12 @@ function dm_config_value_looks_placeholder(string $value): bool
     }
 
     $templateValues = [
-    'https://example.com/totmann',
+    'https://example.com/totman',
     'https://example.com',
     'my name <myname@example.com>',
     'fallback mail <fallback@example.com>',
+    'totman <totman@example.com>',
+    'totmann <totmann@example.com>',
     'totmannschalter <totmannschalter@example.com>',
     ];
     if (in_array($v, $templateValues, true)) {
@@ -2661,10 +2663,10 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null, ?string $
         }
     }
 
-    $configPath = $stateDir . '/totmann.inc.php';
-    $distConfigPath = $stateDir . '/totmann.inc.dist.php';
-    $tickPath = $stateDir . '/totmann-tick.php';
-    foreach (['totmann-tick.php' => $tickPath] as $name => $path) {
+    $configPath = $stateDir . '/totman.inc.php';
+    $distConfigPath = $stateDir . '/totman.inc.dist.php';
+    $tickPath = $stateDir . '/totman-tick.php';
+    foreach (['totman-tick.php' => $tickPath] as $name => $path) {
         if (is_file($path) && is_readable($path)) {
             $ok("Found {$name}: {$path}");
         } else {
@@ -2713,7 +2715,7 @@ function dm_preflight_check(string $stateDir, ?string $webUser = null, ?string $
 
     $defaultedKeys = $sourceMeta['defaulted_config_keys'] ?? [];
     if (is_array($defaultedKeys) && $defaultedKeys !== []) {
-        $warn('Config values supplied from totmann.inc.dist.php because live totmann.inc.php does not define them: ' . implode(', ', $defaultedKeys));
+        $warn('Config values supplied from totman.inc.dist.php because live totman.inc.php does not define them: ' . implode(', ', $defaultedKeys));
     }
 
     foreach (dm_config_readiness_errors($cfg) as $readinessError) {

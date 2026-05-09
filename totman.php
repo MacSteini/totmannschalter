@@ -1,7 +1,7 @@
 <?php
 
 /**
- * totmann – web endpoint
+ * totman – web endpoint
  *
  * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)
@@ -47,8 +47,8 @@ function dm_web_bootstrap_load_array_file(string $path, string $label): array
 
 function dm_web_bootstrap_load_effective_config(string $stateDir): array
 {
-    $livePath = rtrim($stateDir, '/') . '/totmann.inc.php';
-    $distPath = rtrim($stateDir, '/') . '/totmann.inc.dist.php';
+    $livePath = rtrim($stateDir, '/') . '/totman.inc.php';
+    $distPath = rtrim($stateDir, '/') . '/totman.inc.dist.php';
     $liveCfg = null;
     $distCfg = null;
     $liveError = null;
@@ -56,7 +56,7 @@ function dm_web_bootstrap_load_effective_config(string $stateDir): array
 
     if (file_exists($livePath)) {
         try {
-            $liveCfg = dm_web_bootstrap_load_array_file($livePath, 'totmann.inc.php');
+            $liveCfg = dm_web_bootstrap_load_array_file($livePath, 'totman.inc.php');
         } catch (Throwable $e) {
             $liveError = $e->getMessage();
         }
@@ -64,7 +64,7 @@ function dm_web_bootstrap_load_effective_config(string $stateDir): array
 
     if (file_exists($distPath)) {
         try {
-            $distCfg = dm_web_bootstrap_load_array_file($distPath, 'totmann.inc.dist.php');
+            $distCfg = dm_web_bootstrap_load_array_file($distPath, 'totman.inc.dist.php');
         } catch (Throwable $e) {
             $distError = $e->getMessage();
         }
@@ -474,12 +474,12 @@ function dm_web_page_title(string $title): string
 {
     $title = trim($title);
     if ($title === '') {
-        return '[totmann]';
+        return '[totman]';
     }
-    if (str_starts_with($title, '[totmann]')) {
+    if (str_starts_with($title, '[totman]')) {
         return $title;
     }
-    return '[totmann] ' . $title;
+    return '[totman] ' . $title;
 }
 
 function dm_render_page(string $title, string $bodyHtml, string $cardClass = ''): void
@@ -488,7 +488,7 @@ function dm_render_page(string $title, string $bodyHtml, string $cardClass = '')
     $cssFile = dm_web_css_file_get();
     $cssLink = $cssFile !== null ? '<link rel="stylesheet" href="' . dm_h($cssFile) . '">' : '';
     $htmlLang = dm_h((string)(dm_web_catalog()['html_lang'] ?? 'en-US'));
-    $logoHtml = '<div class="dm_logo_wrap"><img class="dm_logo" src="https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totmann-s.png" alt="totmann"></div>';
+    $logoHtml = '<div class="dm_logo_wrap"><img class="dm_logo" src="https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totman-s.png" alt="totman"></div>';
     $cardClassAttr = 'dm_card';
     if ($cardClass !== '') {
         $cardClassAttr .= ' ' . $cardClass;

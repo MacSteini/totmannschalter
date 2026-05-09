@@ -1,5 +1,5 @@
-# totmann – Roadmap
-![totmann](../img/totmann-icon.png)
+# totman – Roadmap
+![totman](../img/totman-icon.png)
 
 This document lists planned next steps.
 ## Scope and intent

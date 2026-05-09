@@ -1,5 +1,5 @@
-# totmann – Installation
-![totmann](../img/totmann-icon.png)
+# totman – Installation
+![totman](../img/totman-icon.png)
 
 ## Prerequisites
 - PHP 8.0+.
@@ -20,26 +20,26 @@
 Recommended base directory (not under `/home`): `/var/lib/totmann`
 
 In `/var/lib/totmann`:
-- fixed bootstrap config name: `totmann.inc.dist.php` (supported effective config source)
-- fixed bootstrap config name: `totmann.inc.php` (supported effective config source)
-- your configured `lib_file` (template default: `totmann-lib.php`)
+- fixed bootstrap config name: `totman.inc.dist.php` (supported effective config source)
+- fixed bootstrap config name: `totman.inc.php` (supported effective config source)
+- your configured `lib_file` (template default: `totman-lib.php`)
 - your configured `l18n_dir_name` directory (template default: `l18n/`)
-- fixed recipient template name: `totmann-recipients.dist.php` (may be the configured `recipients_file` if you intentionally keep that filename)
-- your configured `recipients_file` (template default: `totmann-recipients.php`)
-- `totmann-tick.php`
+- fixed recipient template name: `totman-recipients.dist.php` (may be the configured `recipients_file` if you intentionally keep that filename)
+- your configured `recipients_file` (template default: `totman-recipients.php`)
+- `totman-tick.php`
 
 Runtime files created automatically (as needed) in `/var/lib/totmann`:
-- `totmann.json`
-- `totmann.lock`
+- `totman.json`
+- `totman.lock`
 - `ratelimit/`
-- `totmann.log`
+- `totman.log`
 
 Private download directory (outside webroot):
 - your configured `download_base_dir` (template default: `/var/lib/totmann/downloads`)
 
 In your webroot:
-- your configured `web_file` (template default: `totmann.php`)
-- optional stylesheet for web pages: your configured `web_css_file` (template default: `totmann.css`)
+- your configured `web_file` (template default: `totman.php`)
+- optional stylesheet for web pages: your configured `web_css_file` (template default: `totman.css`)
 ## Before you start: identify the real web identity
 **This is the most important step**: you must find the actual user and group that execute your configured web endpoint file (`web_file`). On Debian/Ubuntu with PHP-FPM, the pool configuration is the source of truth.
 
@@ -82,30 +82,30 @@ sudo mkdir -p /var/lib/totmann/l18n
 ## Place the files
 - Copy the shipped runtime files and `.dist.php` templates to `/var/lib/totmann`:
 ```sh
-sudo cp totmann.inc.dist.php totmann-tick.php totmann-lib.php totmann-recipients.dist.php /var/lib/totmann/
+sudo cp totman.inc.dist.php totman-tick.php totman-lib.php totman-recipients.dist.php /var/lib/totmann/
 sudo cp -R l18n /var/lib/totmann/
 ```
 - Recommended: create operator-owned live copies from the templates:
 ```sh
 cd /var/lib/totmann
-sudo cp totmann.inc.dist.php totmann.inc.php
-sudo cp totmann-recipients.dist.php totmann-recipients.php
+sudo cp totman.inc.dist.php totman.inc.php
+sudo cp totman-recipients.dist.php totman-recipients.php
 ```
-The bootstrap loader recognises exactly these main-config filenames: `totmann.inc.php` and `totmann.inc.dist.php`. Alternative names such as `totmann.inc.prod.php` are not supported.
+The bootstrap loader recognises exactly these main-config filenames: `totman.inc.php` and `totman.inc.dist.php`. Alternative names such as `totman.inc.prod.php` are not supported.
 
-- Place your configured `web_file` into your webroot (e. g., `/var/www/html/totmann/totmann.php`):
+- Place your configured `web_file` into your webroot (e. g., `/var/www/html/totman/totman.php`):
 ```sh
-sudo cp totmann.php /var/www/html/totmann/totmann.php
+sudo cp totman.php /var/www/html/totman/totman.php
 ```
 - Optional but recommended: copy the stylesheet into the same webroot folder:
 ```sh
-sudo cp totmann.css /var/www/html/totmann/totmann.css
+sudo cp totman.css /var/www/html/totman/totman.css
 ```
-The recommended operational pattern is to edit `totmann.inc.php` and `totmann-recipients.php`. You may instead keep real values directly in `totmann.inc.dist.php` and/or `totmann-recipients.dist.php`, but then you must merge future release changes consciously before replacing those files. In this `.dist.php`-only mode there is no separate default layer left for automatic drift detection, so `php totmann-tick.php check` after every update is mandatory.
+The recommended operational pattern is to edit `totman.inc.php` and `totman-recipients.php`. You may instead keep real values directly in `totman.inc.dist.php` and/or `totman-recipients.dist.php`, but then you must merge future release changes consciously before replacing those files. In this `.dist.php`-only mode there is no separate default layer left for automatic drift detection, so `php totman-tick.php check` after every update is mandatory.
 
 Only runtime filenames referenced from the effective config are configurable. If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` from the template names, adjust only those copy/rename commands accordingly.
 ## Update the main config (required values)
-- Use exactly `totmann.inc.php` or `totmann.inc.dist.php` for the main config; the bootstrap loader does not read alternative config filenames.
+- Use exactly `totman.inc.php` or `totman.inc.dist.php` for the main config; the bootstrap loader does not read alternative config filenames.
 - `state_dir` should match the directory where you placed the effective config (recommended: `/var/lib/totmann`)
 - Runtime names (filenames/directories only): `lib_file`, `l18n_dir_name`, `lock_file`, `log_file_name`, `recipients_file`, `state_file`, `web_file`
 - `download_base_dir` should point to a private directory outside your webroot
@@ -121,7 +121,7 @@ Only runtime filenames referenced from the effective config are configurable. If
 - Public web pages follow the browser language from `Accept-Language`; fallback language is `en-US`
 - Public web timestamps stay in `mail_timezone`
 - If a locale directory/file is missing or unreadable, preflight reports it and the endpoint falls back to `en-US`
-- `operator_alert_interval_hours` accepts only whole hours `1..24`; if you remove it or set an invalid value, totmann automatically falls back to `2`
+- `operator_alert_interval_hours` accepts only whole hours `1..24`; if you remove it or set an invalid value, totman automatically falls back to `2`
 - If you plan to read file logs directly, also read [Log guide](Logs.md "Log guide") so you know how to interpret file-log lines, journal bootstrap failures, and operator warning mails together
 - Important: operator warning mails are built in on purpose, go to `to_self`, and cannot be disabled
 ## Update the configured recipient file
@@ -150,7 +150,7 @@ Practical meaning:
 - you never write `single_use=true` yourself in this file
 - if field 5 is omitted, everything stays on the safer normal-download default
 - if a message is used with field 5, that message must define `single_use_notice`
-- `download_valid_days` in `totmann.inc.php` controls one global validity period for all downloads
+- `download_valid_days` in `totman.inc.php` controls one global validity period for all downloads
 
 Happy-path editing order:
 1. Define each reusable file once in `$files`.
@@ -167,11 +167,11 @@ $files = [
 
 $messages = [
 'default' => [
-'subject' => '[totmann] EXAMPLE TEMPLATE – escalation message',
+'subject' => '[totman] EXAMPLE TEMPLATE – escalation message',
 'body' => <<<TXT
 Hello {RECIPIENT_NAME},
 
-This is an example escalation message for totmann.
+This is an example escalation message for totman.
 Please replace it with your own wording before production use.
 
 You are receiving this message because the sender did not complete the required confirmation in time.
@@ -182,7 +182,7 @@ You are receiving this message because the sender did not complete the required 
 TXT,
 ],
 'jane' => [
-'subject' => '[totmann] EXAMPLE TEMPLATE – personal message',
+'subject' => '[totman] EXAMPLE TEMPLATE – personal message',
 'body' => <<<TXT
 Dear {RECIPIENT_NAME},
 
@@ -197,7 +197,7 @@ If you are reading this, the sender did not complete the required confirmation i
 TXT,
 ],
 'john' => [
-'subject' => '[totmann] EXAMPLE TEMPLATE – message with documents',
+'subject' => '[totman] EXAMPLE TEMPLATE – message with documents',
 'single_use_notice' => 'Please save this file straight away. This download link works only once.',
 'body' => <<<TXT
 Hello {RECIPIENT_NAME},
@@ -256,7 +256,7 @@ $files = [
 
 $messages = [
 'default' => [
-'subject' => '[totmann] EXAMPLE TEMPLATE – escalation message',
+'subject' => '[totman] EXAMPLE TEMPLATE – escalation message',
 'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
 ],
 ];
@@ -299,13 +299,13 @@ Practical rule:
 - If you only ever use field 4, you do not need `single_use_notice`.
 - If a message is used with field 5 anywhere, that message must define `single_use_notice`.
 - Full detail for mail bodies, ACK, and downloads: see [Mail delivery notes](Mail.md "Mail delivery notes").
-- If you are unsure what the runtime writes to `totmann.log` during mail delivery, see [Log guide](Logs.md "Log guide").
+- If you are unsure what the runtime writes to `totman.log` during mail delivery, see [Log guide](Logs.md "Log guide").
 ## Preflight check (recommended before enabling timer)
 Run the built-in preflight in your deployed state dir:
 ```sh
 cd /var/lib/totmann
-php totmann-tick.php check
-php totmann-tick.php check --web-user=<WEB_USER>
+php totman-tick.php check
+php totman-tick.php check --web-user=<WEB_USER>
 echo $?
 ```
 Exit codes:
@@ -331,11 +331,28 @@ What `check` now validates:
 - `log_mode`
 - `ip_mode` / trusted-proxy settings
 ## Update / upgrade
-Use this sequence when totmann is already installed and you replace it with a newer release.
+Use this sequence when totman is already installed and you replace it with a newer release.
+
+### Filename migration from older releases
+
+Releases using the `totman` product name no longer load old `totmann*` runtime or config filenames. If your existing state directory still uses the old filenames, rename the live files before you run `check`:
+
+```sh
+cd /var/lib/totmann
+sudo mv totmann.inc.php totman.inc.php
+sudo mv totmann.inc.dist.php totman.inc.dist.php
+sudo mv totmann-recipients.php totman-recipients.php
+sudo mv totmann-recipients.dist.php totman-recipients.dist.php
+sudo mv totmann.json totman.json
+sudo mv totmann.lock totman.lock
+sudo mv totmann.log totman.log
+```
+
+Only run a `mv` command for files that exist in your installation. If your effective config uses custom values for `lib_file`, `recipients_file`, `state_file`, `lock_file`, `log_file_name`, `web_file`, or `web_css_file`, keep those configured names aligned with the files you actually deploy.
 
 1. Stop the timer while you replace files:
 	```sh
-	sudo systemctl stop totmann.timer
+	sudo systemctl stop totman.timer
 	```
 2. Back up the state directory before changing anything:
 	```sh
@@ -343,20 +360,20 @@ Use this sequence when totmann is already installed and you replace it with a ne
 	```
 3. Copy the shipped runtime files from the new release into the state directory:
 	```sh
-	sudo cp totmann-tick.php totmann-lib.php /var/lib/totmann/
+	sudo cp totman-tick.php totman-lib.php /var/lib/totmann/
 	sudo cp -R l18n /var/lib/totmann/
 	```
 4. Copy the web endpoint and stylesheet into the webroot:
 	```sh
-	sudo cp totmann.php /var/www/html/totmann/totmann.php
-	sudo cp totmann.css /var/www/html/totmann/totmann.css
+	sudo cp totman.php /var/www/html/totman/totman.php
+	sudo cp totman.css /var/www/html/totman/totman.css
 	```
 5. Merge configuration consciously:
-	- If you use the recommended live files, compare the new `totmann.inc.dist.php` with your existing `totmann.inc.php`, then add any new intended keys to `totmann.inc.php`.
-	- Compare the new `totmann-recipients.dist.php` with your configured `recipients_file` only for structural changes; keep your real recipients and message text.
+	- If you use the recommended live files, compare the new `totman.inc.dist.php` with your existing `totman.inc.php`, then add any new intended keys to `totman.inc.php`.
+	- Compare the new `totman-recipients.dist.php` with your configured `recipients_file` only for structural changes; keep your real recipients and message text.
 	- In live-file mode, copy the new `.dist.php` templates into the state directory after you have reviewed them:
 		```sh
-		sudo cp totmann.inc.dist.php totmann-recipients.dist.php /var/lib/totmann/
+		sudo cp totman.inc.dist.php totman-recipients.dist.php /var/lib/totmann/
 		```
 	- If you intentionally use `.dist.php` as your effective runtime files, merge your real values into the new `.dist.php` files before replacing the old ones.
 6. Restore permissions:
@@ -368,24 +385,24 @@ Use this sequence when totmann is already installed and you replace it with a ne
 7. Run preflight before re-enabling the timer:
 	```sh
 	cd /var/lib/totmann
-	php totmann-tick.php check
-	php totmann-tick.php check --web-user=<WEB_USER>
+	php totman-tick.php check
+	php totman-tick.php check --web-user=<WEB_USER>
 	```
 8. Start the timer again only after `check` reports no hard failures:
 	```sh
-	sudo systemctl start totmann.timer
+	sudo systemctl start totman.timer
 	```
 9. Perform a short smoke test with your own mailboxes after larger updates.
 
 Do not delete the configured `state_file` during an update unless you have deliberately decided to reset the cycle.
 ## Changing config without restarting `systemd`
-For effective main-config changes (for example timing values), you do not need to restart `totmann.timer` or `totmann.service`.
+For effective main-config changes (for example timing values), you do not need to restart `totman.timer` or `totman.service`.
 The runtime reads config on each tick, so it picks up updates automatically.
 
 Only changes to unit files in `/etc/systemd/system/*.service` or `*.timer` require:
 ```sh
 sudo systemctl daemon-reload
-sudo systemctl restart totmann.timer
+sudo systemctl restart totman.timer
 ```
 ## Permissions (critical)
 Do NOT use `root:root`. Use `root:<WEB_GROUP>` so the web identity can access secrets and runtime files.
@@ -409,22 +426,22 @@ sudo find /var/lib/totmann -type f -exec chmod 0660 {} \;
 ## Clean initialise (ensures correct runtime perms)
 Delete any old runtime files, then initialise once.
 ```sh
-sudo rm -f /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totmann/totmann.log
+sudo rm -f /var/lib/totmann/totman.json /var/lib/totmann/totman.lock /var/lib/totmann/totman.log
 
 # IMPORTANT:
 # Initialise with umask 0007 so files become 0660 (group-writable).
-sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totmann-tick.php tick'
+sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totman-tick.php tick'
 ```
 The `rm`/`ls` examples use the filenames from the effective config; if you changed them there, adapt these commands.
 
 Verify:
 ```sh
-ls -la /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totmann/totmann.log
+ls -la /var/lib/totmann/totman.json /var/lib/totmann/totman.lock /var/lib/totmann/totman.log
 ```
 ## Smoke test (use only your own addresses)
 1. In the effective main config, temporarily set short timings. See [Timing](Timing.md "Timing model and presets").
 2. Point `to_self` and all recipient addresses in the configured recipient file to your own mailboxes.
-3. Ensure `totmann.timer` is active and wait for the reminder email.
+3. Ensure `totman.timer` is active and wait for the reminder email.
 4. Open the confirmation link (`GET`): you should see a confirm button.
 5. Click Confirm (`POST`): the page should show the localised confirmation-success page, e. g., “Thank you.” plus “The cycle has been reset…”.
 6. Test the escalation path by not confirming.
@@ -438,9 +455,9 @@ ls -la /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totm
 
 For live debugging during the smoke test, keep one of these running in a second shell:
 ```sh
-journalctl -u totmann.service -f
+journalctl -u totman.service -f
 ```
 ```sh
-tail -f /var/lib/totmann/totmann.log
+tail -f /var/lib/totmann/totman.log
 ```
 If you are not yet familiar with the log lines, keep [Log guide](Logs.md "Log guide") open in parallel.

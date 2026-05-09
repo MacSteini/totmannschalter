@@ -1,27 +1,29 @@
 <!-- markdownlint-disable MD041 -->
 
-![totmann](https://github.com/MacSteini/totmannschalter/blob/main/img/totmann-xs.png?raw=true)
+![totman](img/totman-xs.png)
 
 [![GitHub Release](https://img.shields.io/github/v/release/macsteini/totmannschalter?label=Release&color=black)](https://github.com/MacSteini/totmannschalter/releases/latest)
 [![Static Badge](https://img.shields.io/badge/PHP->=v8.0.0-black)](https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md)
 [![Licence: MIT](https://img.shields.io/github/license/macsteini/totmannschalter?label=License&color=black)](LICENCE)
 
-# totmann
+# totman
 A fully self-hosted “dead man’s switch” for email: it sends periodic confirmation links from your own server, and if you do not confirm within a defined window (plus grace), it escalates to predefined recipients. No third-party services, no vendor lock-in – just `systemd`, PHP, and sendmail on infrastructure you control.
 
 **[Download the latest version from here.](https://github.com/MacSteini/totmannschalter/releases/latest)**
 
 The release archive is intentionally slim. It contains `README.md`, `LICENCE`, the runtime PHP/CSS files, the `.dist.php` templates, and the shipped `l18n/` locale files. It does not contain the full `docs/`, `site/`, or `img/` directories. The quick start below is the offline starting point; the linked GitHub documentation and project website provide the full operator guide when you have network access.
 
+Upgrade note: releases from the `totman` filename migration use `totman*` runtime and config filenames only. Existing installations with older `totmann*` files must rename their live files during the update; the runtime does not fall back to old filenames.
+
 ## What this does
 - You regularly receive an email containing a **confirmation link**.
 - Confirmation is **two-step** (`GET` shows a button, `POST` confirms) to defeat mail link scanners.
-- The link is **HMAC-signed** (tamper-resistant), so the web endpoint (`totmann.php`) can verify requests without keeping a history of issued confirmation links.
+- The link is **HMAC-signed** (tamper-resistant), so the web endpoint (`totman.php`) can verify requests without keeping a history of issued confirmation links.
 - You must open the link **within a configured time window**.
 - A successful confirmation **resets the cycle**.
 - The script sends reminder emails as one email per `to_self` recipient (no shared `To:` list).
 - If you do not confirm in time (plus grace), the script triggers **escalation** using conservative logic.
-- Escalation uses exactly one configured recipient file (`totmann-recipients.php` by default, or `totmann-recipients.dist.php` if you intentionally keep that filename) with 3 flat top-level sections: `$files`, `$messages`, and `$recipients`.
+- Escalation uses exactly one configured recipient file (`totman-recipients.php` by default, or `totman-recipients.dist.php` if you intentionally keep that filename) with 3 flat top-level sections: `$files`, `$messages`, and `$recipients`.
 - Escalation emails are always sent individually (one mail per recipient).
 - Escalation emails can optionally include recipient-specific download links for files stored outside the webroot.
 - Escalation emails can include an optional **receipt acknowledgement (ACK)** link. The link opens an acknowledgement page first; only the submitted acknowledgement stops further escalation mails for that escalation event.
@@ -44,23 +46,23 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 	```sh
 	sudo mkdir -p /var/lib/totmann
 	sudo mkdir -p /var/lib/totmann/downloads
-	sudo cp totmann.inc.dist.php totmann-tick.php totmann-lib.php totmann-recipients.dist.php /var/lib/totmann/
+	sudo cp totman.inc.dist.php totman-tick.php totman-lib.php totman-recipients.dist.php /var/lib/totmann/
 	sudo cp -R l18n /var/lib/totmann/
 	cd /var/lib/totmann
-	sudo cp totmann.inc.dist.php totmann.inc.php
-	sudo cp totmann-recipients.dist.php totmann-recipients.php
-	sudo mkdir -p /var/www/html/totmann
-	sudo cp totmann.php /var/www/html/totmann/totmann.php
-	sudo cp totmann.css /var/www/html/totmann/totmann.css
+	sudo cp totman.inc.dist.php totman.inc.php
+	sudo cp totman-recipients.dist.php totman-recipients.php
+	sudo mkdir -p /var/www/html/totman
+	sudo cp totman.php /var/www/html/totman/totman.php
+	sudo cp totman.css /var/www/html/totman/totman.css
 	```
-	The bootstrap config files must keep their exact supported names: `totmann.inc.php` and/or `totmann.inc.dist.php`. Names such as `totmann.inc.prod.php` are not supported. The recommended operational pattern is to edit `totmann.inc.php` and `totmann-recipients.php`; if you intentionally keep real values in `.dist.php` files instead, merge updates manually before replacing those files.
+	The bootstrap config files must keep their exact supported names: `totman.inc.php` and/or `totman.inc.dist.php`. Names such as `totman.inc.prod.php` are not supported. The recommended operational pattern is to edit `totman.inc.php` and `totman-recipients.php`; if you intentionally keep real values in `.dist.php` files instead, merge updates manually before replacing those files.
 	If you changed configurable runtime names such as `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` in the effective config, copy/rename only those referenced files accordingly.
-3. Set required config in `/var/lib/totmann/totmann.inc.php` or, if you intentionally use the `.dist.php` file as your runtime config, in `/var/lib/totmann/totmann.inc.dist.php`:
+3. Set required config in `/var/lib/totmann/totman.inc.php` or, if you intentionally use the `.dist.php` file as your runtime config, in `/var/lib/totmann/totman.inc.dist.php`:
 	- `base_url` (real HTTPS base URL without endpoint filename; the runtime appends `web_file` automatically)
 	- `hmac_secret_hex` (example: `openssl rand -hex 32`)
 	- `to_self`
 	- `l18n_dir_name` (default: `l18n`)
-	- `recipients_file` (default: `totmann-recipients.php`)
+	- `recipients_file` (default: `totman-recipients.php`)
 	- `download_base_dir` (private directory for downloadable files; keep it outside webroot)
 	- `download_valid_days` (global download-link validity for all files; default: `180`)
 	- `operator_alert_interval_hours` (mandatory operator-warning throttle in whole hours; allowed: `1..24`; missing/invalid values fall back automatically to `2`)
@@ -75,7 +77,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 	- normal downloads go into recipient field 4; single-use downloads go into recipient field 5
 	- you never write `single_use=true` yourself; field 5 is the single-use list
 	- if a message should contain a receipt-confirmation link, keep `{ACK_BLOCK}` in that message body
-	- if a message is used with field-5 files, add `single_use_notice` to that message in `totmann-recipients.php`
+	- if a message is used with field-5 files, add `single_use_notice` to that message in `totman-recipients.php`
 	- every download block starts with `1 Download:` or `X Downloads:`; when several downloads are present, the runtime leaves a blank line between the download blocks automatically
 	- download links are signed for the recipient, alias, escalation event, and current relative file path; if that alias is later changed to another file, the old link fails closed
 	- If two recipients should receive the same file, repeat the same file alias in both recipient rows
@@ -89,24 +91,24 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 	```
 5. Ensure the web runtime resolves the same state dir:
 	- Prefer ENV `totmann_STATE_DIR=/var/lib/totmann` in your PHP runtime.
-	- `totmann.php` in this repo ships with `define('TOTMANN_STATE_DIR', '/var/lib/totmann')` enabled by default. Adjust this value if your state dir differs.
+	- `totman.php` in this repo ships with `define('TOTMANN_STATE_DIR', '/var/lib/totmann')` enabled by default. Adjust this value if your state dir differs.
 6. Run preflight in the deployed state dir:
 	```sh
 	cd /var/lib/totmann
-	php totmann-tick.php check
-	php totmann-tick.php check --web-user=<WEB_USER>
+	php totman-tick.php check
+	php totman-tick.php check --web-user=<WEB_USER>
 	```
 7. Clean initialise once:
 	```sh
-	sudo rm -f /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totmann/totmann.log
-	sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totmann-tick.php tick'
+	sudo rm -f /var/lib/totmann/totman.json /var/lib/totmann/totman.lock /var/lib/totmann/totman.log
+	sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totman-tick.php tick'
 	```
 	The `rm` line uses the filenames shown in the effective config; if you changed them there, adapt this command.
 8. Install + enable `systemd` unit/timer: follow [systemd](https://github.com/MacSteini/totmannschalter/blob/main/docs/Systemd.md "systemd").
 9. Run the smoke/E2E test with short timings: follow [Installation](https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md "Installation guide") and [Timing](https://github.com/MacSteini/totmannschalter/blob/main/docs/Timing.md "Timing model and presets").
 10. During live testing, watch current activity in real time:
 	```sh
-	tail -f /var/lib/totmann/totmann.log
+	tail -f /var/lib/totmann/totman.log
 	```
 	If you changed `log_file_name` or `log_file`, use that effective path instead. If `log_mode` is `syslog` or `none`, use `journalctl` instead of `tail`. For help reading file-log lines, journal bootstrap failures, and operator warning mails together, use [Log guide](https://github.com/MacSteini/totmannschalter/blob/main/docs/Logs.md "Log guide").
 ## Terms
@@ -126,7 +128,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 4. [Understand the timing model and presets](https://github.com/MacSteini/totmannschalter/blob/main/docs/Timing.md "Timing model and presets") – timing model, presets, walkthrough
 5. [Mail delivery notes](https://github.com/MacSteini/totmannschalter/blob/main/docs/Mail.md "Mail delivery notes") – sendmail notes, recipient file, placeholders, ACK, normal downloads, single-use downloads
 6. [Example messages](https://github.com/MacSteini/totmannschalter/blob/main/docs/Examples.md "Example messages") – representative reminder, operator-warning, and escalation mails with practical explanation
-7. [Log guide](https://github.com/MacSteini/totmannschalter/blob/main/docs/Logs.md "Log guide") – how to read `totmann.log` and which lines require action
+7. [Log guide](https://github.com/MacSteini/totmannschalter/blob/main/docs/Logs.md "Log guide") – how to read `totman.log` and which lines require action
 8. [Troubleshooting](https://github.com/MacSteini/totmannschalter/blob/main/docs/Troubleshooting.md "Troubleshooting") – neutral page, missing mails, permissions, common failure modes
 9. [Changelog](https://github.com/MacSteini/totmannschalter/blob/main/docs/Changelog.md "Changelog") – release notes and version history
 10. [Roadmap](https://github.com/MacSteini/totmannschalter/blob/main/docs/Roadmap.md "Roadmap") – planned next features

@@ -1,5 +1,5 @@
-# totmann – Mail delivery notes
-![totmann](../img/totmann-icon.png)
+# totman – Mail delivery notes
+![totman](../img/totman-icon.png)
 
 ## Mail delivery (prerequisite)
 The script sends mail via the configured sendmail binary (`sendmail_path` in the effective main config) in sendmail-compatible mode.
@@ -32,7 +32,7 @@ Suggestions:
 - consider adding a stable plain-text footer (what this is and why the recipient gets it) so content looks less automated
 - for tests, use the provided test preset in [Timing](Timing.md "Timing model and presets")
 ## Reminder mails (`to_self`)
-Reminder mails are configured in the effective main config (`totmann.inc.php` or intentionally maintained `totmann.inc.dist.php`).
+Reminder mails are configured in the effective main config (`totman.inc.php` or intentionally maintained `totman.inc.dist.php`).
 
 Rules:
 - `to_self` is a list
@@ -57,7 +57,7 @@ Do not do this:
 ],
 ```
 ## The recipient file at a glance
-Everything recipient-related for escalation delivery lives in the configured `recipients_file` (template default: `totmann-recipients.php`; `totmann-recipients.dist.php` is also valid if you intentionally keep that filename and replace all template recipients).
+Everything recipient-related for escalation delivery lives in the configured `recipients_file` (template default: `totman-recipients.php`; `totman-recipients.dist.php` is also valid if you intentionally keep that filename and replace all template recipients).
 
 The file has exactly 3 top-level areas:
 - `$files` => define each downloadable file once
@@ -100,11 +100,11 @@ $files = [
 
 $messages = [
 'default' => [
-'subject' => '[totmann] EXAMPLE TEMPLATE – escalation message',
+'subject' => '[totman] EXAMPLE TEMPLATE – escalation message',
 'body' => <<<TXT
 Hello {RECIPIENT_NAME},
 
-This is an example escalation message for totmann.
+This is an example escalation message for totman.
 Please replace it with your own wording before production use.
 
 You are receiving this message because the sender did not complete the required confirmation in time.
@@ -115,7 +115,7 @@ You are receiving this message because the sender did not complete the required 
 TXT,
 ],
 'documents' => [
-'subject' => '[totmann] EXAMPLE TEMPLATE – message with documents',
+'subject' => '[totman] EXAMPLE TEMPLATE – message with documents',
 'single_use_notice' => 'Please save this file straight away. This download link works only once.',
 'body' => <<<TXT
 Hello {RECIPIENT_NAME},
@@ -227,9 +227,9 @@ Operational behaviour:
 - if one recipient downloads a single-use file, that does not consume another recipient’s separate link
 - each download link is signed for the recipient, alias, escalation event, and current relative file path
 - if the same alias is later changed to another relative file path, already issued links for the old path fail closed instead of serving the new file
-- already issued valid download links still resolve if an unrelated message or recipient row later breaks in `totmann-recipients.php`
+- already issued valid download links still resolve if an unrelated message or recipient row later breaks in `totman-recipients.php`
 - the link lifetime is measured from the first escalation mail of that escalation event, not from each ACK reminder mail
-- `download_valid_days` in `totmann.inc.php` controls that lifetime globally for all files
+- `download_valid_days` in `totman.inc.php` controls that lifetime globally for all files
 - single-use applies to the whole escalation event for that recipient/file pair, not to each newly generated reminder URL
 
 If you need the same file for two recipients, define it once in `$files` and repeat only the alias in each recipient row.
@@ -245,7 +245,7 @@ Practical meaning:
 Minimal example:
 ```php
 'documents' => [
-'subject' => '[totmann] EXAMPLE TEMPLATE – message with documents',
+'subject' => '[totman] EXAMPLE TEMPLATE – message with documents',
 'single_use_notice' => 'Please save this file straight away. This download link works only once.',
 'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
 ],
@@ -264,7 +264,7 @@ $files = [
 
 $messages = [
 'default' => [
-'subject' => '[totmann] EXAMPLE TEMPLATE – escalation message',
+'subject' => '[totman] EXAMPLE TEMPLATE – escalation message',
 'body' => "Hello {RECIPIENT_NAME},\n\n{DOWNLOAD_LINKS}",
 ],
 ];

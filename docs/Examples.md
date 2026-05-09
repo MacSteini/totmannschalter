@@ -1,7 +1,7 @@
-# totmann – Example messages
-![totmann](../img/totmann-icon.png)
+# totman – Example messages
+![totman](../img/totman-icon.png)
 
-This page shows representative messages that totmann can generate during normal use and during operator-facing problems.
+This page shows representative messages that totman can generate during normal use and during operator-facing problems.
 
 Use it when you want to answer practical questions such as:
 - What does a normal self-reminder look like?
@@ -15,10 +15,10 @@ Important:
 - if you need to analyse live runtime evidence, use [Log guide](Logs.md "Log guide")
 
 ## Self reminder
-You will see this when the normal reminder cycle runs and totmann asks you to confirm that you are safe and able to respond.
+You will see this when the normal reminder cycle runs and totman asks you to confirm that you are safe and able to respond.
 
 This message goes to the addresses listed in `to_self`.
-The same `to_self` addresses can also receive separate operator warning mails when totmann detects an operator-facing setup or runtime problem.
+The same `to_self` addresses can also receive separate operator warning mails when totman detects an operator-facing setup or runtime problem.
 
 It helps because it gives you one clear action, shows the current deadline, and reminds you that escalation may already have started if you react too late.
 
@@ -36,7 +36,7 @@ Hello,
 This is a reminder to confirm that you are safe and able to respond.
 
 Please click this link to confirm:
-https://example.com/totmann.php?a=confirm&id=962bacf5998ec04d7cf8bd6f1303471d&sig=cd375c690d25d8cec913d54eb40df29912760373c1ccde008f1562ab724db59e
+https://example.com/totman.php?a=confirm&id=962bacf5998ec04d7cf8bd6f1303471d&sig=cd375c690d25d8cec913d54eb40df29912760373c1ccde008f1562ab724db59e
 
 You must click the link no later than the confirmation deadline.
 Confirmation deadline: Wednesday, 22 April 2026, 12:13:10 Europe/London
@@ -51,7 +51,7 @@ What to notice:
 - the deadline and current cycle timing help you see how urgent the action is
 
 ## Operator warning
-You will see this when totmann detects an operator-facing configuration or runtime problem but can still continue in best-effort mode.
+You will see this when totman detects an operator-facing configuration or runtime problem but can still continue in best-effort mode.
 
 This message goes to the addresses in `to_self`, not to escalation recipients.
 
@@ -59,15 +59,15 @@ It helps because it tells you what failed, which values to inspect next, and whi
 
 What to do next:
 - read the `Original problem` line first
-- run `php totmann-tick.php check` in your state directory
+- run `php totman-tick.php check` in your state directory
 - compare the mentioned values in the effective main config and the configured `recipients_file`
 - use [Log guide](Logs.md "Log guide") and [Troubleshooting](Troubleshooting.md "Troubleshooting") if the problem is still unclear
 
 Example: unknown single-use file alias
 ```text
-Subject: [totmann] Operator warning: Recipient skipped
+Subject: [totman] Operator warning: Recipient skipped
 
-totmann detected an operator-facing problem and continued in best-effort mode where possible.
+totman detected an operator-facing problem and continued in best-effort mode where possible.
 
 Alert type: Recipient skipped
 Fingerprint: ba4b8927595f7f3b03b103c8
@@ -76,24 +76,24 @@ Last seen: Wednesday, 22 April 2026, 11:50:27 Europe/London
 Occurrences: 1
 
 Original problem:
-recipients_file references unknown single-use file alias 'photos' for <totmann@example.com>
+recipients_file references unknown single-use file alias 'photos' for <totman@example.com>
 
 What to check next:
-Open the configured recipients_file, fix the referenced row or top-level structure, and rerun php totmann-tick.php check.
+Open the configured recipients_file, fix the referenced row or top-level structure, and rerun php totman-tick.php check.
 
 Recommended next steps:
 1. Change into your state directory: /var/lib/totmann
-2. Run: php totmann-tick.php check
-3. Inspect totmann.log for matching lines.
-4. Compare the affected values in totmann.inc.php and the configured recipients_file.
+2. Run: php totman-tick.php check
+3. Inspect totman.log for matching lines.
+4. Compare the affected values in totman.inc.php and the configured recipients_file.
 5. If you still have the project docs at hand, read docs/Logs.md and docs/Troubleshooting.md.
 ```
 
 Example: unknown normal file alias
 ```text
-Subject: [totmann] Operator warning: Recipient skipped
+Subject: [totman] Operator warning: Recipient skipped
 
-totmann detected an operator-facing problem and continued in best-effort mode where possible.
+totman detected an operator-facing problem and continued in best-effort mode where possible.
 
 Alert type: Recipient skipped
 Fingerprint: 8d70ce73514a6dc97e26353e
@@ -102,16 +102,16 @@ Last seen: Wednesday, 22 April 2026, 11:50:27 Europe/London
 Occurrences: 1
 
 Original problem:
-recipients_file references unknown file alias 'letter' for <totmann@example.com>
+recipients_file references unknown file alias 'letter' for <totman@example.com>
 
 What to check next:
-Open totmann-recipients.php and compare the affected alias with $files plus the field-4/field-5 lists in the affected recipient row.
+Open totman-recipients.php and compare the affected alias with $files plus the field-4/field-5 lists in the affected recipient row.
 
 Recommended next steps:
 1. Change into your state directory: /var/lib/totmann
-2. Run: php totmann-tick.php check
-3. Inspect totmann.log for matching lines.
-4. Compare the affected values in totmann.inc.php and the configured recipients_file.
+2. Run: php totman-tick.php check
+3. Inspect totman.log for matching lines.
+4. Compare the affected values in totman.inc.php and the configured recipients_file.
 5. If you still have the project docs at hand, read docs/Logs.md and docs/Troubleshooting.md.
 ```
 
@@ -121,7 +121,7 @@ What to notice:
 - the important variation is usually the `Original problem` line, not the rest of the mail
 
 ## Escalation mail to a recipient
-You will see this when the configured confirmation window and grace period have passed and totmann starts escalation.
+You will see this when the configured confirmation window and grace period have passed and totman starts escalation.
 
 This message goes to one configured escalation recipient, not to `to_self`.
 
@@ -137,7 +137,7 @@ What to do next:
 
 Example:
 ```text
-Subject: [totmann] EXAMPLE TEMPLATE – message with documents
+Subject: [totman] EXAMPLE TEMPLATE – message with documents
 
 Hello John Doe,
 
@@ -147,14 +147,14 @@ Please replace it with your own wording before production use.
 The files below are included as part of this message.
 
 If you have received this message, please confirm receipt using this link:
-https://example.com/totmann.php?a=ack&id=0268c2ac58bb5f4c2ba981e12631dffc&sig=a5bb2896a8f8b29c866057118d407e02432b02b186fb844f10dda948e065bb28
+https://example.com/totman.php?a=ack&id=0268c2ac58bb5f4c2ba981e12631dffc&sig=a5bb2896a8f8b29c866057118d407e02432b02b186fb844f10dda948e065bb28
 
 2 Downloads:
 
-https://example.com/totmann.php?a=download&rid=r_a5b1671cc90a333ce4ed14ae1d130529&lid=d_063a550af6022b0a2cab503157df9ff6&fb=0e014fdc9141f36d0b7d2d15fa7047b4&evt=1776856832&exp=1792408832&n=94cd0af3e24469fc5802e5ed47bd25f3&sig=8a2ae2d473a9c8f46fc80ccad484a42fad5b67a144da9fcae2793d7e9e1d4eaa
+https://example.com/totman.php?a=download&rid=r_a5b1671cc90a333ce4ed14ae1d130529&lid=d_063a550af6022b0a2cab503157df9ff6&fb=0e014fdc9141f36d0b7d2d15fa7047b4&evt=1776856832&exp=1792408832&n=94cd0af3e24469fc5802e5ed47bd25f3&sig=8a2ae2d473a9c8f46fc80ccad484a42fad5b67a144da9fcae2793d7e9e1d4eaa
 
 Please save this file straight away. This download link works only once.
-https://example.com/totmann.php?a=download&rid=r_a5b1671cc90a333ce4ed14ae1d130529&lid=d_e42562fa5cd81141818febe4a52a0f73&fb=237ed037cbe6b2a34bc7bb41fcfb0e5f&evt=1776856832&exp=1792408832&n=cb98eae425739b8d1e49a5f101a834fd&sig=0d32a1b02963541cbe922457ec39b8ee33f4772c1dde85ced3c644e4056a1e4f
+https://example.com/totman.php?a=download&rid=r_a5b1671cc90a333ce4ed14ae1d130529&lid=d_e42562fa5cd81141818febe4a52a0f73&fb=237ed037cbe6b2a34bc7bb41fcfb0e5f&evt=1776856832&exp=1792408832&n=cb98eae425739b8d1e49a5f101a834fd&sig=0d32a1b02963541cbe922457ec39b8ee33f4772c1dde85ced3c644e4056a1e4f
 ```
 
 What to notice:

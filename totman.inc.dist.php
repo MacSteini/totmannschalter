@@ -1,12 +1,12 @@
 <?php
 
 /**
- * totmann – configuration defaults/template
+ * totman – configuration defaults/template
  *
  * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)
  *
- * You may either copy this file to totmann.inc.php or intentionally keep this
+ * You may either copy this file to totman.inc.php or intentionally keep this
  * exact .dist filename as your effective main config.
  * Template defaults cover runtime filenames, timing, mail, logging,
  * web behaviour, and optional download links.
@@ -17,13 +17,13 @@ declare(strict_types=1);
 return [
 // Public base URL (must be HTTPS, WITHOUT endpoint filename).
 // Runtime links are built as: <base_url>/<web_file>?a=confirm|ack|download&...
-'base_url' => 'https://example.com/totmann',
+'base_url' => 'https://example.com/totman',
 
-// State directory on disk (holds totmann.inc.php and/or totmann.inc.dist.php, totmann-tick.php,
+// State directory on disk (holds totman.inc.php and/or totman.inc.dist.php, totman-tick.php,
 // your configured lib_file, your configured recipients_file, and runtime files).
 // NOTE: Entry points do NOT use this value to locate the directory. They resolve it via:
-// - totmann-tick.php: ENV totmann_STATE_DIR (or __DIR__)
-// - totmann.php: ENV totmann_STATE_DIR (or define('totmann_STATE_DIR', ...))
+// - totman-tick.php: ENV totmann_STATE_DIR (or __DIR__)
+// - totman.php: ENV totmann_STATE_DIR (or define('totmann_STATE_DIR', ...))
 // Keep this value aligned with totmann_STATE_DIR purely for clarity.
 'state_dir' => '/var/lib/totmann',
 
@@ -33,20 +33,20 @@ return [
 // Files deployed in webroot: web_file, optional web_css_file
 // These keys are required by the runtime unless explicitly documented as optional;
 // invalid/missing values fail bootstrap.
-'lib_file' => 'totmann-lib.php',
+'lib_file' => 'totman-lib.php',
 // Directory inside state_dir that contains the web-language files.
 // The web endpoint picks the best supported locale from the browser's Accept-Language
 // header, falls back to en-US, and still renders all timestamps in mail_timezone.
 'l18n_dir_name' => 'l18n',
-'lock_file' => 'totmann.lock',
-'log_file_name' => 'totmann.log',
-'recipients_file' => 'totmann-recipients.php',
-'state_file' => 'totmann.json',
-'web_file' => 'totmann.php',
+'lock_file' => 'totman.lock',
+'log_file_name' => 'totman.log',
+'recipients_file' => 'totman-recipients.php',
+'state_file' => 'totman.json',
+'web_file' => 'totman.php',
 
 // Optional stylesheet filename in the webroot (same folder as web_file).
 // Empty string disables stylesheet linking from the web endpoint.
-'web_css_file' => 'totmann.css',
+'web_css_file' => 'totman.css',
 
 // Private directory for downloadable files.
 // Files served through the `download` action must live inside this directory.
@@ -159,7 +159,7 @@ return [
 
 // --- IP handling for rate limiting and logging ---
 //
-// `remote_addr` = safest default. Use this unless you really run totmann behind your own reverse proxy.
+// `remote_addr` = safest default. Use this unless you really run totman behind your own reverse proxy.
 // `trusted_proxy` = trust `trusted_proxy_header` only when REMOTE_ADDR belongs to one of `trusted_proxies`.
 // If you trust a header from an untrusted source, clients could spoof their IP for logging/rate limiting.
 'ip_mode' => 'remote_addr', // 'remote_addr' | 'trusted_proxy'
@@ -182,16 +182,16 @@ return [
 // be easy to miss in the log or journal.
 //
 // Allowed values: whole hours 1..24
-// If you remove this key or set an invalid value, totmann falls back to 2.
+// If you remove this key or set an invalid value, totman falls back to 2.
 // The warning mail itself is built in on purpose and cannot be disabled.
 'operator_alert_interval_hours' => 2,
 
 // Mail From + optional Reply-To.
-'mail_from' => 'totmann <totmann@example.com>',
+'mail_from' => 'totman <totman@example.com>',
 'reply_to' => '',
 
 // Reminder subject.
-'subject_reminder' => '[totmann] Please confirm you are safe',
+'subject_reminder' => '[totman] Please confirm you are safe',
 
 // Timezone for human-readable timestamps in emails.
 'mail_timezone' => 'Europe/London',

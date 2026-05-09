@@ -1,16 +1,16 @@
 var TOTMANN_LOCALES = {
   "en-US": {
     "meta": {
-      "title": "[totmann] A fully self-hosted dead man's switch for email",
-      "description": "totmann is a self-hosted dead man's switch with granular timing, HMAC-signed links, recipient-specific messages, private downloads, and operator-visible logs.",
-      "ogTitle": "[totmann] A fully self-hosted dead man's switch for email",
+      "title": "[totman] A fully self-hosted dead man's switch for email",
+      "description": "totman is a self-hosted dead man's switch with granular timing, HMAC-signed links, recipient-specific messages, private downloads, and operator-visible logs.",
+      "ogTitle": "[totman] A fully self-hosted dead man's switch for email",
       "ogDescription": "Self-hosted check-ins, granular timing, HMAC-signed links, recipient-specific messages, private downloads, and clear runtime diagnostics.",
-      "twitterTitle": "[totmann] A fully self-hosted dead man's switch for email",
+      "twitterTitle": "[totman] A fully self-hosted dead man's switch for email",
       "twitterDescription": "Self-hosted check-ins, granular timing, HMAC-signed links, recipient-specific messages, private downloads, and clear runtime diagnostics."
     },
     "nav": [
       {
-        "href": "#why-totmann",
+        "href": "#why-totman",
         "label": "Why"
       },
       {
@@ -53,8 +53,8 @@ var TOTMANN_LOCALES = {
     ],
     "sections": [
       {
-        "id": "why-totmann",
-        "kicker": "Why totmann",
+        "id": "why-totman",
+        "kicker": "Why totman",
         "title": "Built for private, precise handover, not generic reminders.",
         "cards": [
           {
@@ -161,7 +161,7 @@ var TOTMANN_LOCALES = {
     "steps": [
       {
         "title": "You receive a check-in email",
-        "body": "totmann sends you a regular email asking you to confirm that you are still there."
+        "body": "totman sends you a regular email asking you to confirm that you are still there."
       },
       {
         "title": "You confirm and the routine continues",
@@ -169,7 +169,7 @@ var TOTMANN_LOCALES = {
       },
       {
         "title": "A meaningful gap changes the state",
-        "body": "If confirmations stop for long enough, totmann treats that as a real absence rather than a single missed moment."
+        "body": "If confirmations stop for long enough, totman treats that as a real absence rather than a single missed moment."
       },
       {
         "title": "The prepared handover goes out",
@@ -179,7 +179,7 @@ var TOTMANN_LOCALES = {
     "summary": [
       {
         "title": "Quiet in normal life",
-        "body": "When your regular routine is working, totmann stays in the background instead of demanding constant attention."
+        "body": "When your regular routine is working, totman stays in the background instead of demanding constant attention."
       },
       {
         "title": "Prepared before it is needed",
@@ -187,7 +187,7 @@ var TOTMANN_LOCALES = {
       },
       {
         "title": "Problems do not stay hidden",
-        "body": "If totmann detects a setup or runtime problem, it can send a separate warning mail to your own address so you hear about it directly."
+        "body": "If totman detects a setup or runtime problem, it can send a separate warning mail to your own address so you hear about it directly."
       },
       {
         "title": "Protected links, clear trail",
@@ -238,34 +238,34 @@ var TOTMANN_LOCALES = {
       "aria": "Language",
       "current": "Current language"
     },
-    "brandAria": "totmann homepage",
+    "brandAria": "totman homepage",
     "brandTag": "A dead man’s switch for email.",
     "navAria": "Primary",
     "eyebrow": "A fully self-hosted dead man’s switch for email",
     "h1": "Your message, delivered when needed most.",
-    "lead": "totmann turns a private handover plan into a precise, self-hosted routine. It checks in on your schedule, waits through your configured safety windows, and sends recipient-specific messages and files only when confirmations stop for long enough.",
-    "showcaseAria": "totmann showcase",
-    "showcaseAlt": "Stacked preview of totmann message pages.",
+    "lead": "totman turns a private handover plan into a precise, self-hosted routine. It checks in on your schedule, waits through your configured safety windows, and sends recipient-specific messages and files only when confirmations stop for long enough.",
+    "showcaseAria": "totman showcase",
+    "showcaseAlt": "Stacked preview of totman message pages.",
     "skip": "Skip to content",
     "stepsKicker": "How it works",
     "stepsTitle": "What happens in practice.",
     "summaryKicker": "Summary",
-    "summaryTitle": "What totmann actually does for you.",
+    "summaryTitle": "What totman actually does for you.",
     "roadmapKicker": "Roadmap",
-    "roadmapTitle": "Where totmann could go next."
+    "roadmapTitle": "Where totman could go next."
   },
   "en-GB": {
     "meta": {
-      "title": "[totmann] A fully self-hosted dead man's switch for email",
-      "description": "totmann is a self-hosted dead man's switch with granular timing, HMAC-signed links, recipient-specific messages, private downloads, and operator-visible logs.",
-      "ogTitle": "[totmann] A fully self-hosted dead man's switch for email",
+      "title": "[totman] A fully self-hosted dead man's switch for email",
+      "description": "totman is a self-hosted dead man's switch with granular timing, HMAC-signed links, recipient-specific messages, private downloads, and operator-visible logs.",
+      "ogTitle": "[totman] A fully self-hosted dead man's switch for email",
       "ogDescription": "Self-hosted check-ins, granular timing, HMAC-signed links, recipient-specific messages, private downloads, and clear runtime diagnostics.",
-      "twitterTitle": "[totmann] A fully self-hosted dead man's switch for email",
+      "twitterTitle": "[totman] A fully self-hosted dead man's switch for email",
       "twitterDescription": "Self-hosted check-ins, granular timing, HMAC-signed links, recipient-specific messages, private downloads, and clear runtime diagnostics."
     },
     "nav": [
       {
-        "href": "#why-totmann",
+        "href": "#why-totman",
         "label": "Why"
       },
       {
@@ -308,8 +308,8 @@ var TOTMANN_LOCALES = {
     ],
     "sections": [
       {
-        "id": "why-totmann",
-        "kicker": "Why totmann",
+        "id": "why-totman",
+        "kicker": "Why totman",
         "title": "Built for private, precise handover, not generic reminders.",
         "cards": [
           {
@@ -416,7 +416,7 @@ var TOTMANN_LOCALES = {
     "steps": [
       {
         "title": "You receive a check-in email",
-        "body": "totmann sends you a regular email asking you to confirm that you are still there."
+        "body": "totman sends you a regular email asking you to confirm that you are still there."
       },
       {
         "title": "You confirm and the routine continues",
@@ -424,7 +424,7 @@ var TOTMANN_LOCALES = {
       },
       {
         "title": "A meaningful gap changes the state",
-        "body": "If confirmations stop for long enough, totmann treats that as a real absence rather than a single missed moment."
+        "body": "If confirmations stop for long enough, totman treats that as a real absence rather than a single missed moment."
       },
       {
         "title": "The prepared handover goes out",
@@ -434,7 +434,7 @@ var TOTMANN_LOCALES = {
     "summary": [
       {
         "title": "Quiet in normal life",
-        "body": "When your regular routine is working, totmann stays in the background instead of demanding constant attention."
+        "body": "When your regular routine is working, totman stays in the background instead of demanding constant attention."
       },
       {
         "title": "Prepared before it is needed",
@@ -442,7 +442,7 @@ var TOTMANN_LOCALES = {
       },
       {
         "title": "Problems do not stay hidden",
-        "body": "If totmann detects a setup or runtime problem, it can send a separate warning mail to your own address so you hear about it directly."
+        "body": "If totman detects a setup or runtime problem, it can send a separate warning mail to your own address so you hear about it directly."
       },
       {
         "title": "Protected links, clear trail",
@@ -493,34 +493,34 @@ var TOTMANN_LOCALES = {
       "aria": "Language",
       "current": "Current language"
     },
-    "brandAria": "totmann homepage",
+    "brandAria": "totman homepage",
     "brandTag": "A dead man’s switch for email.",
     "navAria": "Primary",
     "eyebrow": "A fully self-hosted dead man’s switch for email",
     "h1": "Your message, delivered when needed most.",
-    "lead": "totmann turns a private handover plan into a precise, self-hosted routine. It checks in on your schedule, waits through your configured safety windows, and sends recipient-specific messages and files only when confirmations stop for long enough.",
-    "showcaseAria": "totmann showcase",
-    "showcaseAlt": "Stacked preview of totmann message pages.",
+    "lead": "totman turns a private handover plan into a precise, self-hosted routine. It checks in on your schedule, waits through your configured safety windows, and sends recipient-specific messages and files only when confirmations stop for long enough.",
+    "showcaseAria": "totman showcase",
+    "showcaseAlt": "Stacked preview of totman message pages.",
     "skip": "Skip to content",
     "stepsKicker": "How it works",
     "stepsTitle": "What happens in practice.",
     "summaryKicker": "Summary",
-    "summaryTitle": "What totmann actually does for you.",
+    "summaryTitle": "What totman actually does for you.",
     "roadmapKicker": "Roadmap",
-    "roadmapTitle": "Where totmann could go next."
+    "roadmapTitle": "Where totman could go next."
   },
   "de-DE": {
     "meta": {
-      "title": "[totmann] Ein selbst gehosteter Totmannschalter für E-Mail",
-      "description": "totmann ist ein selbst gehosteter Totmannschalter mit granularer Zeitsteuerung, HMAC-signierten Links, empfängerbezogenen Nachrichten, privaten Downloads und sichtbaren Betreiber-Logs.",
-      "ogTitle": "[totmann] Ein selbst gehosteter Totmannschalter für E-Mail",
+      "title": "[totman] Ein selbst gehosteter Totmannschalter für E-Mail",
+      "description": "totman ist ein selbst gehosteter Totmannschalter mit granularer Zeitsteuerung, HMAC-signierten Links, empfängerbezogenen Nachrichten, privaten Downloads und sichtbaren Betreiber-Logs.",
+      "ogTitle": "[totman] Ein selbst gehosteter Totmannschalter für E-Mail",
       "ogDescription": "Selbst gehostete Check-ins, granulare Zeitsteuerung, HMAC-signierte Links, empfängerbezogene Nachrichten, private Downloads und klare Laufzeitdiagnosen.",
-      "twitterTitle": "[totmann] Ein selbst gehosteter Totmannschalter für E-Mail",
+      "twitterTitle": "[totman] Ein selbst gehosteter Totmannschalter für E-Mail",
       "twitterDescription": "Selbst gehostete Check-ins, granulare Zeitsteuerung, HMAC-signierte Links, empfängerbezogene Nachrichten, private Downloads und klare Laufzeitdiagnosen."
     },
     "nav": [
       {
-        "href": "#why-totmann",
+        "href": "#why-totman",
         "label": "Warum"
       },
       {
@@ -563,8 +563,8 @@ var TOTMANN_LOCALES = {
     ],
     "sections": [
       {
-        "id": "why-totmann",
-        "kicker": "Warum totmann",
+        "id": "why-totman",
+        "kicker": "Warum totman",
         "title": "Gebaut für private, präzise Übergaben, nicht für generische Erinnerungen.",
         "cards": [
           {
@@ -671,7 +671,7 @@ var TOTMANN_LOCALES = {
     "steps": [
       {
         "title": "Du erhältst eine Check-in-E-Mail",
-        "body": "totmann sendet dir regelmäßig eine E-Mail mit der Bitte zu bestätigen, dass du noch da bist."
+        "body": "totman sendet dir regelmäßig eine E-Mail mit der Bitte zu bestätigen, dass du noch da bist."
       },
       {
         "title": "Du bestätigst und die Routine läuft weiter",
@@ -679,7 +679,7 @@ var TOTMANN_LOCALES = {
       },
       {
         "title": "Eine relevante Lücke ändert den Zustand",
-        "body": "Wenn Bestätigungen lange genug ausbleiben, behandelt totmann das als echte Abwesenheit und nicht als einzelnen verpassten Moment."
+        "body": "Wenn Bestätigungen lange genug ausbleiben, behandelt totman das als echte Abwesenheit und nicht als einzelnen verpassten Moment."
       },
       {
         "title": "Die vorbereitete Übergabe wird versendet",
@@ -689,7 +689,7 @@ var TOTMANN_LOCALES = {
     "summary": [
       {
         "title": "Ruhig im normalen Leben",
-        "body": "Wenn deine Routine funktioniert, bleibt totmann im Hintergrund, statt ständig Aufmerksamkeit zu verlangen."
+        "body": "Wenn deine Routine funktioniert, bleibt totman im Hintergrund, statt ständig Aufmerksamkeit zu verlangen."
       },
       {
         "title": "Vorbereitet, bevor es nötig ist",
@@ -697,7 +697,7 @@ var TOTMANN_LOCALES = {
       },
       {
         "title": "Probleme bleiben nicht verborgen",
-        "body": "Wenn totmann ein Setup- oder Laufzeitproblem erkennt, kann eine separate Warnmail an deine eigene Adresse gehen."
+        "body": "Wenn totman ein Setup- oder Laufzeitproblem erkennt, kann eine separate Warnmail an deine eigene Adresse gehen."
       },
       {
         "title": "Geschützte Links, klare Spur",
@@ -748,34 +748,34 @@ var TOTMANN_LOCALES = {
       "aria": "Sprache",
       "current": "Aktuelle Sprache"
     },
-    "brandAria": "totmann-Startseite",
+    "brandAria": "totman-Startseite",
     "brandTag": "Ein Totmannschalter für E-Mail.",
     "navAria": "Hauptnavigation",
     "eyebrow": "Ein vollständig selbst gehosteter Totmannschalter für E-Mail",
     "h1": "Deine Nachricht, zugestellt wenn es darauf ankommt.",
-    "lead": "totmann macht aus einem privaten Übergabeplan eine präzise, selbst gehostete Routine. Der Dienst fragt nach deinem Zeitplan nach, wartet durch die konfigurierten Sicherheitsfenster und sendet empfängerbezogene Nachrichten und Dateien erst, wenn Bestätigungen lange genug ausbleiben.",
-    "showcaseAria": "totmann-Vorschau",
-    "showcaseAlt": "Gestapelte Vorschau von totmann-Nachrichtenseiten.",
+    "lead": "totman macht aus einem privaten Übergabeplan eine präzise, selbst gehostete Routine. Der Dienst fragt nach deinem Zeitplan nach, wartet durch die konfigurierten Sicherheitsfenster und sendet empfängerbezogene Nachrichten und Dateien erst, wenn Bestätigungen lange genug ausbleiben.",
+    "showcaseAria": "totman-Vorschau",
+    "showcaseAlt": "Gestapelte Vorschau von totman-Nachrichtenseiten.",
     "skip": "Zum Inhalt springen",
     "stepsKicker": "Ablauf",
     "stepsTitle": "Was praktisch passiert.",
     "summaryKicker": "Fazit",
-    "summaryTitle": "Was totmann konkret für dich tut.",
+    "summaryTitle": "Was totman konkret für dich tut.",
     "roadmapKicker": "Roadmap",
-    "roadmapTitle": "Wohin totmann sich entwickeln könnte."
+    "roadmapTitle": "Wohin totman sich entwickeln könnte."
   },
   "es-ES": {
     "meta": {
-      "title": "[totmann] Un interruptor de hombre muerto autohospedado para correo electrónico",
-      "description": "totmann es un interruptor de hombre muerto autohospedado con tiempos granulares, enlaces firmados con HMAC, mensajes por destinatario, descargas privadas y registros visibles para el operador.",
-      "ogTitle": "[totmann] Un interruptor de hombre muerto autohospedado para correo electrónico",
+      "title": "[totman] Un interruptor de hombre muerto autohospedado para correo electrónico",
+      "description": "totman es un interruptor de hombre muerto autohospedado con tiempos granulares, enlaces firmados con HMAC, mensajes por destinatario, descargas privadas y registros visibles para el operador.",
+      "ogTitle": "[totman] Un interruptor de hombre muerto autohospedado para correo electrónico",
       "ogDescription": "Check-ins autohospedados, tiempos granulares, enlaces firmados con HMAC, mensajes por destinatario, descargas privadas y diagnósticos claros de ejecución.",
-      "twitterTitle": "[totmann] Un interruptor de hombre muerto autohospedado para correo electrónico",
+      "twitterTitle": "[totman] Un interruptor de hombre muerto autohospedado para correo electrónico",
       "twitterDescription": "Check-ins autohospedados, tiempos granulares, enlaces firmados con HMAC, mensajes por destinatario, descargas privadas y diagnósticos claros de ejecución."
     },
     "nav": [
       {
-        "href": "#why-totmann",
+        "href": "#why-totman",
         "label": "Porqué"
       },
       {
@@ -818,8 +818,8 @@ var TOTMANN_LOCALES = {
     ],
     "sections": [
       {
-        "id": "why-totmann",
-        "kicker": "Por qué totmann",
+        "id": "why-totman",
+        "kicker": "Por qué totman",
         "title": "Diseñado para entregas privadas y precisas, no para recordatorios genéricos.",
         "cards": [
           {
@@ -926,7 +926,7 @@ var TOTMANN_LOCALES = {
     "steps": [
       {
         "title": "Recibes un correo de check-in",
-        "body": "totmann te envía un correo regular para pedirte que confirmes que sigues ahí."
+        "body": "totman te envía un correo regular para pedirte que confirmes que sigues ahí."
       },
       {
         "title": "Confirmas y la rutina continúa",
@@ -934,7 +934,7 @@ var TOTMANN_LOCALES = {
       },
       {
         "title": "Una ausencia significativa cambia el estado",
-        "body": "Si las confirmaciones se detienen durante el tiempo suficiente, totmann lo trata como una ausencia real y no como un momento aislado."
+        "body": "Si las confirmaciones se detienen durante el tiempo suficiente, totman lo trata como una ausencia real y no como un momento aislado."
       },
       {
         "title": "La entrega preparada se envía",
@@ -944,7 +944,7 @@ var TOTMANN_LOCALES = {
     "summary": [
       {
         "title": "Silencioso en la vida normal",
-        "body": "Cuando tu rutina funciona, totmann permanece en segundo plano en lugar de exigir atención constante."
+        "body": "Cuando tu rutina funciona, totman permanece en segundo plano en lugar de exigir atención constante."
       },
       {
         "title": "Preparado antes de necesitarse",
@@ -952,7 +952,7 @@ var TOTMANN_LOCALES = {
       },
       {
         "title": "Los problemas no quedan ocultos",
-        "body": "Si totmann detecta un problema de configuración o ejecución, puede enviar un aviso separado a tu propia dirección."
+        "body": "Si totman detecta un problema de configuración o ejecución, puede enviar un aviso separado a tu propia dirección."
       },
       {
         "title": "Enlaces protegidos, rastro claro",
@@ -1003,34 +1003,34 @@ var TOTMANN_LOCALES = {
       "aria": "Idioma",
       "current": "Idioma actual"
     },
-    "brandAria": "Página de inicio de totmann",
+    "brandAria": "Página de inicio de totman",
     "brandTag": "Un interruptor de hombre muerto para correo electrónico.",
     "navAria": "Principal",
     "eyebrow": "Un interruptor de hombre muerto totalmente autohospedado para correo electrónico",
     "h1": "Tu mensaje, entregado cuando más importa.",
-    "lead": "totmann convierte un plan privado de entrega en una rutina precisa y autohospedada. Hace check-in según tu calendario, espera durante las ventanas de seguridad configuradas y envía mensajes y archivos específicos para cada destinatario solo cuando las confirmaciones dejan de llegar durante el tiempo suficiente.",
-    "showcaseAria": "Vista previa de totmann",
-    "showcaseAlt": "Vista previa apilada de páginas de mensajes de totmann.",
+    "lead": "totman convierte un plan privado de entrega en una rutina precisa y autohospedada. Hace check-in según tu calendario, espera durante las ventanas de seguridad configuradas y envía mensajes y archivos específicos para cada destinatario solo cuando las confirmaciones dejan de llegar durante el tiempo suficiente.",
+    "showcaseAria": "Vista previa de totman",
+    "showcaseAlt": "Vista previa apilada de páginas de mensajes de totman.",
     "skip": "Saltar al contenido",
     "stepsKicker": "Flujo",
     "stepsTitle": "Qué ocurre en la práctica.",
     "summaryKicker": "Resumen",
-    "summaryTitle": "Qué hace realmente totmann por ti.",
+    "summaryTitle": "Qué hace realmente totman por ti.",
     "roadmapKicker": "Roadmap",
-    "roadmapTitle": "Hacia dónde podría avanzar totmann."
+    "roadmapTitle": "Hacia dónde podría avanzar totman."
   },
   "fr-FR": {
     "meta": {
-      "title": "[totmann] Un dispositif homme mort autohébergé pour le courriel",
-      "description": "totmann est un dispositif homme mort autohébergé avec calendrier granulaire, liens signés HMAC, messages par destinataire, téléchargements privés et journaux visibles par l’opérateur.",
-      "ogTitle": "[totmann] Un dispositif homme mort autohébergé pour le courriel",
+      "title": "[totman] Un dispositif homme mort autohébergé pour le courriel",
+      "description": "totman est un dispositif homme mort autohébergé avec calendrier granulaire, liens signés HMAC, messages par destinataire, téléchargements privés et journaux visibles par l’opérateur.",
+      "ogTitle": "[totman] Un dispositif homme mort autohébergé pour le courriel",
       "ogDescription": "Check-ins autohébergés, calendrier granulaire, liens signés HMAC, messages par destinataire, téléchargements privés et diagnostics d’exécution clairs.",
-      "twitterTitle": "[totmann] Un dispositif homme mort autohébergé pour le courriel",
+      "twitterTitle": "[totman] Un dispositif homme mort autohébergé pour le courriel",
       "twitterDescription": "Check-ins autohébergés, calendrier granulaire, liens signés HMAC, messages par destinataire, téléchargements privés et diagnostics d’exécution clairs."
     },
     "nav": [
       {
-        "href": "#why-totmann",
+        "href": "#why-totman",
         "label": "Pourquoi"
       },
       {
@@ -1073,8 +1073,8 @@ var TOTMANN_LOCALES = {
     ],
     "sections": [
       {
-        "id": "why-totmann",
-        "kicker": "Pourquoi totmann",
+        "id": "why-totman",
+        "kicker": "Pourquoi totman",
         "title": "Conçu pour une transmission privée et précise, pas pour de simples rappels génériques.",
         "cards": [
           {
@@ -1181,7 +1181,7 @@ var TOTMANN_LOCALES = {
     "steps": [
       {
         "title": "Vous recevez un courriel de check-in",
-        "body": "totmann vous envoie régulièrement un courriel pour vous demander de confirmer que vous êtes toujours là."
+        "body": "totman vous envoie régulièrement un courriel pour vous demander de confirmer que vous êtes toujours là."
       },
       {
         "title": "Vous confirmez et la routine continue",
@@ -1189,7 +1189,7 @@ var TOTMANN_LOCALES = {
       },
       {
         "title": "Une absence significative change l’état",
-        "body": "Si les confirmations cessent assez longtemps, totmann traite cela comme une absence réelle plutôt que comme un simple moment manqué."
+        "body": "Si les confirmations cessent assez longtemps, totman traite cela comme une absence réelle plutôt que comme un simple moment manqué."
       },
       {
         "title": "La transmission préparée part",
@@ -1199,7 +1199,7 @@ var TOTMANN_LOCALES = {
     "summary": [
       {
         "title": "Discret au quotidien",
-        "body": "Lorsque votre routine fonctionne, totmann reste en arrière-plan au lieu de demander une attention constante."
+        "body": "Lorsque votre routine fonctionne, totman reste en arrière-plan au lieu de demander une attention constante."
       },
       {
         "title": "Préparé avant l’urgence",
@@ -1207,7 +1207,7 @@ var TOTMANN_LOCALES = {
       },
       {
         "title": "Les problèmes ne restent pas cachés",
-        "body": "Si totmann détecte un problème de configuration ou d’exécution, il peut envoyer un avertissement séparé à votre propre adresse."
+        "body": "Si totman détecte un problème de configuration ou d’exécution, il peut envoyer un avertissement séparé à votre propre adresse."
       },
       {
         "title": "Liens protégés, trace claire",
@@ -1258,34 +1258,34 @@ var TOTMANN_LOCALES = {
       "aria": "Langue",
       "current": "Langue actuelle"
     },
-    "brandAria": "Page d’accueil totmann",
+    "brandAria": "Page d’accueil totman",
     "brandTag": "Un dispositif homme mort pour le courriel.",
     "navAria": "Principale",
     "eyebrow": "Un dispositif homme mort entièrement autohébergé pour le courriel",
     "h1": "Votre message, livré au moment décisif.",
-    "lead": "totmann transforme un plan de transmission privé en routine précise et autohébergée. Il effectue les check-ins selon votre calendrier, respecte vos fenêtres de sécurité configurées et n’envoie les messages et fichiers propres à chaque destinataire que lorsque les confirmations cessent assez longtemps.",
-    "showcaseAria": "Aperçu de totmann",
-    "showcaseAlt": "Aperçu empilé de pages de messages totmann.",
+    "lead": "totman transforme un plan de transmission privé en routine précise et autohébergée. Il effectue les check-ins selon votre calendrier, respecte vos fenêtres de sécurité configurées et n’envoie les messages et fichiers propres à chaque destinataire que lorsque les confirmations cessent assez longtemps.",
+    "showcaseAria": "Aperçu de totman",
+    "showcaseAlt": "Aperçu empilé de pages de messages totman.",
     "skip": "Aller au contenu",
     "stepsKicker": "Flux",
     "stepsTitle": "Ce qui se passe en pratique.",
     "summaryKicker": "Résumé",
-    "summaryTitle": "Ce que totmann fait réellement pour vous.",
+    "summaryTitle": "Ce que totman fait réellement pour vous.",
     "roadmapKicker": "Roadmap",
-    "roadmapTitle": "Vers où totmann pourrait évoluer."
+    "roadmapTitle": "Vers où totman pourrait évoluer."
   },
   "it-IT": {
     "meta": {
-      "title": "[totmann] Un interruttore uomo morto autogestito per email",
-      "description": "totmann è un interruttore uomo morto autogestito con tempistiche granulari, link firmati HMAC, messaggi per destinatario, download privati e log visibili all’operatore.",
-      "ogTitle": "[totmann] Un interruttore uomo morto autogestito per email",
+      "title": "[totman] Un interruttore uomo morto autogestito per email",
+      "description": "totman è un interruttore uomo morto autogestito con tempistiche granulari, link firmati HMAC, messaggi per destinatario, download privati e log visibili all’operatore.",
+      "ogTitle": "[totman] Un interruttore uomo morto autogestito per email",
       "ogDescription": "Check-in autogestiti, tempistiche granulari, link firmati HMAC, messaggi per destinatario, download privati e diagnostica runtime chiara.",
-      "twitterTitle": "[totmann] Un interruttore uomo morto autogestito per email",
+      "twitterTitle": "[totman] Un interruttore uomo morto autogestito per email",
       "twitterDescription": "Check-in autogestiti, tempistiche granulari, link firmati HMAC, messaggi per destinatario, download privati e diagnostica runtime chiara."
     },
     "nav": [
       {
-        "href": "#why-totmann",
+        "href": "#why-totman",
         "label": "Perché"
       },
       {
@@ -1328,8 +1328,8 @@ var TOTMANN_LOCALES = {
     ],
     "sections": [
       {
-        "id": "why-totmann",
-        "kicker": "Perché totmann",
+        "id": "why-totman",
+        "kicker": "Perché totman",
         "title": "Pensato per consegne private e precise, non per promemoria generici.",
         "cards": [
           {
@@ -1436,7 +1436,7 @@ var TOTMANN_LOCALES = {
     "steps": [
       {
         "title": "Ricevi un’email di check-in",
-        "body": "totmann ti invia regolarmente un’email chiedendoti di confermare che ci sei ancora."
+        "body": "totman ti invia regolarmente un’email chiedendoti di confermare che ci sei ancora."
       },
       {
         "title": "Confermi e la routine continua",
@@ -1444,7 +1444,7 @@ var TOTMANN_LOCALES = {
       },
       {
         "title": "Un’assenza significativa cambia lo stato",
-        "body": "Se le conferme mancano abbastanza a lungo, totmann lo tratta come una reale assenza e non come un singolo momento mancato."
+        "body": "Se le conferme mancano abbastanza a lungo, totman lo tratta come una reale assenza e non come un singolo momento mancato."
       },
       {
         "title": "La consegna preparata parte",
@@ -1454,7 +1454,7 @@ var TOTMANN_LOCALES = {
     "summary": [
       {
         "title": "Silenzioso nella vita normale",
-        "body": "Quando la tua routine funziona, totmann resta in background invece di richiedere attenzione continua."
+        "body": "Quando la tua routine funziona, totman resta in background invece di richiedere attenzione continua."
       },
       {
         "title": "Preparato prima del bisogno",
@@ -1462,7 +1462,7 @@ var TOTMANN_LOCALES = {
       },
       {
         "title": "I problemi non restano nascosti",
-        "body": "Se totmann rileva un problema di configurazione o runtime, può inviare un avviso separato al tuo indirizzo."
+        "body": "Se totman rileva un problema di configurazione o runtime, può inviare un avviso separato al tuo indirizzo."
       },
       {
         "title": "Link protetti, traccia chiara",
@@ -1513,21 +1513,21 @@ var TOTMANN_LOCALES = {
       "aria": "Lingua",
       "current": "Lingua attuale"
     },
-    "brandAria": "Homepage di totmann",
+    "brandAria": "Homepage di totman",
     "brandTag": "Un interruttore uomo morto per email.",
     "navAria": "Principale",
     "eyebrow": "Un interruttore uomo morto completamente autogestito per email",
     "h1": "Il tuo messaggio, consegnato quando conta di più.",
-    "lead": "totmann trasforma un piano privato di consegna in una routine precisa e autogestita. Effettua check-in secondo il tuo calendario, rispetta le finestre di sicurezza configurate e invia messaggi e file specifici per destinatario solo quando le conferme mancano abbastanza a lungo.",
-    "showcaseAria": "Anteprima di totmann",
-    "showcaseAlt": "Anteprima sovrapposta delle pagine messaggio di totmann.",
+    "lead": "totman trasforma un piano privato di consegna in una routine precisa e autogestita. Effettua check-in secondo il tuo calendario, rispetta le finestre di sicurezza configurate e invia messaggi e file specifici per destinatario solo quando le conferme mancano abbastanza a lungo.",
+    "showcaseAria": "Anteprima di totman",
+    "showcaseAlt": "Anteprima sovrapposta delle pagine messaggio di totman.",
     "skip": "Vai al contenuto",
     "stepsKicker": "Flusso",
     "stepsTitle": "Cosa succede in pratica.",
     "summaryKicker": "Sintesi",
-    "summaryTitle": "Cosa fa davvero totmann per te.",
+    "summaryTitle": "Cosa fa davvero totman per te.",
     "roadmapKicker": "Roadmap",
-    "roadmapTitle": "Dove potrebbe andare totmann."
+    "roadmapTitle": "Dove potrebbe andare totman."
   }
 };
 

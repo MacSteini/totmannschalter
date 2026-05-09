@@ -1,8 +1,8 @@
-# totmann – Web endpoint configuration
-![totmann](../img/totmann-icon.png)
+# totman – Web endpoint configuration
+![totman](../img/totman-icon.png)
 
 ## One endpoint for everything
-`totmann.php` is the only public endpoint.
+`totman.php` is the only public endpoint.
 
 It handles three actions:
 - `a=confirm`
@@ -18,13 +18,13 @@ The web endpoint resolves the state directory in this order:
 1. ENV `totmann_STATE_DIR`
 2. `define('TOTMANN_STATE_DIR', '/var/lib/totmann');`
 
-The shipped `totmann.php` template enables the `define(...)` fallback by default. Adjust it to your actual state dir if needed.
+The shipped `totman.php` template enables the `define(...)` fallback by default. Adjust it to your actual state dir if needed.
 
 If neither exists, the endpoint returns a neutral page. The endpoint intentionally has no implicit fallback to a local webroot or to `state_dir` from the main config.
 
-The endpoint recognises exactly `totmann.inc.php` and `totmann.inc.dist.php` as main-config filenames. It prefers values from `totmann.inc.php` when both files exist, and it may use `totmann.inc.dist.php` as the complete effective config when you intentionally maintain that file. If the effective config or configured recipient file is missing, incomplete, or still contains template recipients, the endpoint stays neutral.
+The endpoint recognises exactly `totman.inc.php` and `totman.inc.dist.php` as main-config filenames. It prefers values from `totman.inc.php` when both files exist, and it may use `totman.inc.dist.php` as the complete effective config when you intentionally maintain that file. If the effective config or configured recipient file is missing, incomplete, or still contains template recipients, the endpoint stays neutral.
 ## Website language (`l18n/` + `Accept-Language`)
-`totmann.php` loads website text from your configured `l18n_dir_name` directory (template default: `l18n/` inside `state_dir`).
+`totman.php` loads website text from your configured `l18n_dir_name` directory (template default: `l18n/` inside `state_dir`).
 
 Language selection order:
 1. exact browser-language match from `Accept-Language` (e. g., `de-DE`)
@@ -46,14 +46,14 @@ Important:
 - if runtime still cannot load a locale file, the endpoint falls back to built-in `en-US`
 - public page text is intentionally calm and human, but still generic enough not to reveal unnecessary link context
 ## Optional stylesheet (`web_css_file`)
-`totmann.php` can link the configured `web_css_file` from the same webroot folder as `web_file`.
+`totman.php` can link the configured `web_css_file` from the same webroot folder as `web_file`.
 
 - If the stylesheet exists, the endpoint renders styled pages.
 - If it is missing, or `web_css_file` is empty, pages remain functional but unstyled.
 ## Product logo
 Runtime web pages render the product logo from this GitHub-hosted image URL:
 ```text
-https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totmann-s.png
+https://raw.githubusercontent.com/MacSteini/totmannschalter/refs/heads/main/img/totman-s.png
 ```
 
 This is a deliberate visual dependency. It does not affect confirmation, ACK, download, mail, state, or escalation logic.
@@ -85,7 +85,7 @@ ACK pages follow the same locale selection as confirm pages.
 - Once any recipient acknowledges, no further escalation mails are sent for that escalation event.
 - It only shows the extra download reminder if that specific recipient’s escalation mail actually included at least one download link.
 ## Shared runtime state
-The runtime uses one state file: `state_file` (template default: `totmann.json`).
+The runtime uses one state file: `state_file` (template default: `totman.json`).
 
 Internally it contains separate state areas for:
 - normal cycle/runtime behaviour
@@ -108,7 +108,7 @@ You keep one directory on disk, but confirm/ACK traffic and download traffic do 
 Fail-open behaviour remains intentional:
 - if the rate-limit directory is missing, unwritable, or locking fails, the request is still allowed
 ## Download action
-Downloads are served through the `download` action of `totmann.php`.
+Downloads are served through the `download` action of `totman.php`.
 
 Rules:
 - keep `download_base_dir` outside your webroot
@@ -138,7 +138,7 @@ Why this is safest:
 
 Optional proxy mode:
 - `ip_mode = trusted_proxy`
-- only use this if totmann runs behind a reverse proxy that you control
+- only use this if totman runs behind a reverse proxy that you control
 - only proxy IPs listed in `trusted_proxies` are allowed to supply the client IP header
 - the runtime then reads the header from `trusted_proxy_header` (default: `X-Forwarded-For`)
 
@@ -160,6 +160,6 @@ ls -la /var/lib/totmann
 ```
 Web identity can read the effective config and write runtime files, replace `<WEB_USER>`:
 ```sh
-sudo -u <WEB_USER> php -r 'echo is_readable("/var/lib/totmann/totmann.inc.php") ? "config:OK\n" : "config:NO\n";'
+sudo -u <WEB_USER> php -r 'echo is_readable("/var/lib/totmann/totman.inc.php") ? "config:OK\n" : "config:NO\n";'
 sudo -u <WEB_USER> php -r '$f="/var/lib/totmann/.permtest"; echo (file_put_contents($f,"x")!==false)?"write:OK\n":"write:NO\n"; @unlink($f);'
 ```

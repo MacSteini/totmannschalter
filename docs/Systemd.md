@@ -1,5 +1,5 @@
-# totmann – `systemd` unit & timer
-![totmann](../img/totmann-icon.png)
+# totman – `systemd` unit & timer
+![totman](../img/totman-icon.png)
 
 You can create the unit and timer in one of two ways:
 - **Option A (recommended):** via terminal (copy/paste, deterministic)
@@ -9,12 +9,12 @@ This avoids editor mistakes and creates the files exactly as shown.
 ### Create the unit manually
 Replace `<WEB_GROUP>`:
 ```sh
-sudo tee /etc/systemd/system/totmann.service >/dev/null <<'EOF'
+sudo tee /etc/systemd/system/totman.service >/dev/null <<'EOF'
 [Unit]
-Description=totmann
+Description=totman
 
 [Service]
-ExecStart=/usr/bin/php /var/lib/totmann/totmann-tick.php tick
+ExecStart=/usr/bin/php /var/lib/totmann/totman-tick.php tick
 User=root
 Group=<WEB_GROUP>
 Type=oneshot
@@ -29,9 +29,9 @@ EOF
 > **Critical**: `UMask=0007` ensures runtime files created by root become group-writable (`0660`).
 ### Create the timer manually
 ```sh
-sudo tee /etc/systemd/system/totmann.timer >/dev/null <<'EOF'
+sudo tee /etc/systemd/system/totman.timer >/dev/null <<'EOF'
 [Unit]
-Description=Run totmann every minute
+Description=Run totman every minute
 
 [Timer]
 OnBootSec=30s
@@ -48,15 +48,15 @@ If you prefer doing it manually, create the files below and paste the contents e
 ### Create the unit
 Replace `<WEB_GROUP>`:
 ```sh
-sudo nano /etc/systemd/system/totmann.service
+sudo nano /etc/systemd/system/totman.service
 ```
 Paste:
 ```text
 [Unit]
-Description=totmann
+Description=totman
 
 [Service]
-ExecStart=/usr/bin/php /var/lib/totmann/totmann-tick.php tick
+ExecStart=/usr/bin/php /var/lib/totmann/totman-tick.php tick
 User=root
 Group=<WEB_GROUP>
 Type=oneshot
@@ -70,12 +70,12 @@ ReadWritePaths=/var/lib/totmann
 > **Critical**: `UMask=0007` ensures runtime files created by root become group-writable (`0660`).
 ### Create the timer
 ```sh
-sudo nano /etc/systemd/system/totmann.timer
+sudo nano /etc/systemd/system/totman.timer
 ```
 Paste:
 ```text
 [Unit]
-Description=Run totmann every minute
+Description=Run totman every minute
 
 [Timer]
 OnBootSec=30s
@@ -89,28 +89,28 @@ WantedBy=timers.target
 ## Enable and run once
 ```sh
 sudo systemctl daemon-reload
-sudo systemctl enable --now totmann.timer
+sudo systemctl enable --now totman.timer
 
 # Run once now
-sudo systemctl start totmann.service
+sudo systemctl start totman.service
 ```
 ## Operational checks
 Timer status:
 ```sh
-systemctl list-timers | grep totmann
+systemctl list-timers | grep totman
 ```
 Inspect the effective unit config:
 ```sh
-sudo systemctl cat totmann.service
+sudo systemctl cat totman.service
 ```
-Confirm that the `totmann.service` environment points to the same state directory you configured (and that `UMask` is set to `0007`, so runtime files are created group-writable):
+Confirm that the `totman.service` environment points to the same state directory you configured (and that `UMask` is set to `0007`, so runtime files are created group-writable):
 ```sh
-sudo systemctl show totmann.service -p Environment -p WorkingDirectory -p ExecStart -p UMask
+sudo systemctl show totman.service -p Environment -p WorkingDirectory -p ExecStart -p UMask
 ```
 ## Logs
 ```sh
-journalctl -u totmann.service -n 200 --no-pager
-tail -n 50 /var/lib/totmann/totmann.log
+journalctl -u totman.service -n 200 --no-pager
+tail -n 50 /var/lib/totmann/totman.log
 ```
 Use according to `log_mode`:
 - `syslog` => `journalctl` only
@@ -125,5 +125,5 @@ The same `/var/lib/totmann` state directory should also contain your configured 
 
 Live stream (useful during test runs):
 ```sh
-tail -f /var/lib/totmann/totmann.log
+tail -f /var/lib/totmann/totman.log
 ```

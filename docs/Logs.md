@@ -1,8 +1,8 @@
-# totmann – Log guide
-![totmann](../img/totmann-icon.png)
+# totman – Log guide
+![totman](../img/totman-icon.png)
 
-## What `totmann.log` is for
-`totmann.log` records totmann activity in plain English.
+## What `totman.log` is for
+`totman.log` records totman activity in plain English.
 
 Use it when you want to answer practical questions such as:
 - Did the cycle reset?
@@ -18,15 +18,15 @@ Important:
 
 If you want to see a full operator warning mail in context, go to [Example messages](Examples.md "Example messages").
 
-If you use `log_mode = file` or `log_mode = both`, the default file is `/var/lib/totmann/totmann.log`.
+If you use `log_mode = file` or `log_mode = both`, the default file is `/var/lib/totmann/totman.log`.
 
-If you changed `log_file_name` or `log_file` in `totmann.inc.php`, use that effective path instead.
+If you changed `log_file_name` or `log_file` in `totman.inc.php`, use that effective path instead.
 ## What belongs where
-You may see totmann errors in 3 different places:
+You may see totman errors in 3 different places:
 
-1. `totmann.log`
+1. `totman.log`
 	- normal runtime activity and runtime failures after bootstrap
-2. `journalctl -u totmann.service`
+2. `journalctl -u totman.service`
 	- service start/stop information
 	- STDERR output from the tick, including early bootstrap failures such as `CONFIG ERROR: ...`
 3. operator warning mails to `to_self`
@@ -35,18 +35,18 @@ You may see totmann errors in 3 different places:
 
 Practical rule:
 - if the tick never got far enough to write a normal runtime log line, look in `journalctl`
-- if you received an operator warning mail, use the fingerprint or error text to find the matching context in `totmann.log` or `journalctl`
+- if you received an operator warning mail, use the fingerprint or error text to find the matching context in `totman.log` or `journalctl`
 ## Before you read the log
 Choose your log command according to `log_mode`:
-- `file` => read `totmann.log`
-- `syslog` => use `journalctl -u totmann.service`
+- `file` => read `totman.log`
+- `syslog` => use `journalctl -u totman.service`
 - `both` => you can use both
-- `none` => totmann does not write a file log
+- `none` => totman does not write a file log
 
 Useful commands:
 ```sh
-tail -f /var/lib/totmann/totmann.log
-journalctl -u totmann.service -f
+tail -f /var/lib/totmann/totman.log
+journalctl -u totman.service -f
 ```
 ## How one log line is structured
 Each file-log line starts with an ISO timestamp and then the message text.
@@ -60,13 +60,13 @@ Practical reading order:
 2. read the leading topic such as `confirm:`, `ack:`, or `Escalation mail ...`
 3. read the rest as the outcome of that event
 ## Early bootstrap and preflight failures
-These messages are important, but they are not guaranteed to appear in `totmann.log`.
+These messages are important, but they are not guaranteed to appear in `totman.log`.
 
 Representative STDERR / journal examples:
 ```text
 CONFIG ERROR: Missing config key: download_valid_days
-CONFIG ERROR: recipients_file missing/unreadable: <state_dir>/totmann-recipients.php
-BOOTSTRAP ERROR: missing live config: <state_dir>/totmann.inc.php; missing dist config: <state_dir>/totmann.inc.dist.php
+CONFIG ERROR: recipients_file missing/unreadable: <state_dir>/totman-recipients.php
+BOOTSTRAP ERROR: missing live config: <state_dir>/totman.inc.php; missing dist config: <state_dir>/totman.inc.dist.php
 ERROR: State sanity check failed: deadline_at must be later than next_check_at. Restore the state file from backup or perform a deliberate clean initialise.
 ```
 How to interpret them:
@@ -76,15 +76,15 @@ How to interpret them:
 
 What to do:
 - read the exact missing/invalid key or file path
-- run `php totmann-tick.php check` in your state directory
-- inspect `totmann.inc.php` and/or `totmann.inc.dist.php`, then inspect the configured `recipients_file`
+- run `php totman-tick.php check` in your state directory
+- inspect `totman.inc.php` and/or `totman.inc.dist.php`, then inspect the configured `recipients_file`
 - if the state file is the problem, restore it from backup or deliberately perform a clean initialise after confirming that you do not need to keep any existing escalation state
 - if you intentionally keep real values in `.dist.php` files, merge release updates consciously before replacing those files
-- if the problem happens under `systemd`, confirm it again with `journalctl -u totmann.service`
+- if the problem happens under `systemd`, confirm it again with `journalctl -u totman.service`
 
 Important:
-- these messages may still trigger a separate operator warning mail if totmann can load enough mail configuration to send one
-- do not rely on them appearing in `totmann.log`
+- these messages may still trigger a separate operator warning mail if totman can load enough mail configuration to send one
+- do not rely on them appearing in `totman.log`
 ## Normal confirmation activity
 Typical lines:
 ```text
@@ -133,13 +133,13 @@ How to interpret them:
 - `Escalation mail failed ...` => that one recipient mail failed; the reason follows after the colon
 - `Escalation delivery progress ...` => this tick finished one escalation delivery pass and shows how many recipients succeeded or failed in that pass
 - `Recipient skipped: ...` => that one recipient row was unusable, so the script continued without sending to that recipient
-- `Operator alert sent ...` => totmann also sent a separate operator warning mail to `to_self`
+- `Operator alert sent ...` => totman also sent a separate operator warning mail to `to_self`
 
 What to do:
 - sent => nothing else; this is expected
 - failed => inspect the error text first; common causes are invalid mailbox formatting, sendmail problems, or file/message config errors
 - delivery progress with failures => inspect the matching `Escalation mail failed ...` lines directly above or below it
-- skipped => inspect the referenced recipient row in `totmann-recipients.php`
+- skipped => inspect the referenced recipient row in `totman-recipients.php`
 - operator alert sent => open the warning mail, follow the suggested fix, then verify the same problem stops reappearing
 
 Important:
@@ -155,20 +155,20 @@ Operator alert state save failed: ...
 ```
 How to interpret them:
 - `Operator alert sent ...` => a separate operator warning mail was handed to sendmail successfully
-- `Operator alert delivery failed ...` => totmann detected the problem but could not deliver the warning mail to at least one `to_self` address
+- `Operator alert delivery failed ...` => totman detected the problem but could not deliver the warning mail to at least one `to_self` address
 - `Operator alert handling failed ...` => even the warning-mail helper hit a runtime problem while trying to process the alert
 - `Operator alert state save failed ...` => the script handled the runtime problem but could not persist the updated alert-throttle state afterwards
 
 What to do:
 - `Operator alert sent ...` => read the mail, then fix the underlying problem named by the fingerprinted error
 - `Operator alert delivery failed ...` => check `to_self`, `mail_from`, and `sendmail_path`
-- `Operator alert handling failed ...` => inspect the surrounding `ERROR: ...` or `Recipient skipped: ...` lines and rerun `php totmann-tick.php check`
-- `Operator alert state save failed ...` => inspect state-dir permissions, lock handling, and `totmann.json`
+- `Operator alert handling failed ...` => inspect the surrounding `ERROR: ...` or `Recipient skipped: ...` lines and rerun `php totman-tick.php check`
+- `Operator alert state save failed ...` => inspect state-dir permissions, lock handling, and `totman.json`
 
 Practical note:
 - the fingerprint stays stable for the same alert type plus the same normalised error text
 - repeated alerts with the same fingerprint are throttled by `operator_alert_interval_hours`
-- if you set an invalid value or remove that key, totmann falls back to `2` hours
+- if you set an invalid value or remove that key, totman falls back to `2` hours
 ## ACK reminder problems
 Typical lines:
 ```text
@@ -197,7 +197,7 @@ What to do:
 - read the exact exception text
 - inspect the surrounding log lines for context
 - if an operator warning mail was sent as well, use its fingerprint and fix hint as the operator-facing summary
-- rerun `php totmann-tick.php check` before trusting the system again
+- rerun `php totman-tick.php check` before trusting the system again
 ## Download-related behaviour
 Download problems do not always create a large dedicated error page. The useful evidence is often the surrounding escalation log plus your current recipient/file configuration.
 
@@ -234,8 +234,8 @@ Pay attention when you see:
 - no `ack: OK ...` line even though a recipient submitted the ACK page
 
 Recommended response:
-1. compare the affected mailbox and message key with `totmann-recipients.php`
-2. confirm that `totmann.inc.php` still points to the intended `recipients_file`, `log_mode`, and `download_base_dir`
-3. rerun `php totmann-tick.php check`
-4. use `journalctl -u totmann.service` as well if the failure may have happened during bootstrap
+1. compare the affected mailbox and message key with `totman-recipients.php`
+2. confirm that `totman.inc.php` still points to the intended `recipients_file`, `log_mode`, and `download_base_dir`
+3. rerun `php totman-tick.php check`
+4. use `journalctl -u totman.service` as well if the failure may have happened during bootstrap
 5. use [Troubleshooting](Troubleshooting.md "Troubleshooting") if the log alone is not enough

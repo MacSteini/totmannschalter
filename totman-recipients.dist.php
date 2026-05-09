@@ -1,12 +1,12 @@
 <?php
 
 /**
- * totmann – recipients, reusable messages, and optional download files
+ * totman – recipients, reusable messages, and optional download files
  *
  * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)
  *
- * You may either copy this file to totmann-recipients.php or intentionally keep
+ * You may either copy this file to totman-recipients.php or intentionally keep
  * this exact .dist filename as your configured recipients_file.
  *
  * This file is the operator-facing recipient template:
@@ -80,11 +80,11 @@ $files = [
 
 $messages = [
 'default' => [
-'subject' => '[totmann] EXAMPLE TEMPLATE – escalation message',
+'subject' => '[totman] EXAMPLE TEMPLATE – escalation message',
 'body' => <<<TXT
 Hello {RECIPIENT_NAME},
 
-This is an example escalation message for totmann.
+This is an example escalation message for totman.
 Please replace it with your own wording before production use.
 
 You are receiving this message because the sender did not complete the required confirmation in time.
@@ -95,7 +95,7 @@ You are receiving this message because the sender did not complete the required 
 TXT,
 ],
 'jane' => [
-'subject' => '[totmann] EXAMPLE TEMPLATE – personal message',
+'subject' => '[totman] EXAMPLE TEMPLATE – personal message',
 'body' => <<<TXT
 Dear {RECIPIENT_NAME},
 
@@ -110,7 +110,7 @@ If you are reading this, the sender did not complete the required confirmation i
 TXT,
 ],
 'john' => [
-'subject' => '[totmann] EXAMPLE TEMPLATE – message with documents',
+'subject' => '[totman] EXAMPLE TEMPLATE – message with documents',
 'single_use_notice' => 'Please save this file straight away. This download link works only once.',
 'body' => <<<TXT
 Hello {RECIPIENT_NAME},

@@ -1,5 +1,5 @@
-# totmann – Timing model & presets
-![totmann](../img/totmann-icon.png)
+# totman – Timing model & presets
+![totman](../img/totman-icon.png)
 
 The system works in repeating cycles. Each cycle is anchored at `cycle_start_at`, set on initialisation and on every successful confirmation.
 ## Timeline definitions (per cycle)
@@ -20,7 +20,7 @@ The system works in repeating cycles. Each cycle is anchored at `cycle_start_at`
 		- `escalate_ack_max_reminds = 0` disables ACK reminder re-sends, the initial escalation mail is still sent
 		- after the configured ACK reminder limit is reached, one final log marker is written and recurring escalation logs pause until ACK or reset
 
-> Note: `totmann.timer` can tick every minute, or faster.
+> Note: `totman.timer` can tick every minute, or faster.
 > This does not change the timing model. It only determines how quickly the script notices that a boundary has been reached.
 ## Validation rules (applied by preflight and runtime)
 - `check_interval_seconds >= 1`
@@ -33,7 +33,7 @@ The system works in repeating cycles. Each cycle is anchored at `cycle_start_at`
 - warning, but allowed: `remind_every_seconds > confirm_window_seconds`
 - warning, but allowed: ACK remind interval below 60 seconds, runtime clamps to 60 seconds
 ## Changing timings during operation
-You can change timing values in the effective main config while `totmann.timer` is running.
+You can change timing values in the effective main config while `totman.timer` is running.
 A `systemctl stop` or `systemctl start` is not required for these config-only changes.
 
 How it applies:
@@ -149,8 +149,8 @@ After deadline + grace:
 	- remove the configured runtime files `state_file`, `lock_file`, and `log_file_name`
 	- initialise once with the correct umask, see [Installation](Installation.md "Installation guide"), section “Clean initialise”
 3. Watch logs while testing:
-	- `journalctl -u totmann.service -f`
-	- `tail -f /var/lib/totmann/totmann.log`
+	- `journalctl -u totman.service -f`
+	- `tail -f /var/lib/totmann/totman.log`
 	- If you are not yet familiar with the log lines, keep [Log guide](Logs.md "Log guide") open alongside the test.
 4. Test scenarios:
 	- Scenario A, confirm: confirm within the window -> cycle resets, escalation never triggers

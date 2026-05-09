@@ -1,5 +1,5 @@
-# totmann – Troubleshooting
-![totmann](../img/totmann-icon.png)
+# totman – Troubleshooting
+![totman](../img/totman-icon.png)
 
 ## Neutral page (“This page is not available.”)
 This is expected behaviour for:
@@ -26,7 +26,7 @@ Expected (conceptually):
 - files: `-rw-rw----` (`0660`) for configured runtime files such as `state_file`, `lock_file`, and `log_file_name`
 ### Confirm `systemd` points to the correct state dir and umask
 ```sh
-sudo systemctl show totmann.service -p Environment -p WorkingDirectory -p ExecStart -p UMask
+sudo systemctl show totman.service -p Environment -p WorkingDirectory -p ExecStart -p UMask
 ```
 Make sure you see:
 - `Environment=totmann_STATE_DIR=/var/lib/totmann`
@@ -48,34 +48,34 @@ First: reminders are only sent during the confirmation window.
 - reminders only from `next_check_at` (inclusive) until `deadline_at` (exclusive)
 - escalation only at or after `deadline_at + escalate_grace_seconds`, and only once `missed_cycles_before_fire` is reached
 
-If totmann detects an operator-facing setup/runtime problem while the tick is running, it can also send a separate warning mail to `to_self`.
+If totman detects an operator-facing setup/runtime problem while the tick is running, it can also send a separate warning mail to `to_self`.
 Those warning mails are mandatory on purpose, are throttled by `operator_alert_interval_hours`, and do not replace the log.
 ### Check timer and logs
 ```sh
-systemctl list-timers | grep totmann
-journalctl -u totmann.service -n 200 --no-pager
-tail -n 200 /var/lib/totmann/totmann.log
+systemctl list-timers | grep totman
+journalctl -u totman.service -n 200 --no-pager
+tail -n 200 /var/lib/totmann/totman.log
 ```
 Choose log commands according to `log_mode`:
 - `syslog` => rely on `journalctl`
 - `file` => rely on `tail`
 - `both` => use both
-- `none` => no totmann file-log lines are expected
+- `none` => no totman file-log lines are expected
 If you are unsure how to read the file-log lines or how they relate to `journalctl`, use [Log guide](Logs.md "Log guide").
 ### Check state actually progresses
-Look at these fields in `totmann.json` under the `runtime` subtree:
+Look at these fields in `totman.json` under the `runtime` subtree:
 - `next_check_at`, `deadline_at` (window boundaries)
 - `next_reminder_at` (should advance by `remind_every_seconds` after each reminder send)
 - `escalated_sent_at` (set when escalation mail was sent)
 - `escalate_ack_next_at` / `escalate_ack_sent_count` (only after escalation, if ACK enabled)
 
-The shared `totmann.json` contains two top-level areas:
+The shared `totman.json` contains two top-level areas:
 - `runtime`
 - `downloads`
 
 If the timing fields in `runtime` are missing or inconsistent (`cycle_start_at`, `next_check_at`, `deadline_at`), the tick stops instead of starting a fresh cycle. Restore the state file from backup, or perform a deliberate clean initialise after you have confirmed that you do not need to keep any escalation state.
 ```sh
-cat /var/lib/totmann/totmann.json
+cat /var/lib/totmann/totman.json
 ```
 If `next_reminder_at` does not move forward, the tick likely failed before saving state. Check logs for an exception.
 
@@ -88,25 +88,25 @@ Treat that mail as a direct setup/runtime problem report from the script itself.
 What to do first:
 1. read the original problem text in the warning mail
 2. follow the built-in “What to check next” hint from that mail
-3. run `php totmann-tick.php check` in your state directory
-4. inspect `totmann.log` for the same fingerprint or matching error text
+3. run `php totman-tick.php check` in your state directory
+4. inspect `totman.log` for the same fingerprint or matching error text
 5. compare the affected values in the effective main config and the configured `recipients_file`
-6. if the warning refers to a bootstrap problem such as `CONFIG ERROR: ...`, also inspect `journalctl -u totmann.service`
+6. if the warning refers to a bootstrap problem such as `CONFIG ERROR: ...`, also inspect `journalctl -u totman.service`
 
 Throttle behaviour:
 - `operator_alert_interval_hours` accepts only `1..24`
-- if you remove it or set an invalid value, totmann falls back automatically to `2`
+- if you remove it or set an invalid value, totman falls back automatically to `2`
 - the warning mail itself cannot be disabled
 ## Downloads do not work
 Check these points in order:
-1. the relevant file alias exists in `$files` inside `totmann-recipients.php`
+1. the relevant file alias exists in `$files` inside `totman-recipients.php`
 2. the recipient row really references that alias in field 4 or field 5
 3. you used the intended field:
 	- field 4 for normal downloads
 	- field 5 for single-use downloads
 4. the real file path in `$files` is relative to `download_base_dir`, not absolute
 5. the real file exists under `download_base_dir`
-6. `download_valid_days` in `totmann.inc.php` has not already expired the link
+6. `download_valid_days` in `totman.inc.php` has not already expired the link
 7. `{DOWNLOAD_LINKS}` is present in the relevant escalation mail body
 8. if field 5 is used, remember that only the first successful download of that escalation event is allowed
 9. if field 5 is used, confirm that the referenced message defines `single_use_notice`
@@ -114,13 +114,13 @@ Check these points in order:
 
 If a recipient’s download aliases cannot be resolved, that recipient’s escalation mail is still sent without those links. Check logs for the underlying reason.
 
-Already issued valid download links still resolve if an unrelated message or recipient row in `totmann-recipients.php` is later broken. They fail closed if the same alias is later changed to another relative file path.
+Already issued valid download links still resolve if an unrelated message or recipient row in `totman-recipients.php` is later broken. They fail closed if the same alias is later changed to another relative file path.
 
 If you are unsure how field 4, field 5, `{DOWNLOAD_LINKS}`, and `single_use_notice` work together, go back to [Mail delivery notes](Mail.md "Mail delivery notes").
 ## Website language is wrong or always English
 Check these points in order:
 1. `l18n/` was copied into your configured `state_dir`
-2. `l18n_dir_name` in `totmann.inc.php` matches the real directory name
+2. `l18n_dir_name` in `totman.inc.php` matches the real directory name
 3. the expected locale file exists (e. g., `l18n/de-DE.php`)
 4. the browser really sends the language you expect in `Accept-Language`
 
@@ -150,10 +150,10 @@ If this is set incorrectly, request attribution in logs can be spoofed.
 ## Factory reset / re-arm
 If you want to restart completely:
 ```sh
-sudo systemctl stop totmann.timer
-sudo rm -f /var/lib/totmann/totmann.json /var/lib/totmann/totmann.lock /var/lib/totmann/totmann.log
-sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totmann-tick.php tick'
-sudo systemctl start totmann.timer
+sudo systemctl stop totman.timer
+sudo rm -f /var/lib/totmann/totman.json /var/lib/totmann/totman.lock /var/lib/totmann/totman.log
+sudo sh -c 'umask 0007; /usr/bin/php /var/lib/totmann/totman-tick.php tick'
+sudo systemctl start totman.timer
 ```
 The `rm` command uses the filenames from the effective config. Adapt it if you changed them there.
 

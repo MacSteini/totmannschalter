@@ -1,7 +1,7 @@
 <?php
 
 /**
- * totmann – systemd tick entrypoint
+ * totman – systemd tick entrypoint
  *
  * Project: https://github.com/macsteini/totmannschalter
  * Licence: MIT (see LICENCE)
@@ -21,12 +21,12 @@ if (!is_array($argv)) {
 
 $cmd = (string)($argv[1] ?? '');
 if (!in_array($cmd, ['tick', 'check'], true)) {
-    fwrite(STDERR, "Usage: php totmann-tick.php tick\n");
-    fwrite(STDERR, "Usage: php totmann-tick.php check [--web-user=<WEB_USER>]\n");
+    fwrite(STDERR, "Usage: php totman-tick.php tick\n");
+    fwrite(STDERR, "Usage: php totman-tick.php check [--web-user=<WEB_USER>]\n");
     exit(2);
 }
 if ($cmd === 'tick' && count($argv) > 2) {
-    fwrite(STDERR, "Usage: php totmann-tick.php tick\n");
+    fwrite(STDERR, "Usage: php totman-tick.php tick\n");
     exit(2);
 }
 
@@ -57,7 +57,7 @@ if ($cmd === 'check') {
         }
 
         fwrite(STDERR, "Unknown option for check: {$arg}\n");
-        fwrite(STDERR, "Usage: php totmann-tick.php check [--web-user=<WEB_USER>]\n");
+        fwrite(STDERR, "Usage: php totman-tick.php check [--web-user=<WEB_USER>]\n");
         exit(2);
     }
 }
@@ -76,8 +76,8 @@ function dm_tick_bootstrap_load_array_file(string $path, string $label): array
 
 function dm_tick_bootstrap_load_effective_config(string $stateDir): array
 {
-    $livePath = $stateDir . '/totmann.inc.php';
-    $distPath = $stateDir . '/totmann.inc.dist.php';
+    $livePath = $stateDir . '/totman.inc.php';
+    $distPath = $stateDir . '/totman.inc.dist.php';
     $liveCfg = null;
     $distCfg = null;
     $liveError = null;
@@ -85,7 +85,7 @@ function dm_tick_bootstrap_load_effective_config(string $stateDir): array
 
     if (file_exists($livePath)) {
         try {
-            $liveCfg = dm_tick_bootstrap_load_array_file($livePath, 'totmann.inc.php');
+            $liveCfg = dm_tick_bootstrap_load_array_file($livePath, 'totman.inc.php');
         } catch (Throwable $e) {
             $liveError = $e->getMessage();
         }
@@ -93,7 +93,7 @@ function dm_tick_bootstrap_load_effective_config(string $stateDir): array
 
     if (file_exists($distPath)) {
         try {
-            $distCfg = dm_tick_bootstrap_load_array_file($distPath, 'totmann.inc.dist.php');
+            $distCfg = dm_tick_bootstrap_load_array_file($distPath, 'totman.inc.dist.php');
         } catch (Throwable $e) {
             $distError = $e->getMessage();
         }
@@ -162,7 +162,7 @@ try {
     require $libPath;
 } catch (Throwable $e) {
     if ($cmd === 'check') {
-        $fallbackLibPath = $stateDir . '/totmann-lib.php';
+        $fallbackLibPath = $stateDir . '/totman-lib.php';
         if (is_file($fallbackLibPath) && is_readable($fallbackLibPath)) {
             require $fallbackLibPath;
             exit(dm_preflight_check($stateDir, $webUser, $e->getMessage()));
@@ -204,7 +204,7 @@ $sourceMeta = dm_config_source_meta($cfg);
 $defaultedConfigKeys = $sourceMeta['defaulted_config_keys'] ?? [];
 if (!empty($sourceMeta['live_config_loaded']) && is_array($defaultedConfigKeys) && $defaultedConfigKeys !== []) {
     sort($defaultedConfigKeys, SORT_STRING);
-    $message = 'totmann.inc.dist.php supplied missing live config keys: ' . implode(', ', $defaultedConfigKeys);
+    $message = 'totman.inc.dist.php supplied missing live config keys: ' . implode(', ', $defaultedConfigKeys);
     dm_log($cfg, 'Configuration defaults used: ' . implode(', ', $defaultedConfigKeys));
     if (dm_config_has_live_operator_recipient($cfg)) {
         $pendingOperatorAlerts[] = ['type' => 'config_defaults_used', 'message' => $message];

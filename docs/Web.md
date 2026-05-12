@@ -62,7 +62,9 @@ The default config keeps it off. The file refuses setup, sign-in, API access, an
 Use it only when you intentionally want browser-based administration:
 - deploy `totman-ui.php` into an HTTPS webroot
 - set `TOTMAN_UI_SETUP_CODE` server-side before first setup
-- keep `.totman-ui.php`, `.totman-ui-backups/`, `state_dir`, logs, state files, and downloads outside public web access
+- set `TOTMAN_UI_CONFIG_FILE` server-side to a private absolute path, for example `/var/lib/totman/.totman-ui.php`, when the script is publicly reachable
+- keep the generated `.totman-ui.php`, `.totman-ui-backups/`, `state_dir`, logs, state files, and downloads outside public web access
+- if `TOTMAN_UI_CONFIG_FILE` is not set, the generated `.totman-ui.php` is written next to `totman-ui.php`; use that fallback only when direct dotfile access is blocked by the server
 - set `TOTMAN_UI_SECURE_COOKIE=1` if PHP runs behind a TLS-terminating proxy
 
 The Web UI writes the same runtime files that manual operation uses: `totman.inc.php` and the configured recipient file. A save from the UI may change formatting and remove template comments, because it writes a generated, stable PHP-array layout. The content remains runtime-compatible and grouped in the same broad order as the `.dist.php` templates.

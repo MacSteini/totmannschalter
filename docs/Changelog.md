@@ -8,12 +8,13 @@ This project uses semantic versioning:
 - MINOR: new features (backwards compatible)
 - PATCH: bugfixes and small improvements (backwards compatible)
 ## v4.0.0
-- BREAKING: Standardised the visible product name, shipped filenames, runtime defaults, service examples, website text, documentation, and internal maintainer paths on `totman`.
+- BREAKING: Standardised the visible product name, shipped filenames, runtime defaults, service examples, website text, and documentation on `totman`.
 - BREAKING: Removed runtime support for legacy product-prefixed filenames and compatibility identifiers.
 - Switched the single supported state-directory identifier to `TOTMAN_STATE_DIR`.
 - Set the recommended state directory to `/var/lib/totman`.
 - Kept the GitHub repository URL unchanged until the separately planned repository rename.
 - Added the optional `totman-ui.php` administration add-on, disabled by default through `web_ui_enabled`.
+- Added support for storing the generated Web UI config at a private absolute path through `TOTMAN_UI_CONFIG_FILE`.
 - Updated Web UI saves to write stable, grouped, runtime-compatible PHP config files while documenting that template comments are not preserved.
 ## v3.1.1
 - Changed ACK handling so `GET` opens a localised acknowledgement page and only the submitted `POST` marks receipt and stops ACK reminders.
@@ -61,7 +62,6 @@ This project uses semantic versioning:
 - Added mandatory operator warning mails to `to_self` for operator-facing config/runtime problems that would otherwise only show up in the log.
 - Added `operator_alert_interval_hours` as the public throttle key for those warning mails; only whole hours `1..24` are accepted and invalid/missing values now fall back automatically to `2`.
 - Tightened mailbox-header serialisation for single-recipient `To:` headers by always quoting ASCII display names and keeping non-ASCII names RFC2047-encoded.
-- Verification: rerun the normal deployment checks after installing this release because both runtime behaviour and public documentation changed.
 ## v2.0.0
 - BREAKING: recipient-specific escalation configuration now lives in exactly one file: `totman-recipients.php`.
 - BREAKING: removed the split model of `to_recipients` in `totman.inc.php` plus separate `totman-messages.php` and `totman-downloads.php`.

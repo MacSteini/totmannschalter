@@ -138,10 +138,12 @@ To enable the add-on:
 1. Set `web_ui_enabled` to `true` in the effective main config.
 2. Deploy `totman-ui.php` into the HTTPS webroot.
 3. Set `TOTMAN_UI_SETUP_CODE` server-side before first setup.
-4. Open `totman-ui.php`, enter the setup code, create the UI account, and point it at the state directory.
+4. Set `TOTMAN_UI_CONFIG_FILE` server-side to an absolute private path, for example `/var/lib/totman/.totman-ui.php`, when `totman-ui.php` is reachable from the public webroot.
+5. Open `totman-ui.php`, enter the setup code, create the UI account, and point it at the state directory.
 
 Security requirements:
-- keep `state_dir`, `.totman-ui.php`, `.totman-ui-backups/`, logs, state files, and download files outside public web access
+- keep `state_dir`, the generated `.totman-ui.php`, `.totman-ui-backups/`, logs, state files, and download files outside public web access
+- if `TOTMAN_UI_CONFIG_FILE` is not set, the generated `.totman-ui.php` is written next to `totman-ui.php`; that fallback requires server-side blocking of direct dotfile access
 - use HTTPS; if a proxy terminates TLS before PHP, set `TOTMAN_UI_SECURE_COOKIE=1`
 - remove `totman-ui.php` from the webroot or set `web_ui_enabled` back to `false` when you no longer want browser administration
 

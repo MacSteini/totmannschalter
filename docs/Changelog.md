@@ -13,6 +13,8 @@ This project uses semantic versioning:
 - Switched the single supported state-directory identifier to `TOTMAN_STATE_DIR`.
 - Set the recommended state directory to `/var/lib/totman`.
 - Kept the GitHub repository URL unchanged until the separately planned repository rename.
+- Added the optional `totman-ui.php` administration add-on, disabled by default through `web_ui_enabled`.
+- Updated Web UI saves to write stable, grouped, runtime-compatible PHP config files while documenting that template comments are not preserved.
 ## v3.1.1
 - Changed ACK handling so `GET` opens a localised acknowledgement page and only the submitted `POST` marks receipt and stops ACK reminders.
 - Hardened download links with a signed relative-file binding so old links fail closed if an alias is later changed to another file.

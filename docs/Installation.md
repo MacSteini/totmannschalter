@@ -40,6 +40,7 @@ Private download directory (outside webroot):
 In your webroot:
 - your configured `web_file` (template default: `totman.php`)
 - optional stylesheet for web pages: your configured `web_css_file` (template default: `totman.css`)
+- optional administration add-on: `totman-ui.php`
 ## Before you start: identify the real web identity
 **This is the most important step**: you must find the actual user and group that execute your configured web endpoint file (`web_file`). On Debian/Ubuntu with PHP-FPM, the pool configuration is the source of truth.
 
@@ -101,6 +102,10 @@ sudo cp totman.php /var/www/html/totman/totman.php
 ```sh
 sudo cp totman.css /var/www/html/totman/totman.css
 ```
+- Optional: copy the Web UI add-on into the same protected HTTPS webroot folder only if you intend to use browser-based administration:
+```sh
+sudo cp totman-ui.php /var/www/html/totman/totman-ui.php
+```
 The recommended operational pattern is to edit `totman.inc.php` and `totman-recipients.php`. You may instead keep real values directly in `totman.inc.dist.php` and/or `totman-recipients.dist.php`, but then you must merge future release changes consciously before replacing those files. In this `.dist.php`-only mode there is no separate default layer left for automatic drift detection, so `php totman-tick.php check` after every update is mandatory.
 
 Only runtime filenames referenced from the effective config are configurable. If you changed `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` from the template names, adjust only those copy/rename commands accordingly.
@@ -112,6 +117,7 @@ Only runtime filenames referenced from the effective config are configurable. If
 - `download_valid_days` sets one global validity period for all download links in the same escalation event
 - `operator_alert_interval_hours` throttles mandatory operator warning mails to `to_self`
 - Optional web stylesheet filename in webroot: `web_css_file` (empty disables link)
+- Optional Web UI add-on switch: `web_ui_enabled` (default: `false`)
 - `base_url` must point to your real public HTTPS base URL (without endpoint filename); the runtime appends `web_file` automatically
 - set `log_mode` explicitly: `none`, `syslog`, `file`, `both` (recommended: `both`)
 - `log_file_name` keeps the default file-log name unless you intentionally want a different filename
@@ -124,6 +130,25 @@ Only runtime filenames referenced from the effective config are configurable. If
 - `operator_alert_interval_hours` accepts only whole hours `1..24`; if you remove it or set an invalid value, totman automatically falls back to `2`
 - If you plan to read file logs directly, also read [Log guide](Logs.md "Log guide") so you know how to interpret file-log lines, journal bootstrap failures, and operator warning mails together
 - Important: operator warning mails are built in on purpose, go to `to_self`, and cannot be disabled
+
+## Optional Web UI add-on
+`totman-ui.php` provides an optional single-file administration interface for the same runtime configuration files. The default config keeps it off because it adds an authenticated browser-facing administration surface.
+
+To enable the add-on:
+1. Set `web_ui_enabled` to `true` in the effective main config.
+2. Deploy `totman-ui.php` into the HTTPS webroot.
+3. Set `TOTMAN_UI_SETUP_CODE` server-side before first setup.
+4. Open `totman-ui.php`, enter the setup code, create the UI account, and point it at the state directory.
+
+Security requirements:
+- keep `state_dir`, `.totman-ui.php`, `.totman-ui-backups/`, logs, state files, and download files outside public web access
+- use HTTPS; if a proxy terminates TLS before PHP, set `TOTMAN_UI_SECURE_COOKIE=1`
+- remove `totman-ui.php` from the webroot or set `web_ui_enabled` back to `false` when you no longer want browser administration
+
+The runtime does not depend on the Web UI. Manual editing of `totman.inc.php` and the configured recipient file remains valid at any time.
+
+When the Web UI saves configuration, it writes stable generated PHP arrays in the same broad order as the `.dist.php` templates. The values remain runtime-compatible, but the detailed comments and visual layout from the shipped templates are not preserved.
+
 ## Update the configured recipient file
 
 The configured recipient file contains exactly 3 flat top-level areas:

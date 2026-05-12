@@ -11,7 +11,7 @@ A fully self-hosted “dead man’s switch” for email: it sends periodic confi
 
 **[Download the latest version from here.](https://github.com/MacSteini/totmannschalter/releases/latest)**
 
-The release archive is intentionally slim. It contains `README.md`, `LICENCE`, the runtime PHP/CSS files, the `.dist.php` templates, and the shipped `l18n/` locale files. It does not contain the full `docs/`, `site/`, or `img/` directories. The quick start below is the offline starting point; the linked GitHub documentation and project website provide the full operator guide when you have network access.
+The release archive is intentionally slim. It contains `README.md`, `LICENCE`, the runtime PHP/CSS files, the optional `totman-ui.php` add-on, the `.dist.php` templates, and the shipped `l18n/` locale files. It does not contain the full `docs/`, `site/`, or `img/` directories. The quick start below is the offline starting point; the linked GitHub documentation and project website provide the full operator guide when you have network access.
 
 ## What this does
 - You regularly receive an email containing a **confirmation link**.
@@ -30,6 +30,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 - Web timestamps stay in your configured `mail_timezone`, even when the browser language changes.
 - Runtime web pages load the product logo from the project’s GitHub-hosted image URL by default; the pages remain functional if that decorative image is blocked.
 - Rate limiting runs in **fail-open** mode to reduce abuse without breaking functionality.
+- `totman-ui.php` provides an optional browser-based administration add-on. The default config keeps it off; enable it explicitly with `web_ui_enabled`.
 
 ## Requirements
 - Linux host with `systemd` (timer + oneshot service).
@@ -66,6 +67,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 	- `operator_alert_interval_hours` (mandatory operator-warning throttle in whole hours; allowed: `1..24`; missing/invalid values fall back automatically to `2`)
 	- Runtime names: `lib_file`, `l18n_dir_name`, `lock_file`, `log_file_name`, `recipients_file`, `state_file`, `web_file` (filenames/directories only; no paths)
 	- Optional web stylesheet filename: `web_css_file` (same webroot folder as `web_file`; empty disables link)
+	- Optional Web UI add-on switch: `web_ui_enabled` (default: `false`)
 	- Logging target via `log_mode`: `none`, `syslog`, `file`, `both` (recommended: `both`)
 	- Operator warnings are separate mails to `to_self`; they are built in on purpose and cannot be disabled
 	- Use the test preset from [Timing](https://github.com/MacSteini/totmannschalter/blob/main/docs/Timing.md "Timing model and presets")
@@ -81,6 +83,8 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 	- If two recipients should receive the same file, repeat the same file alias in both recipient rows
 	- Public web pages use the browser language from `Accept-Language`; if only a base language such as `de` is sent, the runtime picks the closest supported locale such as `de-DE`
 	- If no supported browser language matches, the web endpoint falls back to `en-US`
+	- To use the optional Web UI, set `web_ui_enabled` to `true`, deploy `totman-ui.php` into the webroot, set `TOTMAN_UI_SETUP_CODE` server-side, and run its setup page over HTTPS
+	- When the Web UI saves configuration, it writes stable runtime-compatible PHP arrays in the same broad order as the `.dist.php` templates; detailed template comments are not preserved
 4. Set permissions:
 	```sh
 	sudo chown -R root:<WEB_GROUP> /var/lib/totman

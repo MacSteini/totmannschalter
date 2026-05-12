@@ -147,6 +147,12 @@ return [
 // If true, confirm success page shows "Next check at ..." (helpful for self-testing).
 'show_success_details' => true,
 
+// Optional Web UI administration add-on.
+// Keep disabled unless you intentionally deploy totman-ui.php, protect it with HTTPS,
+// configure TOTMAN_UI_SETUP_CODE server-side, and want browser-based administration.
+// The normal runtime does not need this key to be true.
+'web_ui_enabled' => false,
+
 // --- Rate limiting (web endpoint) ---
 //
 // Per-IP basic rate limit. Fail-open by design:

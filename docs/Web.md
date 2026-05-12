@@ -50,6 +50,25 @@ Important:
 
 - If the stylesheet exists, the endpoint renders styled pages.
 - If it is missing, or `web_css_file` is empty, pages remain functional but unstyled.
+
+## Optional Web UI add-on (`totman-ui.php`)
+`totman-ui.php` provides a separate optional administration interface. The normal runtime never uses it for confirmation, ACK, download delivery, reminders, escalation, or `systemd` ticks.
+
+The default config keeps it off. The file refuses setup, sign-in, API access, and write actions unless the effective main config contains:
+```php
+'web_ui_enabled' => true,
+```
+
+Use it only when you intentionally want browser-based administration:
+- deploy `totman-ui.php` into an HTTPS webroot
+- set `TOTMAN_UI_SETUP_CODE` server-side before first setup
+- keep `.totman-ui.php`, `.totman-ui-backups/`, `state_dir`, logs, state files, and downloads outside public web access
+- set `TOTMAN_UI_SECURE_COOKIE=1` if PHP runs behind a TLS-terminating proxy
+
+The Web UI writes the same runtime files that manual operation uses: `totman.inc.php` and the configured recipient file. A save from the UI may change formatting and remove template comments, because it writes a generated, stable PHP-array layout. The content remains runtime-compatible and grouped in the same broad order as the `.dist.php` templates.
+
+To stop using it, set `web_ui_enabled` back to `false` or remove `totman-ui.php` from the webroot. The normal runtime continues to work from the same config files.
+
 ## Product logo
 Runtime web pages render the product logo from this GitHub-hosted image URL:
 ```text

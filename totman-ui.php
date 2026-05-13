@@ -1094,6 +1094,8 @@ namespace Totman\RuntimeUi\Application;
 
 final class FirstRunDraftStore
 {
+    private const SESSION_KEY = 'totman_ui_first_run_draft';
+
     private FirstRunDraftState $fallbackState;
     private bool $fallbackLoaded;
 
@@ -1114,11 +1116,11 @@ final class FirstRunDraftStore
     public function loadResult(): FirstRunDraftLoadResult
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
-            if (!array_key_exists('totman_refactoring_first_run_draft', $_SESSION)) {
+            if (!array_key_exists(self::SESSION_KEY, $_SESSION)) {
                 return FirstRunDraftLoadResult::missing();
             }
 
-            $values = $_SESSION['totman_refactoring_first_run_draft'];
+            $values = $_SESSION[self::SESSION_KEY];
             if (!is_array($values)) {
                 return FirstRunDraftLoadResult::corrupt('Saved setup draft was unreadable and has been ignored.');
             }
@@ -1134,7 +1136,7 @@ final class FirstRunDraftStore
     public function save(FirstRunDraftState $state): void
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
-            $_SESSION['totman_refactoring_first_run_draft'] = $this->toStoredValues($state);
+            $_SESSION[self::SESSION_KEY] = $this->toStoredValues($state);
             return;
         }
 
@@ -1145,7 +1147,7 @@ final class FirstRunDraftStore
     public function clear(): void
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
-            unset($_SESSION['totman_refactoring_first_run_draft']);
+            unset($_SESSION[self::SESSION_KEY]);
             return;
         }
 
@@ -7691,6 +7693,11 @@ namespace Totman\RuntimeUi\Security;
 
 final class AdminSessionStore
 {
+    private const KEY_AUTHENTICATED = 'totman_ui_admin_authenticated';
+    private const KEY_USERNAME = 'totman_ui_admin_username';
+    private const KEY_AUTHENTICATED_AT = 'totman_ui_admin_authenticated_at';
+    private const KEY_REAUTHENTICATED_AT = 'totman_ui_admin_reauthenticated_at';
+
     public function __construct(private ?AdminSessionState $fallbackState = null)
     {
     }
@@ -7704,10 +7711,10 @@ final class AdminSessionStore
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
             $keys = [
-                'totman_refactoring_admin_authenticated',
-                'totman_refactoring_admin_username',
-                'totman_refactoring_admin_authenticated_at',
-                'totman_refactoring_admin_reauthenticated_at',
+                self::KEY_AUTHENTICATED,
+                self::KEY_USERNAME,
+                self::KEY_AUTHENTICATED_AT,
+                self::KEY_REAUTHENTICATED_AT,
             ];
             $hasAny = false;
             foreach ($keys as $key) {
@@ -7718,10 +7725,10 @@ final class AdminSessionStore
                 return AdminSessionLoadResult::missing();
             }
 
-            $authenticated = $_SESSION['totman_refactoring_admin_authenticated'] ?? false;
-            $username = $_SESSION['totman_refactoring_admin_username'] ?? '';
-            $authenticatedAt = $_SESSION['totman_refactoring_admin_authenticated_at'] ?? 0;
-            $reauthenticatedAt = $_SESSION['totman_refactoring_admin_reauthenticated_at'] ?? 0;
+            $authenticated = $_SESSION[self::KEY_AUTHENTICATED] ?? false;
+            $username = $_SESSION[self::KEY_USERNAME] ?? '';
+            $authenticatedAt = $_SESSION[self::KEY_AUTHENTICATED_AT] ?? 0;
+            $reauthenticatedAt = $_SESSION[self::KEY_REAUTHENTICATED_AT] ?? 0;
             if (!is_bool($authenticated) || !is_string($username) || !is_int($authenticatedAt) || !is_int($reauthenticatedAt)) {
                 return AdminSessionLoadResult::corrupt('Admin session state was unreadable and has been reset.');
             }
@@ -7740,10 +7747,10 @@ final class AdminSessionStore
     public function save(AdminSessionState $state): void
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
-            $_SESSION['totman_refactoring_admin_authenticated'] = $state->authenticated();
-            $_SESSION['totman_refactoring_admin_username'] = $state->username();
-            $_SESSION['totman_refactoring_admin_authenticated_at'] = $state->authenticatedAt();
-            $_SESSION['totman_refactoring_admin_reauthenticated_at'] = $state->reauthenticatedAt();
+            $_SESSION[self::KEY_AUTHENTICATED] = $state->authenticated();
+            $_SESSION[self::KEY_USERNAME] = $state->username();
+            $_SESSION[self::KEY_AUTHENTICATED_AT] = $state->authenticatedAt();
+            $_SESSION[self::KEY_REAUTHENTICATED_AT] = $state->reauthenticatedAt();
             return;
         }
 
@@ -7854,7 +7861,7 @@ final class PrototypeRateLimitPolicy
         }
 
         [$bucket, $message] = $this->bucket($request);
-        $key = 'prototype-' . $bucket . ':' . hash('sha256', $scope);
+        $key = 'totman-ui-' . $bucket . ':' . hash('sha256', $scope);
         if (!$this->rateLimiter->allow($key, $this->limit, $this->windowSeconds, $now)) {
             return SetupAccessResult::denied('rate_limited', $message);
         }
@@ -8158,6 +8165,9 @@ namespace Totman\RuntimeUi\Security;
 
 final class SetupSessionStore
 {
+    private const KEY_SETUP_VERIFIED = 'totman_ui_setup_verified';
+    private const KEY_CSRF_TOKEN = 'totman_ui_csrf_token';
+
     public function __construct(private ?SetupSessionState $fallbackState = null)
     {
     }
@@ -8170,14 +8180,14 @@ final class SetupSessionStore
     public function loadResult(): SetupSessionLoadResult
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
-            $hasVerified = array_key_exists('totman_refactoring_setup_verified', $_SESSION);
-            $hasCsrf = array_key_exists('totman_refactoring_csrf_token', $_SESSION);
+            $hasVerified = array_key_exists(self::KEY_SETUP_VERIFIED, $_SESSION);
+            $hasCsrf = array_key_exists(self::KEY_CSRF_TOKEN, $_SESSION);
             if (!$hasVerified && !$hasCsrf) {
                 return SetupSessionLoadResult::missing();
             }
 
-            $verified = $_SESSION['totman_refactoring_setup_verified'] ?? false;
-            $csrf = $_SESSION['totman_refactoring_csrf_token'] ?? '';
+            $verified = $_SESSION[self::KEY_SETUP_VERIFIED] ?? false;
+            $csrf = $_SESSION[self::KEY_CSRF_TOKEN] ?? '';
             if (!is_bool($verified) || !is_string($csrf)) {
                 return SetupSessionLoadResult::corrupt('Setup session state was unreadable and has been reset.');
             }
@@ -8196,8 +8206,8 @@ final class SetupSessionStore
     public function save(SetupSessionState $state): void
     {
         if (session_status() === PHP_SESSION_ACTIVE) {
-            $_SESSION['totman_refactoring_setup_verified'] = $state->setupVerified();
-            $_SESSION['totman_refactoring_csrf_token'] = $state->csrfToken();
+            $_SESSION[self::KEY_SETUP_VERIFIED] = $state->setupVerified();
+            $_SESSION[self::KEY_CSRF_TOKEN] = $state->csrfToken();
             return;
         }
 
@@ -8627,7 +8637,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'ea2f447',
+  'source_revision' => '3b474a4',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

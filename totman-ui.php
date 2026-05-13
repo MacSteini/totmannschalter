@@ -6681,6 +6681,8 @@ body.mode-product{margin:0;min-height:100dvh;background:radial-gradient(1200px 8
 .mode-product dt{font-weight:700;color:var(--ui-text)}
 .mode-product dd{margin:0;color:var(--ui-muted)}
 .mode-product label{font-weight:650}
+.mode-product form label{display:grid;gap:.35rem;max-width:44rem;margin:.55rem 0}
+.mode-product form label:has(input[type=checkbox]){display:inline-flex;align-items:center;gap:.45rem}
 .mode-product input,.mode-product textarea{width:100%;max-width:44rem;border:1px solid var(--ui-border);border-radius:10px;padding:.65rem .75rem;font:inherit;background:#fff;color:var(--ui-text)}
 .mode-product textarea{min-height:7rem}
 .mode-product input[type=checkbox]{width:auto}
@@ -8637,7 +8639,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '29aab06',
+  'source_revision' => '35a330e',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

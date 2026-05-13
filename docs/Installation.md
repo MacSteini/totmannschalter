@@ -132,24 +132,26 @@ Only runtime filenames referenced from the effective config are configurable. If
 - Important: operator warning mails are built in on purpose, go to `to_self`, and cannot be disabled
 
 ## Optional Web UI add-on
-`totman-ui.php` provides an optional single-file administration interface for the same runtime configuration files. The default config keeps it off because it adds an authenticated browser-facing administration surface.
+`totman-ui.php` provides an optional single-file administration interface for the same runtime configuration files. The runtime does not depend on it: manual editing of `totman.inc.php` and the configured recipient file remains valid at any time.
 
-To enable the add-on:
-1. Set `web_ui_enabled` to `true` in the effective main config.
-2. Deploy `totman-ui.php` into the HTTPS webroot.
+To enable the add-on for first-run setup:
+1. Deploy `totman-ui.php` into the HTTPS webroot.
+2. Ensure the UI resolves the same private state directory as the runtime, preferably with `TOTMAN_STATE_DIR=/var/lib/totman`.
 3. Set `TOTMAN_UI_SETUP_CODE` server-side before first setup.
-4. Set `TOTMAN_UI_CONFIG_FILE` server-side to an absolute private path, for example `/var/lib/totman/.totman-ui.php`, when `totman-ui.php` is reachable from the public webroot.
-5. Open `totman-ui.php`, enter the setup code, create the UI account, and point it at the state directory.
+4. Open `totman-ui.php`, enter the setup code, create the UI account, review the imported template/live values, and write the runtime files explicitly.
+5. Keep `web_ui_enabled` set to `true` if you want browser administration after setup. Set it to `false` to keep the runtime manual-only after the first-run files are written.
 
 Security requirements:
 - keep `state_dir`, the generated `.totman-ui.php`, `.totman-ui-backups/`, logs, state files, and download files outside public web access
-- if `TOTMAN_UI_CONFIG_FILE` is not set, the generated `.totman-ui.php` is written next to `totman-ui.php`; that fallback requires server-side blocking of direct dotfile access
-- use HTTPS; if a proxy terminates TLS before PHP, set `TOTMAN_UI_SECURE_COOKIE=1`
+- the private `.totman-ui.php` file is written inside the resolved state directory, stores only UI admin metadata such as password hashes, and must not be copied into release archives
+- use HTTPS; if a proxy terminates TLS before PHP, configure the PHP runtime so secure cookies are still enforced
 - remove `totman-ui.php` from the webroot or set `web_ui_enabled` back to `false` when you no longer want browser administration
 
-The runtime does not depend on the Web UI. Manual editing of `totman.inc.php` and the configured recipient file remains valid at any time.
+The Web UI can import existing live config, import `.dist.php` templates, guide a fresh first-run setup, create the private admin state, and show preflight before writing runtime files. It uses CSRF protection, session-based admin login, rate limits, and recent reauthentication for maintenance actions.
 
-When the Web UI saves configuration, it writes stable generated PHP arrays in the same broad order as the `.dist.php` templates. The values remain runtime-compatible, but the detailed comments and visual layout from the shipped templates are not preserved.
+Web UI saves are deliberate. Draft changes stay in UI/session state; runtime files are written only by explicit runtime-save or maintenance commands. When the Web UI saves configuration, it writes stable generated PHP arrays in the same broad order as the `.dist.php` templates. The values remain runtime-compatible, but the detailed comments and visual layout from the shipped templates are not preserved.
+
+The maintenance area can rotate the HMAC secret, reset runtime state, clear a safe configured log file, and delete configured file aliases. These actions require admin access, CSRF protection, recent reauthentication, rate-limit allowance, and explicit confirmation. They do not replace the normal `totman-tick.php check` preflight after operational changes.
 
 ## Update the configured recipient file
 

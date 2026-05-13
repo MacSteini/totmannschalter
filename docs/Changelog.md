@@ -13,9 +13,11 @@ This project uses semantic versioning:
 - Switched the single supported state-directory identifier to `TOTMAN_STATE_DIR`.
 - Set the recommended state directory to `/var/lib/totman`.
 - Kept the GitHub repository URL unchanged until the separately planned repository rename.
-- Added the optional `totman-ui.php` administration add-on, disabled by default through `web_ui_enabled`.
-- Added support for storing the generated Web UI config at a private absolute path through `TOTMAN_UI_CONFIG_FILE`.
+- Added the optional `totman-ui.php` administration add-on with browser-guided first-run setup, admin login, CSRF/session protection, rate limits, and reauthentication for maintenance actions.
+- Kept post-setup browser administration disabled by default through `web_ui_enabled`; manual runtime configuration remains fully supported.
+- Added private UI state in `.totman-ui.php` under the resolved state directory, separate from runtime confirmation, ACK, download, mail, and tick processing.
 - Updated Web UI saves to write stable, grouped, runtime-compatible PHP config files while documenting that template comments are not preserved.
+- Added Web UI maintenance actions for HMAC rotation, runtime-state reset, safe log clear, and file-alias deletion behind admin, CSRF, reauthentication, rate-limit, and explicit-confirmation gates.
 ## v3.1.1
 - Changed ACK handling so `GET` opens a localised acknowledgement page and only the submitted `POST` marks receipt and stops ACK reminders.
 - Hardened download links with a signed relative-file binding so old links fail closed if an alias is later changed to another file.

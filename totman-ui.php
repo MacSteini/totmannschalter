@@ -6741,7 +6741,7 @@ body.mode-product{margin:0;min-height:100dvh;background:radial-gradient(1200px 8
             return '<p role="status">' . $this->e($this->text->format('admin.signed_in_as', 'username', $adminAuth->username())) . '</p>
 <form method="post">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-<label>' . $this->e($this->text->get('admin.reenter_password')) . ' <input type="password" name="reauth_password"></label>
+<label>' . $this->e($this->text->get('admin.reenter_password')) . ' <input type="password" name="reauth_password" autocomplete="current-password"></label>
 <button type="submit" name="action" value="reauth">' . $this->e($this->text->get('admin.reauthenticate')) . '</button>
 <button type="submit" name="action" value="logout">' . $this->e($this->text->get('admin.sign_out')) . '</button>
 </form>';
@@ -6750,8 +6750,8 @@ body.mode-product{margin:0;min-height:100dvh;background:radial-gradient(1200px 8
         if ($adminAuth->showLogin()) {
             return '<form method="post">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-<label>' . $this->e($this->text->get('admin.username')) . ' <input name="login_username"></label><br>
-<label>' . $this->e($this->text->get('admin.password')) . ' <input type="password" name="login_password"></label><br>
+<label>' . $this->e($this->text->get('admin.username')) . ' <input name="login_username" autocomplete="username"></label><br>
+<label>' . $this->e($this->text->get('admin.password')) . ' <input type="password" name="login_password" autocomplete="current-password"></label><br>
 <button type="submit" name="action" value="login">' . $this->e($this->text->get('admin.sign_in')) . '</button>
 </form>';
         }
@@ -6759,9 +6759,9 @@ body.mode-product{margin:0;min-height:100dvh;background:radial-gradient(1200px 8
         return '<form method="post">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
 <label>' . $this->e($this->text->get('admin.setup_code')) . ' <input name="setup_code"></label><br>
-<label>' . $this->e($this->text->get('admin.create_username')) . ' <input name="admin_username"></label><br>
-<label>' . $this->e($this->text->get('admin.create_password')) . ' <input type="password" name="admin_password"></label><br>
-<label>' . $this->e($this->text->get('admin.repeat_password')) . ' <input type="password" name="admin_password_confirm"></label><br>
+<label>' . $this->e($this->text->get('admin.create_username')) . ' <input name="admin_username" autocomplete="username"></label><br>
+<label>' . $this->e($this->text->get('admin.create_password')) . ' <input type="password" name="admin_password" autocomplete="new-password"></label><br>
+<label>' . $this->e($this->text->get('admin.repeat_password')) . ' <input type="password" name="admin_password_confirm" autocomplete="new-password"></label><br>
 <button type="submit" name="action" value="create_admin">' . $this->e($this->text->get('admin.create_access')) . '</button>
 </form>';
     }
@@ -8637,7 +8637,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '3b474a4',
+  'source_revision' => '29aab06',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

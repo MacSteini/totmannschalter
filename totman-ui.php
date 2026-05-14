@@ -6648,7 +6648,7 @@ final class PrototypeRenderer
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>' . $this->e($this->text->get('page.title')) . '</title>
-' . $this->renderStyle() . '
+' . $this->renderStylesheetLink() . '
 <body class="ui-shell mode-' . $this->e($mode) . '" data-runtime-ui-mode="' . $this->e($mode) . '" data-surface="' . $this->e($mode) . '">
 <main class="ui-main">
 ' . $content . '
@@ -6657,14 +6657,13 @@ final class PrototypeRenderer
 </html>';
     }
 
-    private function renderStyle(): string
+    public function stylesheet(): string
     {
         if (!$this->text->productMode()) {
             return '';
         }
 
-        return '<style>
-:root{color-scheme:light;--ui-bg:#f3f5f9;--ui-surface:#fff;--ui-text:#111827;--ui-muted:#4b5563;--ui-border:#d1d5db;--ui-accent:#0f766e;--ui-accent-hover:#115e59;--ui-danger:#b91c1c;--ui-warn:#92400e;--ui-ok:#047857}
+        return ':root{color-scheme:light;--ui-bg:#f3f5f9;--ui-surface:#fff;--ui-text:#111827;--ui-muted:#4b5563;--ui-border:#d1d5db;--ui-accent:#0f766e;--ui-accent-hover:#115e59;--ui-danger:#b91c1c;--ui-warn:#92400e;--ui-ok:#047857}
 *{box-sizing:border-box}
 body.mode-product{margin:0;min-height:100dvh;background:radial-gradient(1200px 800px at 15% -10%,#e8f3ff 0%,transparent 55%),radial-gradient(900px 700px at 100% 0%,#eef7f2 0%,transparent 50%),var(--ui-bg);font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Helvetica Neue",Arial,sans-serif;color:var(--ui-text);line-height:1.45}
 .mode-product .ui-main{width:min(1120px,100%);margin:0 auto;padding:clamp(16px,3vw,40px)}
@@ -6695,8 +6694,24 @@ body.mode-product{margin:0;min-height:100dvh;background:radial-gradient(1200px 8
 .mode-product .ui-status{border:1px solid #bbf7d0;background:#f0fdf4;color:var(--ui-ok);border-radius:12px;padding:.8rem 1rem}
 .mode-product pre{max-height:22rem;overflow:auto;background:#111827;color:#f9fafb;border-radius:12px;padding:1rem}
 .mode-product code{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;background:#f3f4f6;border:1px solid #e5e7eb;border-radius:8px;padding:.12em .42em}
-@media (max-width:640px){.mode-product .ui-main{padding:12px}.mode-product .ui-panel{border-radius:12px;padding:16px}.mode-product .ui-summary{grid-template-columns:1fr}.mode-product button{width:100%}}
-</style>';
+@media (max-width:640px){.mode-product .ui-main{padding:12px}.mode-product .ui-panel{border-radius:12px;padding:16px}.mode-product .ui-summary{grid-template-columns:1fr}.mode-product button{width:100%}}' . "\n";
+    }
+
+    private function renderStylesheetLink(): string
+    {
+        if (!$this->text->productMode()) {
+            return '';
+        }
+
+        return '<link rel="stylesheet" href="' . $this->e($this->stylesheetUrl()) . '">';
+    }
+
+    private function stylesheetUrl(): string
+    {
+        $scriptName = basename((string)($_SERVER['SCRIPT_NAME'] ?? 'totman-ui.php')) ?: 'totman-ui.php';
+        $version = substr(hash('sha256', $this->stylesheet()), 0, 12);
+
+        return $scriptName . '?totman_ui_asset=css&v=' . $version;
     }
 
     private function renderHeader(): string
@@ -8625,8 +8640,11 @@ final class FirstRunStepCatalog
 namespace Totman\RuntimeUi\Bundle;
 
 use Totman\RuntimeUi\Application\PrototypeApplicationFactory;
+use Totman\RuntimeUi\Application\RuntimeUiTextCatalog;
 use Totman\RuntimeUi\Http\ProductRuntimeContextAdapter;
 use Totman\RuntimeUi\Http\PrototypeEnvironmentFactory;
+
+use Totman\RuntimeUi\Http\PrototypeRenderer;
 
 
 final class BundleManifest
@@ -8640,7 +8658,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '4d93cb8',
+  'source_revision' => 'fa806cd',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',
@@ -8765,9 +8783,17 @@ final class PrototypeBundle
 {
     public static function run(): void
     {
+        $runtimeUiMode ='product';
+
+        if (($_GET['totman_ui_asset'] ?? '') === 'css') {
+            self::sendSecurityHeaders();
+            self::serveStylesheet($runtimeUiMode);
+            return;
+        }
+
+        self::sendSecurityHeaders();
         self::startSession();
 
-        $runtimeUiMode ='product';
         $env =[
             'TOTMAN_UI_DEPLOYMENT_CONTEXT' => getenv('TOTMAN_UI_DEPLOYMENT_CONTEXT') ?: '',
             'TOTMAN_STATE_DIR' => getenv('TOTMAN_STATE_DIR') ?: '',
@@ -8781,6 +8807,22 @@ final class PrototypeBundle
 
         $controller = (new PrototypeApplicationFactory(expectedSetupCode: $environment->expectedSetupCode(), runtimeUiMode: $runtimeUiMode))->controller();
         echo $controller->handle($environment->stateDir(), $environment->context(), $environment->method(), $environment->post());
+    }
+
+    private static function serveStylesheet(string $runtimeUiMode): void
+    {
+        header('Content-Type: text/css; charset=UTF-8');
+        header('Cache-Control: no-store, max-age=0');
+        header('X-Content-Type-Options: nosniff');
+        echo (new PrototypeRenderer(text: new RuntimeUiTextCatalog($runtimeUiMode)))->stylesheet();
+    }
+
+    private static function sendSecurityHeaders(): void
+    {
+        header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+        header('X-Frame-Options: DENY');
+        header('X-Content-Type-Options: nosniff');
+        header('Referrer-Policy: no-referrer');
     }
 
     private static function startSession(): void

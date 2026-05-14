@@ -1029,7 +1029,7 @@ final class FirstRunDraftState
      */
     public function __construct(
         private readonly array $values = [],
-        private readonly string $activeStep = FirstRunStepCatalog::CREATE_OR_IMPORT,
+        private readonly string $activeStep = FirstRunStepCatalog::PUBLIC_URL,
         private readonly int $updatedAt = 0,
         private readonly bool $dirty = false,
     ) {
@@ -1037,7 +1037,7 @@ final class FirstRunDraftState
 
     public static function fromInput(
         FirstRunInput $input,
-        string $activeStep = FirstRunStepCatalog::CREATE_OR_IMPORT,
+        string $activeStep = FirstRunStepCatalog::PUBLIC_URL,
         ?int $updatedAt = null
     ): self {
         $values = [];
@@ -1231,7 +1231,7 @@ final class FirstRunDraftStore
         if (isset($stored['values']) && is_array($stored['values'])) {
             return FirstRunDraftLoadResult::loaded(new FirstRunDraftState(
                 $this->normalise($stored['values']),
-                is_string($stored['active_step'] ?? null) ? $stored['active_step'] : 'create-or-import',
+                is_string($stored['active_step'] ?? null) ? $stored['active_step'] : 'public-url',
                 is_int($stored['updated_at'] ?? null) ? $stored['updated_at'] : 0,
                 ($stored['dirty'] ?? false) === true
             ));
@@ -1967,6 +1967,7 @@ final class FirstRunViewModel
         private readonly array $currentStepFields,
         private readonly array $reviewFields,
         private readonly array $preflightChecks,
+        private readonly bool $runtimeFilesExist,
         private readonly array $errors = [],
     ) {
     }
@@ -2067,6 +2068,11 @@ final class FirstRunViewModel
         return $this->preflightChecks;
     }
 
+    public function runtimeFilesExist(): bool
+    {
+        return $this->runtimeFilesExist;
+    }
+
     /**
      * @return list<string>
      */
@@ -2144,6 +2150,7 @@ final class FirstRunViewModelBuilder
             $this->currentStepFields($fieldModels, $currentStep, $reviewFields),
             $reviewFields,
             $preflight->checks(),
+            $discovered->mainLiveStatus()->loaded() && $discovered->recipientLiveStatus()->loaded(),
             $errors
         );
     }
@@ -2251,8 +2258,8 @@ final class FirstRunViewModelBuilder
         return [
             new FirstRunAction('update_draft', $this->text->get('action.update_draft'), $currentStep !== FirstRunStepCatalog::COMPLETE),
             new FirstRunAction('discard_draft', $this->text->get('action.discard_draft'), $currentStep !== FirstRunStepCatalog::COMPLETE),
-            new FirstRunAction('previous_step', $this->text->get('action.previous_step'), !in_array($currentStep, [FirstRunStepCatalog::DISCOVER, FirstRunStepCatalog::COMPLETE], true)),
             new FirstRunAction('next_step', $this->text->get('action.next_step'), !in_array($currentStep, [FirstRunStepCatalog::SAVE, FirstRunStepCatalog::COMPLETE], true)),
+            new FirstRunAction('previous_step', $this->text->get('action.previous_step'), !in_array($currentStep, [FirstRunStepCatalog::PUBLIC_URL, FirstRunStepCatalog::REPAIR_BLOCKING_PROBLEM, FirstRunStepCatalog::COMPLETE], true)),
             new FirstRunAction('save_runtime', $this->text->get('action.save_runtime'), $currentStep === FirstRunStepCatalog::SAVE, $preflightStatus === 'FAIL'),
         ];
     }
@@ -4536,29 +4543,29 @@ final class RuntimeUiTextCatalog
             'field.required' => 'Required',
             'field.source' => 'Source',
             'field.base_url.label' => 'Public URL',
-            'field.base_url.hint' => 'The HTTPS URL recipients will open from mail links.',
+            'field.base_url.hint' => 'Enter the public HTTPS address where recipients will open totman links, for example https://example.com/totman.',
             'field.mail_from.label' => 'Mail from',
-            'field.mail_from.hint' => 'The sender mailbox used for runtime mail.',
+            'field.mail_from.hint' => 'Enter the sender address that should appear on mail sent by totman.',
             'field.sendmail_path.label' => 'Sendmail path',
-            'field.sendmail_path.hint' => 'The executable command the runtime uses to hand mail to the server.',
+            'field.sendmail_path.hint' => 'Enter the local mail command used by the server. In Docker or managed hosting this may already be fixed.',
             'field.to_self.label' => 'Operator mailbox',
-            'field.to_self.hint' => 'The mailbox that receives operator warnings and setup diagnostics.',
+            'field.to_self.hint' => 'Enter the address that should receive warnings, test results, and setup diagnostics.',
             'field.recipient_name.label' => 'Recipient name',
-            'field.recipient_name.hint' => 'The display name for the first recipient.',
+            'field.recipient_name.hint' => 'Enter the name of the first person who should be contacted if the switch is triggered.',
             'field.recipient_mailbox.label' => 'Recipient mailbox',
-            'field.recipient_mailbox.hint' => 'The mailbox that receives escalation mail.',
+            'field.recipient_mailbox.hint' => 'Enter the email address where this recipient should receive escalation mail.',
             'field.message_subject.label' => 'Message subject',
-            'field.message_subject.hint' => 'The subject line for the first escalation message.',
+            'field.message_subject.hint' => 'Enter the subject line for the first escalation message.',
             'field.message_body.label' => 'Message body',
-            'field.message_body.hint' => 'The body for the first escalation message. Runtime placeholders may be used.',
+            'field.message_body.hint' => 'Write the message body the recipient should receive. You can adjust it later.',
             'field.web_ui_enabled.label' => 'Enable Web UI after setup',
             'field.web_ui_enabled.hint' => 'Controls browser administration after setup. Manual runtime operation remains independent.',
             'field.download_alias.label' => 'Optional download alias',
-            'field.download_alias.hint' => 'A short name for an optional private download. Leave empty if no download is needed.',
+            'field.download_alias.hint' => 'Leave this empty unless the first recipient should receive a private download link.',
             'field.download_path.label' => 'Optional download path',
-            'field.download_path.hint' => 'The relative private file path under the download directory.',
+            'field.download_path.hint' => 'Enter the relative file path inside the download directory, for example documents/letter.pdf.',
             'field.download_single_use.label' => 'Single-use download',
-            'field.download_single_use.hint' => 'Marks the optional download as usable only once.',
+            'field.download_single_use.hint' => 'Use this when the download link should stop working after the first successful access.',
             'action.update_draft' => 'Save draft',
             'action.discard_draft' => 'Discard draft',
             'action.previous_step' => 'Back',
@@ -4590,11 +4597,11 @@ final class RuntimeUiTextCatalog
             'preflight.status_ok' => 'OK',
             'preflight.status_warn' => 'WARN',
             'preflight.status_fail' => 'FAIL',
-            'source.live' => 'Live config',
-            'source.dist' => 'Template default',
-            'source.draft' => 'Draft override',
-            'source.generated' => 'Generated default',
-            'source.missing' => 'Missing',
+            'source.live' => 'Saved configuration',
+            'source.dist' => 'Template value',
+            'source.draft' => 'Entered here',
+            'source.generated' => 'Suggested value',
+            'source.missing' => 'Not set',
         ];
 
         if ($this->runtimeUiMode === RuntimeUiMode::PRODUCT) {
@@ -6933,6 +6940,7 @@ final class PrototypeRenderer
     private function setupRequired(FirstRunViewModel $view, AdminInspectionViewModel $adminInspection): bool
     {
         return !$adminInspection->available()
+            || !$view->runtimeFilesExist()
             || $view->mode() !== 'existing'
             || $view->preflightStatus() === 'FAIL';
     }
@@ -7465,6 +7473,8 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product :focus-visible{outline:3px solid var(--accent);outline-offset:3px}
 .mode-product .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .mode-product .action-bar{display:flex;justify-content:flex-end;align-items:center;gap:.8rem;width:100%;margin-block:var(--space-l);flex-wrap:wrap}
+.mode-product .ui-wizard-form .action-bar .btn-secondary{order:1}
+.mode-product .ui-wizard-form .action-bar .btn-primary{order:2}
 .mode-product .notice{padding:.9rem 1rem;border-radius:var(--radius-s);margin-bottom:var(--space-m);font-weight:800}
 .mode-product .notice.ok{background:rgba(21,128,61,.12);color:var(--success);border:1px solid rgba(21,128,61,.3)}
 .mode-product .notice.error{background:rgba(185,28,28,.12);color:var(--danger);border:1px solid rgba(185,28,28,.3)}
@@ -7999,7 +8009,7 @@ if (notificationModal) {
         $describedBy = $field->describedBy() !== '' ? ' aria-describedby="' . $this->e($field->describedBy()) . '"' : '';
         $required = $field->required() ? $this->text->get('field.required') : '';
         $source = $this->text->get('field.source') . ': ' . $this->sourceLabel($field->source());
-        $meta = '<p class="field-meta">' . $this->e(trim($required . ($required !== '' ? ' · ' : '') . $source)) . '</p>';
+        $meta = $this->text->productMode() ? '' : '<p class="field-meta">' . $this->e(trim($required . ($required !== '' ? ' · ' : '') . $source)) . '</p>';
         $label = $this->labelRow($field->domId(), $field->label());
 
         if ($field->control() === 'textarea') {
@@ -8041,7 +8051,9 @@ if (notificationModal) {
 
         $fields = $view->currentStepFields();
         if ($fields === []) {
-            return '<fieldset class="full-width"><legend>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</legend>' . $this->stepDescription($view, $view->currentStep()) . '<p>' . $this->e($this->text->get('wizard.no_fields')) . '</p></fieldset>';
+            $emptyMessage = $this->text->productMode() ? '' : '<p>' . $this->e($this->text->get('wizard.no_fields')) . '</p>';
+
+            return '<fieldset class="full-width"><legend>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</legend>' . $this->stepDescription($view, $view->currentStep()) . $emptyMessage . '</fieldset>';
         }
 
         $compactSingleFieldStep = $this->compactSingleFieldStep($view);
@@ -9698,7 +9710,7 @@ final class FirstRunOrchestrator
     private function currentStep(string $mode, MainConfigImport $main, RecipientConfigImport $recipients, PreflightResult $preflight): string
     {
         if ($mode === 'fresh') {
-            return FirstRunStepCatalog::CREATE_OR_IMPORT;
+            return FirstRunStepCatalog::PUBLIC_URL;
         }
 
         foreach ($main->fieldsNeedingOperatorInput() as $field) {
@@ -9776,14 +9788,11 @@ final class FirstRunStepCatalog
     {
         if ($mode === 'blocked') {
             return [
-                self::DISCOVER,
                 self::REPAIR_BLOCKING_PROBLEM,
             ];
         }
 
         return [
-            self::DISCOVER,
-            self::CREATE_OR_IMPORT,
             self::PUBLIC_URL,
             self::MAIL_DELIVERY,
             self::OPERATOR_MAILBOX,
@@ -9839,7 +9848,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '791e572',
+  'source_revision' => 'e0d6bbe',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

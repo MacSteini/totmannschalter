@@ -9,8 +9,8 @@ declare(strict_types=1);
 
 namespace Totman\RuntimeUi\Config;
 
-// Classic/non-Docker setup: replace the empty string with a one-time setup code before opening the UI.
-// Docker setup: prefer the TOTMAN_UI_SETUP_CODE environment variable instead of editing this file.
+// Before first setup, replace the empty string with a one-time setup code.
+// Docker and managed hosting may instead set TOTMAN_UI_SETUP_CODE in the server environment.
 const TOTMAN_UI_SETUP_CODE = '';
 
 namespace Totman\RuntimeUi\Application;
@@ -4375,15 +4375,17 @@ final class RuntimeUiTextCatalog
             'footer.documentation' => 'Documentation',
             'setup.initial_title' => 'Initial setup',
             'setup.locked' => 'Setup is locked until a setup code is configured.',
-            'setup.locked_help' => 'Classic setup: open this file and set TOTMAN_UI_SETUP_CODE near the top. Docker or managed hosting can set the same value in the server environment. Reload this page afterwards.',
+            'setup.locked_help' => 'Edit the totman-ui.php file on the server and set TOTMAN_UI_SETUP_CODE near the top, then reload this page. Docker or managed hosting can set the same value in the server environment instead.',
             'setup.code' => 'Setup Code',
-            'setup.code_help' => 'One-time code configured in the server environment.',
+            'setup.code_help' => 'One-time code configured before first setup.',
             'setup.username' => 'Username',
             'setup.username_help' => 'Admin username for this browser UI.',
             'setup.password' => 'Password',
             'setup.password_help' => 'Minimum length: 10 characters.',
             'setup.repeat_password' => 'Repeat Password',
             'setup.repeat_password_help' => 'Password repetition catches typing mistakes.',
+            'password.show' => 'Show password',
+            'password.hide' => 'Hide password',
             'setup.data_directory' => 'Data directory',
             'setup.data_directory_default' => '/var/lib/totman',
             'setup.data_directory_help' => 'Default runtime state directory. Set TOTMAN_STATE_DIR on the server before loading this page if another path is needed.',
@@ -6884,7 +6886,8 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 .mode-product .tagline{margin-top:.25rem;color:var(--text-muted);font-size:clamp(.95rem,.85rem + .35vw,1.12rem);font-weight:800}
 .mode-product .header-actions{display:flex;align-items:center;justify-content:flex-end;gap:.65rem;flex-wrap:wrap;max-width:min(100%,42rem)}
 .mode-product .ui-main-nav{display:flex;flex-wrap:wrap;gap:.35rem;width:max-content;max-width:100%;padding:.4rem;margin:0 0 var(--space-l);background:color-mix(in srgb,var(--bg-surface),var(--bg-main)30%);border:1px solid var(--border);border-radius:999px}
-.mode-product .ui-main-nav .nav-item{border:0;border-radius:999px;background:transparent;color:var(--text-muted);min-height:0;padding:.72rem 1.05rem;font-weight:900}
+.mode-product .ui-main-nav .nav-item{border:0;border-radius:999px;background:transparent;color:var(--text-muted);min-height:0;padding:.72rem 1.05rem;font-weight:900;transition:background-color .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease}
+.mode-product .ui-main-nav .nav-item:hover:not(:disabled):not(.active){background:var(--accent-glow);color:var(--accent);transform:translateY(-1px)}
 .mode-product .ui-main-nav .nav-item.active{background:var(--accent);color:#fff;box-shadow:0 6px 18px var(--accent-glow)}
 .mode-product .ui-main-nav .nav-item:disabled{opacity:.45}
 .mode-product .language-menu{position:relative}
@@ -6894,7 +6897,7 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 .mode-product .language-menu[open] summary{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-glow);background:var(--bg-surface)}
 .mode-product .language-menu[open] summary:after{transform:translateY(-25%) rotate(225deg)}
 .mode-product .language-options{position:absolute;right:0;top:calc(100% + .45rem);z-index:50;min-width:100%;padding:.35rem;border:1px solid var(--border);border-radius:var(--radius-m);background:var(--bg-surface);box-shadow:0 14px 36px rgba(15,23,42,.2);display:grid;gap:.25rem}
-.mode-product .language-options button{min-height:0;border:0;border-radius:8px;background:transparent;color:var(--text-primary);font:inherit;font-weight:800;text-align:left;padding:.6rem .75rem;cursor:pointer;justify-content:flex-start}
+.mode-product .language-options button{min-height:0;border:0;border-radius:8px;background:transparent;color:var(--text-primary);font:inherit;font-weight:800;text-align:left;padding:.6rem .75rem;cursor:pointer;justify-content:flex-start;transition:background-color .18s ease,color .18s ease}
 .mode-product .language-options button:hover,.mode-product .language-options button[aria-current=true]{background:var(--accent-glow);color:var(--accent)}
 .mode-product .theme-toggle{width:46px;height:46px;min-height:46px;padding:0!important;font-size:1.25rem;line-height:1;color:var(--text-primary);font-weight:900}
 .mode-product .theme-icon{display:none;line-height:1}
@@ -6926,7 +6929,7 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .setup-admin-card{margin-bottom:0}
 .mode-product .sub-nav{display:flex;flex-wrap:wrap;gap:1.15rem;padding:0;margin:0 0 var(--space-l);background:transparent;border:0;border-bottom:1px solid var(--border);border-radius:0;box-shadow:none}
 .mode-product .setup-step-list{list-style:none;padding-left:0}
-.mode-product .setup-step-list .sub-nav-item{list-style:none;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;padding:.45rem 0 .65rem;color:var(--text-muted);font-size:.92rem;font-weight:850}
+.mode-product .setup-step-list .sub-nav-item{list-style:none;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;padding:.45rem 0 .65rem;color:var(--text-muted);font-size:.92rem;font-weight:850;transition:color .18s ease,border-color .18s ease}
 .mode-product .setup-step-list .sub-nav-item[aria-current=step]{color:var(--accent);border-bottom-color:var(--accent)}
 .mode-product .setup-step-list .sub-nav-item.is-complete{color:var(--success)}
 .mode-product .setup-step-list .sub-nav-item.is-blocked{color:var(--danger)}
@@ -6947,6 +6950,9 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product form label{display:grid;gap:.45rem;max-width:44rem}
 .mode-product form label:has(input[type=checkbox]){display:inline-flex;align-items:center;gap:.55rem}
 .mode-product input,.mode-product textarea,.mode-product select{width:100%;padding:.85rem 1rem;background:var(--bg-main);border:1.5px solid var(--border);border-radius:var(--radius-s);color:var(--text-primary);font:inherit;font-weight:600}
+.mode-product .password-input-wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.55rem;align-items:stretch}
+.mode-product .password-input-wrap input{min-width:0}
+.mode-product .password-toggle{min-height:0!important;padding:.75rem .9rem!important;white-space:nowrap}
 .mode-product textarea{min-height:8.5rem;resize:vertical}
 .mode-product input[type=checkbox]{width:1.05rem;height:1.05rem;margin:0;accent-color:var(--accent)}
 .mode-product input:focus,.mode-product textarea:focus,.mode-product select:focus{outline:none;border-color:var(--accent);background:var(--bg-surface);box-shadow:0 0 0 4px var(--accent-glow)}
@@ -6990,7 +6996,7 @@ html[data-theme=dark] .mode-product .log-line:nth-child(even){background:rgba(23
 .mode-product .sub-nav li+li{margin-top:0}
 .mode-product .site-footer{border-top:0;margin-top:3rem;padding-block:clamp(1rem,2.4vw,1.5rem) clamp(1.4rem,3vw,2rem)}
 .mode-product .footer-nav{display:flex;flex-wrap:wrap;justify-content:center;gap:.35rem;width:fit-content;max-width:100%;margin-inline:auto;padding:.45rem;background:color-mix(in srgb,var(--bg-surface),var(--bg-main)30%);border:1px solid var(--border);border-radius:999px}
-.mode-product .footer-nav>a{color:var(--text-muted);font-weight:700;text-decoration:none;padding:.38rem .65rem;border-radius:999px}
+.mode-product .footer-nav>a{color:var(--text-muted);font-weight:700;text-decoration:none;padding:.38rem .65rem;border-radius:999px;transition:background-color .18s ease,color .18s ease}
 .mode-product .footer-nav>a:hover,.mode-product .footer-nav>a:focus-visible{background:var(--accent-glow);color:var(--accent)}
 @keyframes toggleSelect{0%{transform:scale(.96)}70%{transform:scale(1.025)}100%{transform:scale(1)}}@media(prefers-reduced-motion:reduce){.mode-product *{animation:none!important;transition:none!important}}
 @media(max-width:900px){.mode-product .setup-layout{grid-template-columns:1fr}}
@@ -7045,6 +7051,19 @@ document.querySelectorAll("[data-ui-lang]").forEach(button => button.addEventLis
   applyLanguageLabel(value);
   button.closest("details")?.removeAttribute("open");
 }));
+document.querySelectorAll("[data-password-toggle]").forEach(button => {
+  const input = document.getElementById(button.dataset.passwordToggle || "");
+  if (!input) return;
+  const showLabel = button.dataset.showLabel || "Show password";
+  const hideLabel = button.dataset.hideLabel || "Hide password";
+  const sync = visible => {
+    input.type = visible ? "text" : "password";
+    button.textContent = visible ? hideLabel : showLabel;
+    button.setAttribute("aria-pressed", visible ? "true" : "false");
+  };
+  sync(input.type === "text");
+  button.addEventListener("click", () => sync(input.type === "password"));
+});
 })();' . "\n";
     }
 
@@ -7155,9 +7174,17 @@ document.querySelectorAll("[data-ui-lang]").forEach(button => button.addEventLis
         $describedBy = $id . '-help';
         $autocompleteAttribute = $autocomplete !== '' ? ' autocomplete="' . $this->e($autocomplete) . '"' : '';
 
+        $input = '<input id="' . $this->e($id) . '" type="' . $this->e($type) . '" name="' . $this->e($name) . '"' . $autocompleteAttribute . ' aria-describedby="' . $this->e($describedBy) . '">';
+        if ($type === 'password') {
+            $input = '<div class="password-input-wrap">'
+                . $input
+                . '<button type="button" class="password-toggle" data-password-toggle="' . $this->e($id) . '" aria-controls="' . $this->e($id) . '" aria-pressed="false" data-show-label="' . $this->e($this->text->get('password.show')) . '" data-hide-label="' . $this->e($this->text->get('password.hide')) . '">' . $this->e($this->text->get('password.show')) . '</button>'
+                . '</div>';
+        }
+
         return '<div class="input-group ui-field">'
             . $this->labelRow($id, $label)
-            . '<input id="' . $this->e($id) . '" type="' . $this->e($type) . '" name="' . $this->e($name) . '"' . $autocompleteAttribute . ' aria-describedby="' . $this->e($describedBy) . '">'
+            . $input
             . $this->helperText($describedBy, $hint)
             . '</div>';
     }
@@ -9150,7 +9177,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '824ad5d',
+  'source_revision' => 'a21da4d',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

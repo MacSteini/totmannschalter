@@ -83,7 +83,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 	- If two recipients should receive the same file, repeat the same file alias in both recipient rows
 	- Public web pages use the browser language from `Accept-Language`; if only a base language such as `de` is sent, the runtime picks the closest supported locale such as `de-DE`
 	- If no supported browser language matches, the web endpoint falls back to `en-US`
-	- To use the optional Web UI, deploy `totman-ui.php` into the webroot, set the setup code near the top of that file for classic hosting or set `TOTMAN_UI_SETUP_CODE` server-side for Docker/managed hosting, and use `web_ui_enabled` to control browser administration after setup
+	- To use the optional Web UI, deploy `totman-ui.php` into the webroot, set the setup code near the top of that file or set `TOTMAN_UI_SETUP_CODE` server-side for Docker/managed hosting, and use `web_ui_enabled` to control browser administration after setup
 	- The Web UI imports existing live/template config, guides first-run values, creates a private `.totman-ui.php` admin file in the state directory, and writes runtime files only from explicit save or maintenance actions
 	- When the Web UI saves configuration, it writes stable runtime-compatible PHP arrays in the same broad order as the `.dist.php` templates; detailed template comments are not preserved
 4. Set permissions:

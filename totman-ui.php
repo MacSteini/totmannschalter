@@ -3685,6 +3685,7 @@ use Totman\RuntimeUi\Security\PrototypeCsrfPolicy;
 use Totman\RuntimeUi\Security\PrototypeRateLimitPolicy;
 use Totman\RuntimeUi\Security\PrototypeSaveIntentPolicy;
 use Totman\RuntimeUi\Security\SetupAccessPolicy;
+use Totman\RuntimeUi\Security\SetupAccessResult;
 use Totman\RuntimeUi\Security\SetupSessionStore;
 
 final class PrototypePageApplicationService
@@ -3747,6 +3748,19 @@ final class PrototypePageApplicationService
                 $csrfToken,
                 $authResult->view(),
                 $this->adminInspection($stateDir, $context, $authResult->view())
+            );
+        }
+
+        if (!$request->isStateChanging() && $adminAuth->showLogin()) {
+            $this->sessionStore->save($session);
+            $this->adminSessionStore->save($adminSession);
+
+            return new PrototypePageResult(
+                $this->setupService->preview($stateDir, $context, $stateNotice, draft: $draft),
+                SetupAccessResult::allow(),
+                $csrfToken,
+                $adminAuth,
+                $adminInspection
             );
         }
 
@@ -9466,7 +9480,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '74c581b',
+  'source_revision' => '3440c08',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

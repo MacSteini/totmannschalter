@@ -4455,7 +4455,6 @@ final class RuntimeUiTextCatalog
             'admin.private_config_blocked' => 'Admin access is unavailable because the private UI config is unreadable or invalid.',
             'admin.disabled' => 'Browser administration is disabled. Set web_ui_enabled to true in the effective runtime configuration, then reload this page.',
             'admin.disabled_summary' => 'Browser administration is currently unavailable.',
-            'admin.signed_in_as' => 'Signed in as {username}.',
             'admin.reenter_password' => 'Re-enter password',
             'admin.sign_in' => 'Sign in',
             'admin.sign_out' => 'Sign out',
@@ -6957,7 +6956,6 @@ final class PrototypeRenderer
 <h2 id="runtime-title">' . $this->e($this->text->get('section.runtime_inspection')) . '</h2>
 <p class="section-intro">' . $this->e($this->text->get('inspection.unavailable_after_signin_intro')) . '</p>
 </div>
-<p class="notice ok" role="status">' . $this->e($this->text->format('admin.signed_in_as', 'username', $adminAuth->username())) . '</p>
 <div class="card runtime-card">' . $this->renderAdminInspection($csrfToken, $adminInspection) . '</div>
 </section>';
     }
@@ -7469,8 +7467,7 @@ if (notificationModal) {
         }
 
         if ($adminAuth->showSignedIn()) {
-            return '<p role="status">' . $this->e($this->text->format('admin.signed_in_as', 'username', $adminAuth->username())) . '</p>
-<form method="post" class="form-grid">
+            return '<form method="post" class="form-grid">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
 ' . $this->renderPlainInputGroup('admin-reauth-password', 'reauth_password', $this->text->get('admin.reenter_password'), $this->text->get('admin.reauth_help'), 'password', 'current-password') . '
 <div class="action-bar full-width"><button type="submit" name="action" value="reauth" class="btn-primary">' . $this->e($this->text->get('admin.reauthenticate')) . '</button><button type="submit" name="action" value="logout" class="btn-secondary">' . $this->e($this->text->get('admin.sign_out')) . '</button></div>
@@ -9480,7 +9477,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '3440c08',
+  'source_revision' => '9990022',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

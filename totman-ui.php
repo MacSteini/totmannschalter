@@ -4425,6 +4425,7 @@ final class RuntimeUiTextCatalog
             'header.toggle_theme' => 'Toggle theme',
             'footer.label' => 'Footer',
             'footer.documentation' => 'Documentation',
+            'modal.close' => 'Close',
             'setup.initial_title' => 'Initial setup',
             'setup.locked' => 'Setup is locked until a setup code is configured.',
             'setup.locked_help' => 'Edit the deployed UI PHP file on the server and set TOTMAN_UI_SETUP_CODE near the top, then reload this page. Docker or managed hosting can set the same value in the server environment instead.',
@@ -4463,6 +4464,7 @@ final class RuntimeUiTextCatalog
             'admin.config_blocked' => 'Admin access is unavailable while configuration discovery is blocked.',
             'admin.private_config_blocked' => 'Admin access is unavailable because the private UI config is unreadable or invalid.',
             'admin.disabled' => 'Browser administration is disabled. Set web_ui_enabled to true in the effective runtime configuration, then reload this page.',
+            'admin.disabled_summary' => 'Browser administration is currently unavailable.',
             'admin.signed_in_as' => 'Signed in as {username}.',
             'admin.reenter_password' => 'Re-enter password',
             'admin.sign_in' => 'Sign in',
@@ -6746,14 +6748,13 @@ final class PrototypeRenderer
         $alert = $errors !== '' ? '<ul class="notice error ui-alert" role="alert">' . $errors . '</ul>' : '';
 
         if ($this->text->productMode()) {
+            $authView = $adminAuth ?? AdminAuthViewModel::accessMissing();
             return $this->renderDocument($this->renderProductPage(
                 $view,
                 $csrfToken,
-                $adminAuth ?? AdminAuthViewModel::accessMissing(),
+                $authView,
                 $adminInspection ?? AdminInspectionViewModel::unavailable($this->text->get('admin.unavailable_after_signin')),
-                $notice,
-                $alert,
-            ));
+            ), $this->productNotificationItems($view, $access, $authView));
         }
 
         $authView = $adminAuth ?? AdminAuthViewModel::accessMissing();
@@ -6803,45 +6804,33 @@ final class PrototypeRenderer
         string $csrfToken,
         AdminAuthViewModel $adminAuth,
         AdminInspectionViewModel $adminInspection,
-        string $notice,
-        string $alert,
     ): string {
         if ($adminAuth->showSetupLocked()) {
             return $this->renderHeader($csrfToken, $adminAuth)
-                . $notice
-                . $alert
                 . $this->renderProductSetupLocked()
                 . $this->renderFooter();
         }
 
         if ($adminAuth->showCreateAdmin()) {
             return $this->renderHeader($csrfToken, $adminAuth)
-                . $notice
-                . $alert
                 . $this->renderProductInitialSetup($csrfToken)
                 . $this->renderFooter();
         }
 
         if ($adminAuth->showAdministrationDisabled()) {
             return $this->renderHeader($csrfToken, $adminAuth)
-                . $notice
-                . $alert
                 . $this->renderProductAdministrationDisabled()
                 . $this->renderFooter();
         }
 
         if ($adminAuth->showLogin()) {
             return $this->renderHeader($csrfToken, $adminAuth)
-                . $notice
-                . $alert
                 . $this->renderProductLogin($csrfToken, $adminAuth)
                 . $this->renderFooter();
         }
 
         $activeSection = $adminInspection->available() && $adminAuth->showSignedIn() ? 'runtime' : 'setup';
         $content = $this->renderHeader($csrfToken, $adminAuth)
-            . $notice
-            . $alert
             . $this->renderMainNavigation($activeSection, $adminInspection->available())
             . ($activeSection === 'runtime'
                 ? $this->renderRuntimeArea($csrfToken, $adminAuth, $adminInspection)
@@ -6874,7 +6863,7 @@ final class PrototypeRenderer
         return '<div class="auth-main view-animate">
 <section class="card auth-card" aria-labelledby="admin-disabled-title">
 <h2 id="admin-disabled-title">' . $this->e($this->text->get('section.admin_access')) . '</h2>
-<p class="notice neutral" role="status">' . $this->e($this->text->get('admin.disabled')) . '</p>
+<p class="helper-text">' . $this->e($this->text->get('admin.disabled_summary')) . '</p>
 </section>
 </div>';
     }
@@ -6894,7 +6883,6 @@ final class PrototypeRenderer
         return '<div class="auth-main view-animate">
 <section class="card auth-card" aria-labelledby="initial-setup-title">
 <h2 id="initial-setup-title">' . $this->e($this->text->get('setup.initial_title')) . '</h2>
-<p class="notice error" role="alert">' . $this->e($this->text->get('setup.locked')) . '</p>
 <p class="helper-text">' . $this->e($this->text->get('setup.locked_help')) . '</p>
 </section>
 </div>';
@@ -6962,7 +6950,10 @@ final class PrototypeRenderer
 </section>';
     }
 
-    private function renderDocument(string $content): string
+    /**
+     * @param list<array{type: string, message: string}> $notifications
+     */
+    private function renderDocument(string $content, array $notifications = []): string
     {
         $mode = $this->text->productMode() ? 'product' : 'prototype';
 
@@ -6978,9 +6969,83 @@ final class PrototypeRenderer
 ' . $content . '
 </main>
 </div>
+' . $this->renderNotificationModal($notifications) . '
 ' . $this->renderScriptLink() . '
 </body>
 </html>';
+    }
+
+    /**
+     * @return list<array{type: string, message: string}>
+     */
+    private function productNotificationItems(
+        FirstRunViewModel $view,
+        ?SetupAccessResult $access,
+        AdminAuthViewModel $adminAuth,
+    ): array {
+        $items = [];
+        if ($view->notice() !== '') {
+            $items[] = ['type' => 'ok', 'message' => $view->notice()];
+        }
+
+        foreach ($view->errors() as $error) {
+            $items[] = ['type' => 'error', 'message' => $error];
+        }
+
+        if ($access !== null && !$access->allowed() && $access->message() !== '') {
+            $message = $access->code() === 'administration_disabled'
+                ? $this->text->get('admin.disabled')
+                : $access->message();
+            $items[] = ['type' => 'error', 'message' => $message];
+        }
+
+        if ($adminAuth->showSetupLocked()) {
+            $items[] = ['type' => 'error', 'message' => $this->text->get('setup.locked')];
+        }
+
+        if ($adminAuth->showAdministrationDisabled()) {
+            $items[] = ['type' => 'error', 'message' => $this->text->get('admin.disabled')];
+        }
+
+        if ($adminAuth->showConfigBlocked()) {
+            $items[] = ['type' => 'error', 'message' => $this->text->get('admin.config_blocked')];
+        }
+
+        if ($adminAuth->showPrivateConfigBlocked()) {
+            $items[] = ['type' => 'error', 'message' => $this->text->get('admin.private_config_blocked')];
+        }
+
+        $unique = [];
+        $deduplicated = [];
+        foreach ($items as $item) {
+            $key = $item['type'] . "\0" . $item['message'];
+            if (isset($unique[$key])) {
+                continue;
+            }
+
+            $unique[$key] = true;
+            $deduplicated[] = $item;
+        }
+
+        return $deduplicated;
+    }
+
+    /**
+     * @param list<array{type: string, message: string}> $notifications
+     */
+    private function renderNotificationModal(array $notifications): string
+    {
+        if (!$this->text->productMode() || $notifications === []) {
+            return '';
+        }
+
+        return '<div id="notification-modal" class="notification-backdrop hidden" role="status" aria-live="polite" aria-atomic="true" data-notifications="' . $this->e(json_encode($notifications, JSON_THROW_ON_ERROR)) . '">
+<div class="notification-dialog" role="document">
+<button type="button" class="notification-close" aria-label="' . $this->e($this->text->get('modal.close')) . '" data-notification-close>&times;</button>
+<div data-notification-items></div>
+<div class="notification-progress" aria-hidden="true"><span data-notification-progress></span></div>
+</div>
+</div>';
     }
 
     public function stylesheet(): string
@@ -7085,6 +7150,18 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .notice.error{background:rgba(185,28,28,.12);color:var(--danger);border:1px solid rgba(185,28,28,.3)}
 .mode-product .notice.neutral{background:rgba(37,99,235,.12);color:var(--warning);border:1px solid rgba(37,99,235,.3)}
 .mode-product .ui-alert{padding-left:2rem}
+.mode-product .notification-backdrop{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:1rem;background:rgba(15,23,42,.32);backdrop-filter:blur(3px)}
+.mode-product .notification-backdrop.hidden{display:none}
+.mode-product .notification-dialog{position:relative;overflow:hidden;width:min(100%,34rem);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-m);box-shadow:0 24px 70px rgba(15,23,42,.34);padding:var(--space-l);color:var(--text-primary)}
+.mode-product .notification-close{position:absolute;top:.65rem;right:.65rem;width:2rem;height:2rem;min-height:2rem;padding:0!important;border:1px solid var(--border)!important;border-radius:999px;background:var(--bg-surface)!important;color:var(--text-muted)!important;font:inherit;font-weight:900;cursor:pointer}
+.mode-product .notification-close:hover,.mode-product .notification-close:focus-visible{border-color:var(--accent)!important;color:var(--accent)!important}
+.mode-product .notification-item{padding:.7rem .9rem;border-radius:var(--radius-s);border:1px solid var(--border);font-weight:750}
+.mode-product .notification-item+.notification-item{margin-top:.55rem}
+.mode-product .notification-item.ok{background:rgba(21,128,61,.12);border-color:rgba(21,128,61,.32);color:var(--success)}
+.mode-product .notification-item.warn{background:rgba(37,99,235,.12);border-color:rgba(37,99,235,.32);color:var(--warning)}
+.mode-product .notification-item.error{background:rgba(185,28,28,.12);border-color:rgba(185,28,28,.32);color:var(--danger)}
+.mode-product .notification-progress{height:3px;margin:1rem -.2rem -.75rem;border-radius:999px;background:rgba(100,116,139,.18);overflow:hidden}
+.mode-product .notification-progress span{display:block;height:100%;width:100%;background:var(--accent);transform-origin:left center;animation:notificationProgress 5.2s linear forwards}
 .mode-product .preflight-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:.75rem;margin-top:var(--space-m)}
 .mode-product .preflight-item{display:flex;flex-direction:column;gap:.25rem;border:1px solid var(--border);border-left-width:5px;border-radius:var(--radius-s);padding:.75rem;background:var(--bg-surface)}
 .mode-product .preflight-item.status-ok{border-left-color:var(--success)}
@@ -7114,7 +7191,7 @@ html[data-theme=dark] .mode-product .log-line:nth-child(even){background:rgba(23
 .mode-product .footer-nav{display:flex;flex-wrap:wrap;justify-content:center;gap:.35rem;width:fit-content;max-width:100%;margin-inline:auto;padding:.45rem;background:color-mix(in srgb,var(--bg-surface),var(--bg-main)30%);border:1px solid var(--border);border-radius:999px}
 .mode-product .footer-nav>a{color:var(--text-muted);font-weight:700;text-decoration:none;padding:.38rem .65rem;border-radius:999px;transition:background-color .18s ease,color .18s ease}
 .mode-product .footer-nav>a:hover,.mode-product .footer-nav>a:focus-visible{background:var(--accent-glow);color:var(--accent)}
-@keyframes toggleSelect{0%{transform:scale(.96)}70%{transform:scale(1.025)}100%{transform:scale(1)}}@media(prefers-reduced-motion:reduce){.mode-product *{animation:none!important;transition:none!important}}
+@keyframes notificationProgress{from{transform:scaleX(1)}to{transform:scaleX(0)}}@keyframes toggleSelect{0%{transform:scale(.96)}70%{transform:scale(1.025)}100%{transform:scale(1)}}@media(prefers-reduced-motion:reduce){.mode-product *{animation:none!important;transition:none!important}}
 @media(max-width:900px){.mode-product .setup-layout{grid-template-columns:1fr}}
 @media(max-width:700px){.mode-product .container{width:min(100% - 1rem,1200px)}.mode-product .header{justify-content:center;text-align:center}.mode-product .brand{justify-content:center;width:100%;flex-direction:column;gap:.65rem}.mode-product .brand-logo{width:clamp(84px,24vw,116px)}.mode-product .brand-text{text-align:center}.mode-product .header-actions{width:100%;max-width:none;justify-content:center}.mode-product .ui-main-nav{width:100%;justify-content:center}.mode-product .card{padding:1rem}.mode-product .sub-nav{gap:.8rem;overflow-x:auto;flex-wrap:nowrap}.mode-product .setup-step-list .sub-nav-item{flex:0 0 auto;white-space:nowrap}.mode-product .action-bar{align-items:stretch}.mode-product .action-bar button{width:100%}.mode-product dl{grid-template-columns:1fr}.mode-product .footer-nav{border-radius:24px;width:100%}}' . "\n";
     }
@@ -7180,6 +7257,49 @@ document.querySelectorAll("[data-password-toggle]").forEach(button => {
   sync(input.type === "text");
   button.addEventListener("click", () => sync(input.type === "password"));
 });
+const notificationModal = document.getElementById("notification-modal");
+let notificationTimer = null;
+let notificationPreviousFocus = null;
+const hideNotificationModal = () => {
+  if (!notificationModal) return;
+  notificationModal.classList.add("hidden");
+  if (notificationTimer) window.clearTimeout(notificationTimer);
+  notificationTimer = null;
+  if (notificationPreviousFocus && typeof notificationPreviousFocus.focus === "function") notificationPreviousFocus.focus();
+  notificationPreviousFocus = null;
+};
+const showNotificationModal = items => {
+  if (!notificationModal || !Array.isArray(items) || items.length === 0) return;
+  const list = notificationModal.querySelector("[data-notification-items]");
+  const progress = notificationModal.querySelector("[data-notification-progress]");
+  if (!list) return;
+  list.innerHTML = "";
+  items.forEach(item => {
+    const entry = document.createElement("div");
+    const type = ["ok","warn","error"].includes(item.type) ? item.type : "warn";
+    entry.className = `notification-item ${type}`;
+    entry.textContent = item.message || "";
+    list.appendChild(entry);
+  });
+  if (progress) {
+    progress.style.animation = "none";
+    progress.offsetHeight;
+    progress.style.animation = "";
+  }
+  notificationPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  notificationModal.classList.remove("hidden");
+  notificationModal.querySelector("[data-notification-close]")?.focus();
+  if (notificationTimer) window.clearTimeout(notificationTimer);
+  notificationTimer = window.setTimeout(hideNotificationModal, 5200);
+};
+if (notificationModal) {
+  let notificationItems = [];
+  try { notificationItems = JSON.parse(notificationModal.dataset.notifications || "[]"); } catch (error) { notificationItems = []; }
+  notificationModal.querySelector("[data-notification-close]")?.addEventListener("click", hideNotificationModal);
+  notificationModal.addEventListener("click", event => { if (event.target === notificationModal) hideNotificationModal(); });
+  document.addEventListener("keydown", event => { if (event.key === "Escape" && !notificationModal.classList.contains("hidden")) hideNotificationModal(); });
+  showNotificationModal(notificationItems);
+}
 })();' . "\n";
     }
 
@@ -9293,7 +9413,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'b18b3ac',
+  'source_revision' => '804562f',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

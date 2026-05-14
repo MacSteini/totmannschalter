@@ -257,19 +257,19 @@ final class AdminAuthViewModelBuilder
             return AdminAuthViewModel::configBlocked();
         }
 
-        if ($adminSession->authenticated()) {
-            return AdminAuthViewModel::signedIn($adminSession->username());
+        if (!$uiConfig->hasAdminCredential()) {
+            return AdminAuthViewModel::accessMissing();
         }
 
         if ($discoveryMode === 'existing' && $webUiEnabled !== true) {
             return AdminAuthViewModel::administrationDisabled();
         }
 
-        if ($uiConfig->hasAdminCredential()) {
-            return AdminAuthViewModel::signInRequired();
+        if ($adminSession->authenticated()) {
+            return AdminAuthViewModel::signedIn($adminSession->username());
         }
 
-        return AdminAuthViewModel::accessMissing();
+        return AdminAuthViewModel::signInRequired();
     }
 }
 
@@ -4344,6 +4344,19 @@ final class RuntimeUiTextCatalog
             'header.toggle_theme' => 'Toggle theme',
             'footer.label' => 'Footer',
             'footer.documentation' => 'Documentation',
+            'setup.initial_title' => 'Initial setup',
+            'setup.code' => 'Setup Code',
+            'setup.code_help' => 'One-time code configured in the server environment.',
+            'setup.username' => 'Username',
+            'setup.username_help' => 'Admin username for this browser UI.',
+            'setup.password' => 'Password',
+            'setup.password_help' => 'Minimum length: 10 characters.',
+            'setup.repeat_password' => 'Repeat Password',
+            'setup.repeat_password_help' => 'Password repetition catches typing mistakes.',
+            'setup.data_directory' => 'Data directory',
+            'setup.data_directory_default' => '/var/lib/totman',
+            'setup.data_directory_help' => 'Default runtime state directory. Set TOTMAN_STATE_DIR on the server before loading this page if another path is needed.',
+            'setup.create_access' => 'Create access',
             'notice.draft_saved' => 'Prototype draft saved.',
             'notice.draft_discarded' => 'Prototype draft discarded.',
             'notice.config_saved' => 'Prototype config saved.',
@@ -4519,6 +4532,8 @@ final class RuntimeUiTextCatalog
             'header.language',
             'header.toggle_theme',
             'footer.documentation',
+            'setup.initial_title',
+            'setup.create_access',
             'field.base_url.label',
             'field.message_body.hint',
             'action.save_runtime',
@@ -6677,6 +6692,14 @@ final class PrototypeRenderer
         string $notice,
         string $alert,
     ): string {
+        if ($adminAuth->showCreateAdmin()) {
+            return $this->renderHeader($csrfToken, $adminAuth)
+                . $notice
+                . $alert
+                . $this->renderProductInitialSetup($csrfToken)
+                . $this->renderFooter();
+        }
+
         $activeSection = $adminInspection->available() && $adminAuth->showSignedIn() ? 'runtime' : 'setup';
         $content = $this->renderHeader($csrfToken, $adminAuth)
             . $notice
@@ -6688,6 +6711,24 @@ final class PrototypeRenderer
             . $this->renderFooter();
 
         return $content;
+    }
+
+    private function renderProductInitialSetup(string $csrfToken): string
+    {
+        return '<div class="auth-main view-animate">
+<section class="card auth-card" aria-labelledby="initial-setup-title">
+<h2 id="initial-setup-title">' . $this->e($this->text->get('setup.initial_title')) . '</h2>
+<form method="post" class="form-grid">
+<input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
+' . $this->renderPlainInputGroup('setup-code', 'setup_code', $this->text->get('setup.code'), $this->text->get('setup.code_help'), 'text', 'one-time-code') . '
+' . $this->renderPlainInputGroup('setup-user', 'admin_username', $this->text->get('setup.username'), $this->text->get('setup.username_help'), 'text', 'username') . '
+' . $this->renderPlainInputGroup('setup-password', 'admin_password', $this->text->get('setup.password'), $this->text->get('setup.password_help'), 'password', 'new-password') . '
+' . $this->renderPlainInputGroup('setup-password-confirm', 'admin_password_confirm', $this->text->get('setup.repeat_password'), $this->text->get('setup.repeat_password_help'), 'password', 'new-password') . '
+' . $this->renderReadonlyInputGroup('setup-state-dir', $this->text->get('setup.data_directory'), $this->text->get('setup.data_directory_default'), $this->text->get('setup.data_directory_help'), 'full-width') . '
+<div class="action-bar full-width"><button type="submit" name="action" value="create_admin" class="btn-primary">' . $this->e($this->text->get('setup.create_access')) . '</button></div>
+</form>
+</section>
+</div>';
     }
 
     private function renderMainNavigation(string $activeSection, bool $runtimeAvailable): string
@@ -6810,6 +6851,9 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 .mode-product .signout-btn:hover:not(:disabled){border-color:var(--danger)!important;background:rgba(185,28,28,.14)!important;color:var(--danger)!important}
 .mode-product .card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-m);padding:var(--space-l);margin-bottom:var(--space-l);box-shadow:0 1px 3px rgba(0,0,0,.1)}
 .mode-product .card>h2,.mode-product .card>h3{margin-bottom:calc(var(--space-m) + .45rem)}
+.mode-product .auth-main{display:grid;place-items:start center;padding-block:clamp(1rem,4vw,3rem)}
+.mode-product .auth-card{width:min(100%,760px)}
+.mode-product .auth-card .form-grid{margin-top:var(--space-m)}
 .mode-product h2{font-size:clamp(1.25rem,1.05rem + .8vw,1.75rem);line-height:1.15}
 .mode-product h3{font-size:1.08rem;margin:var(--space-m) 0 .55rem}
 .mode-product h4{font-size:1rem;margin:var(--space-m) 0 .45rem}
@@ -7062,6 +7106,23 @@ document.querySelectorAll("[data-ui-lang]").forEach(button => button.addEventLis
         return '<div class="input-group ui-field">'
             . $this->labelRow($id, $label, $hint)
             . '<input id="' . $this->e($id) . '" type="' . $this->e($type) . '" name="' . $this->e($name) . '"' . $autocompleteAttribute . ' aria-describedby="' . $this->e($describedBy) . '">'
+            . $this->helperText($describedBy, $hint)
+            . '</div>';
+    }
+
+    private function renderReadonlyInputGroup(
+        string $id,
+        string $label,
+        string $value,
+        string $hint,
+        string $class = '',
+    ): string {
+        $describedBy = $id . '-help';
+        $classAttribute = trim('input-group ui-field ' . $class);
+
+        return '<div class="' . $this->e($classAttribute) . '">'
+            . $this->labelRow($id, $label, $hint)
+            . '<input id="' . $this->e($id) . '" type="text" value="' . $this->e($value) . '" readonly aria-describedby="' . $this->e($describedBy) . '">'
             . $this->helperText($describedBy, $hint)
             . '</div>';
     }
@@ -9037,7 +9098,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '6175810',
+  'source_revision' => '3040c3c',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

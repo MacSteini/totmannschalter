@@ -149,7 +149,7 @@ return [
 
 // Optional Web UI administration add-on.
 // Keep disabled unless you intentionally deploy totman-ui.php, protect it with HTTPS,
-// configure TOTMAN_UI_SETUP_CODE server-side, and want browser-based administration.
+// configure a setup code in totman-ui.php or server-side, and want browser-based administration.
 // The normal runtime does not need this key to be true.
 'web_ui_enabled' => false,
 

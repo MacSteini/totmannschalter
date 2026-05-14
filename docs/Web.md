@@ -62,7 +62,7 @@ The default config keeps browser administration off after setup. Existing manual
 Use it only when you intentionally want browser-based administration:
 - deploy `totman-ui.php` into an HTTPS webroot
 - ensure it resolves the same private state directory as `totman.php`, preferably with `TOTMAN_STATE_DIR`
-- set `TOTMAN_UI_SETUP_CODE` server-side before first setup
+- set the setup code near the top of `totman-ui.php` before first setup; Docker and managed hosting can instead set `TOTMAN_UI_SETUP_CODE` server-side
 - keep the generated `.totman-ui.php`, `.totman-ui-backups/`, `state_dir`, logs, state files, and downloads outside public web access
 - keep HTTPS enabled; if PHP runs behind a TLS-terminating proxy, configure the PHP runtime so session cookies are still treated as secure
 

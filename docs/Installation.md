@@ -137,7 +137,7 @@ Only runtime filenames referenced from the effective config are configurable. If
 To enable the add-on for first-run setup:
 1. Deploy `totman-ui.php` into the HTTPS webroot.
 2. Ensure the UI resolves the same private state directory as the runtime, preferably with `TOTMAN_STATE_DIR=/var/lib/totman`.
-3. Set `TOTMAN_UI_SETUP_CODE` server-side before first setup.
+3. Set the setup code near the top of `totman-ui.php` before first setup. Docker and managed hosting can instead set `TOTMAN_UI_SETUP_CODE` server-side.
 4. Open `totman-ui.php`, enter the setup code, create the UI account, review the imported template/live values, and write the runtime files explicitly.
 5. Keep `web_ui_enabled` set to `true` if you want browser administration after setup. Set it to `false` to keep the runtime manual-only after the first-run files are written.
 

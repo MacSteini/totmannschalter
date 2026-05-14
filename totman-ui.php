@@ -2428,7 +2428,7 @@ final class FirstRunWizardApplicationService
             $navigation = $this->navigator->next($discovered, $this->setupService->flow($stateDir, $context, $updatedDraft), $updatedDraft);
 
             return new FirstRunWizardResult(
-                $this->setupService->preview($stateDir, $context, $navigation->moved() ? 'Moved to the next step.' : '', $navigation->errors(), $navigation->draft()),
+                $this->setupService->preview($stateDir, $context, '', $navigation->errors(), $navigation->draft()),
                 $navigation->draft(),
                 draftChanged: true
             );
@@ -2439,7 +2439,7 @@ final class FirstRunWizardApplicationService
             $navigation = $this->navigator->previous($this->setupService->flow($stateDir, $context, $updatedDraft), $updatedDraft);
 
             return new FirstRunWizardResult(
-                $this->setupService->preview($stateDir, $context, 'Moved to the previous step.', draft: $navigation->draft()),
+                $this->setupService->preview($stateDir, $context, '', draft: $navigation->draft()),
                 $navigation->draft(),
                 draftChanged: true
             );
@@ -9848,7 +9848,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'e0d6bbe',
+  'source_revision' => '985ea07',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

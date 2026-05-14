@@ -148,11 +148,7 @@ final class AdminAuthApplicationService
             return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
         }
 
-        if ($discovered->mode() !== 'existing') {
-            return SetupAccessResult::denied('login_unavailable', 'Admin sign-in is available after runtime configuration exists.');
-        }
-
-        if ($webUiEnabled !== true) {
+        if ($discovered->mode() === 'existing' && $webUiEnabled !== true) {
             return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
         }
 
@@ -9248,7 +9244,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '86cd7fc',
+  'source_revision' => 'cbb4ecd',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

@@ -60,9 +60,13 @@ use Totman\RuntimeUi\Security\UiPrivateConfigStore;
 
 final class AdminAuthApplicationService
 {
+    /**
+     * @param list<string> $privateConfigFallbackPaths
+     */
     public function __construct(
         private readonly AdminAuthService $authService = new AdminAuthService(),
         private readonly AdminAuthViewModelBuilder $viewModelBuilder = new AdminAuthViewModelBuilder(),
+        private readonly array $privateConfigFallbackPaths = [],
     ) {
     }
 
@@ -171,7 +175,7 @@ final class AdminAuthApplicationService
 
     private function store(string $stateDir): UiPrivateConfigStore
     {
-        return UiPrivateConfigStore::forStateDir($stateDir);
+        return UiPrivateConfigStore::forStateDir($stateDir, $this->privateConfigFallbackPaths);
     }
 
     private function browserAdministrationBlocked(DiscoveryResult $discovered, mixed $webUiEnabled): bool
@@ -3592,9 +3596,13 @@ final class PrototypeApplicationFactory
 {
     private readonly FirstRunSetupService $setupService;
     private readonly FirstRunWizardApplicationService $wizardService;
+    private readonly AdminAuthApplicationService $adminAuthService;
     private readonly PrototypeRenderer $renderer;
     private readonly RuntimeUiTextCatalog $text;
 
+    /**
+     * @param list<string> $privateConfigFallbackPaths
+     */
     public function __construct(
         ?FirstRunSetupService $setupService = null,
         private readonly FirstRunRequestMapper $requestMapper = new FirstRunRequestMapper(),
@@ -3602,7 +3610,7 @@ final class PrototypeApplicationFactory
         private readonly PrototypeRateLimitPolicy $rateLimitPolicy = new PrototypeRateLimitPolicy(),
         private readonly PrototypeCsrfPolicy $csrfPolicy = new PrototypeCsrfPolicy(),
         private readonly PrototypeSaveIntentPolicy $saveIntentPolicy = new PrototypeSaveIntentPolicy(),
-        private readonly AdminAuthApplicationService $adminAuthService = new AdminAuthApplicationService(),
+        ?AdminAuthApplicationService $adminAuthService = null,
         ?FirstRunWizardApplicationService $wizardService = null,
         private readonly SetupSessionStore $sessionStore = new SetupSessionStore(),
         private readonly AdminSessionStore $adminSessionStore = new AdminSessionStore(),
@@ -3615,6 +3623,7 @@ final class PrototypeApplicationFactory
         ?PrototypeRenderer $renderer = null,
         private readonly string $expectedSetupCode = '',
         private readonly string $runtimeUiMode = RuntimeUiMode::PROTOTYPE,
+        private readonly array $privateConfigFallbackPaths = [],
     ) {
         $runtimeUiMode = RuntimeUiMode::normalise($this->runtimeUiMode);
         $this->text = new RuntimeUiTextCatalog($runtimeUiMode);
@@ -3630,6 +3639,9 @@ final class PrototypeApplicationFactory
         $this->wizardService = $wizardService ?? new FirstRunWizardApplicationService(
             setupService: $this->setupService,
             text: $this->text
+        );
+        $this->adminAuthService = $adminAuthService ?? new AdminAuthApplicationService(
+            privateConfigFallbackPaths: $this->privateConfigFallbackPaths
         );
         $this->renderer = $renderer ?? new PrototypeRenderer(text: $this->text);
     }
@@ -8967,7 +8979,7 @@ final class UiPrivateConfig
     {
         $admin = $data['admin'] ?? null;
         if (!is_array($admin)) {
-            return new self();
+            return new self(self::legacyAdminCredential($data));
         }
 
         return new self(AdminCredential::fromArray($admin));
@@ -8996,6 +9008,28 @@ final class UiPrivateConfig
         return [
             'admin' => $this->adminCredential?->toArray(),
         ];
+    }
+
+    /**
+     * @param array<string, mixed> $data
+     */
+    private static function legacyAdminCredential(array $data): ?AdminCredential
+    {
+        if (
+            !is_string($data['username'] ?? null)
+            || !is_string($data['password_hash'] ?? null)
+            || !is_string($data['state_dir'] ?? null)
+            || $data['state_dir'] === ''
+        ) {
+            return null;
+        }
+
+        return AdminCredential::fromArray([
+            'username' => $data['username'],
+            'password_hash' => $data['password_hash'],
+            'created_at' => is_string($data['created_at'] ?? null) ? $data['created_at'] : '',
+            'updated_at' => is_string($data['updated_at'] ?? null) ? $data['updated_at'] : '',
+        ]);
     }
 }
 
@@ -9062,13 +9096,19 @@ final class UiPrivateConfigStore
 {
     public const DEFAULT_FILE_NAME = '.totman-ui.php';
 
-    public function __construct(private readonly string $path)
+    /**
+     * @param list<string> $fallbackPaths
+     */
+    public function __construct(private readonly string $path, private readonly array $fallbackPaths = [])
     {
     }
 
-    public static function forStateDir(string $stateDir): self
+    /**
+     * @param list<string> $fallbackPaths
+     */
+    public static function forStateDir(string $stateDir, array $fallbackPaths = []): self
     {
-        return new self(rtrim($stateDir, '/') . '/' . self::DEFAULT_FILE_NAME);
+        return new self(rtrim($stateDir, '/') . '/' . self::DEFAULT_FILE_NAME, $fallbackPaths);
     }
 
     public function path(): string
@@ -9083,18 +9123,27 @@ final class UiPrivateConfigStore
 
     public function loadResult(): UiPrivateConfigLoadResult
     {
-        if (!is_file($this->path)) {
-            return UiPrivateConfigLoadResult::missing();
+        foreach ($this->candidatePaths() as $path) {
+            if (!is_file($path)) {
+                continue;
+            }
+
+            return $this->loadPath($path);
         }
 
-        if (!is_readable($this->path)) {
+        return UiPrivateConfigLoadResult::missing();
+    }
+
+    private function loadPath(string $path): UiPrivateConfigLoadResult
+    {
+        if (!is_readable($path)) {
             return UiPrivateConfigLoadResult::unavailable('Private UI config is not readable.');
         }
 
         try {
             $data = (static function (string $path): mixed {
                 return require $path;
-            })($this->path);
+            })($path);
         } catch (\Throwable) {
             return UiPrivateConfigLoadResult::corrupt('Private UI config could not be parsed.');
         }
@@ -9104,6 +9153,24 @@ final class UiPrivateConfigStore
         }
 
         return UiPrivateConfigLoadResult::loaded(UiPrivateConfig::fromArray($data));
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function candidatePaths(): array
+    {
+        $paths = [$this->path, ...$this->fallbackPaths];
+        $normalised = [];
+        foreach ($paths as $path) {
+            if ($path === '' || isset($normalised[$path])) {
+                continue;
+            }
+
+            $normalised[$path] = $path;
+        }
+
+        return array_values($normalised);
     }
 
     public function save(UiPrivateConfig $config): void
@@ -9377,7 +9444,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'd167686',
+  'source_revision' => 'a0b5145',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',
@@ -9530,7 +9597,11 @@ final class PrototypeBundle
             : $environmentFactory->fromArrays($_GET, $_SERVER, $_POST, $env, __DIR__ . '/var/runtime', $runtimeUiMode);
         $environmentFactory->ensureStateDirectory($environment->stateDir());
 
-        $controller = (new PrototypeApplicationFactory(expectedSetupCode: $environment->expectedSetupCode(), runtimeUiMode: $runtimeUiMode))->controller();
+        $controller = (new PrototypeApplicationFactory(
+            expectedSetupCode: $environment->expectedSetupCode(),
+            runtimeUiMode: $runtimeUiMode,
+            privateConfigFallbackPaths: $runtimeUiMode === 'product' ? [__DIR__ . '/.totman-ui.php'] : []
+        ))->controller();
         echo $controller->handle($environment->stateDir(), $environment->context(), $environment->method(), $environment->post());
     }
 

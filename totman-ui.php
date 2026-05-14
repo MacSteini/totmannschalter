@@ -6579,9 +6579,16 @@ final class PrototypeEnvironmentFactory
 
     public function ensureStateDirectory(string $stateDir): void
     {
-        if (!is_dir($stateDir)) {
-            mkdir($stateDir, 0700, true);
+        if (is_dir($stateDir)) {
+            return;
         }
+
+        $ancestor = $this->nearestExistingAncestor($stateDir);
+        if ($ancestor === null || !is_writable($ancestor)) {
+            return;
+        }
+
+        @mkdir($stateDir, 0700, true);
     }
 
     /**
@@ -6613,6 +6620,21 @@ final class PrototypeEnvironmentFactory
         }
 
         return [$defaultStateDir, self::DEFAULT_STATE_DIR];
+    }
+
+    private function nearestExistingAncestor(string $path): ?string
+    {
+        $candidate = $path;
+        while (!is_dir($candidate)) {
+            $parent = dirname($candidate);
+            if ($parent === $candidate) {
+                return null;
+            }
+
+            $candidate = $parent;
+        }
+
+        return $candidate;
     }
 
     /**
@@ -9444,7 +9466,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'a0b5145',
+  'source_revision' => '74c581b',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

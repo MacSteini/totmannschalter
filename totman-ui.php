@@ -4360,6 +4360,7 @@ final class RuntimeUiTextCatalog
             'section.admin_access' => 'Admin access',
             'section.runtime_inspection' => 'Runtime inspection',
             'section.wizard_step' => 'Wizard step',
+            'section.setup_details' => 'Setup details',
             'admin.unavailable_after_signin' => 'Runtime inspection is available after admin sign-in.',
             'admin.config_blocked' => 'Admin access is unavailable while configuration discovery is blocked.',
             'admin.private_config_blocked' => 'Admin access is unavailable because the private UI config is unreadable or invalid.',
@@ -4371,6 +4372,11 @@ final class RuntimeUiTextCatalog
             'admin.reauthenticate' => 'Reauthenticate',
             'admin.username' => 'Username',
             'admin.password' => 'Password',
+            'admin.username_help' => 'Use the admin name for this browser UI.',
+            'admin.password_help' => 'Enter the password for this browser UI account.',
+            'admin.new_password_help' => 'Use at least 10 characters. The password is stored only as a hash.',
+            'admin.repeat_password_help' => 'Repeat the password to avoid a typo.',
+            'admin.reauth_help' => 'Required before sensitive maintenance actions.',
             'admin.setup_code' => 'Setup code',
             'admin.create_username' => 'Admin username',
             'admin.create_password' => 'Admin password',
@@ -4391,6 +4397,7 @@ final class RuntimeUiTextCatalog
             'inspection.alias_file' => 'file',
             'inspection.file_present' => 'present',
             'inspection.file_missing' => 'missing',
+            'inspection.unavailable_after_signin_intro' => 'Inspect runtime status and maintenance actions after admin sign-in.',
             'danger.heading' => 'Maintenance commands',
             'danger.none_selected' => 'No maintenance command selected.',
             'danger.status' => 'Status',
@@ -4451,6 +4458,7 @@ final class RuntimeUiTextCatalog
             'step.save.description' => 'Write runtime files only after confirmation and passing preflight.',
             'step.complete.description' => 'The first-run flow has finished.',
             'wizard.setup_code' => 'Setup code',
+            'wizard.setup_code_help' => 'Enter the setup code from the server environment to authorise setup changes.',
             'wizard.no_fields' => 'No fields are required on this step.',
             'wizard.review' => 'Review',
             'wizard.preflight' => 'Preflight',
@@ -6628,6 +6636,18 @@ final class PrototypeRenderer
 
         $notice = $view->notice() !== '' ? '<p class="notice ok ui-status" role="status">' . $this->e($view->notice()) . '</p>' : '';
         $alert = $errors !== '' ? '<ul class="notice error ui-alert" role="alert">' . $errors . '</ul>' : '';
+
+        if ($this->text->productMode()) {
+            return $this->renderDocument($this->renderProductPage(
+                $view,
+                $csrfToken,
+                $adminAuth ?? AdminAuthViewModel::accessMissing(),
+                $adminInspection ?? AdminInspectionViewModel::unavailable($this->text->get('admin.unavailable_after_signin')),
+                $notice,
+                $alert,
+            ));
+        }
+
         $wizard = '<form class="ui-form ui-wizard-form form-grid" method="post">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
 ' . $this->renderHiddenFields($view) . '
@@ -6647,6 +6667,89 @@ final class PrototypeRenderer
             . $this->renderFooter();
 
         return $this->renderDocument($content);
+    }
+
+    private function renderProductPage(
+        FirstRunViewModel $view,
+        string $csrfToken,
+        AdminAuthViewModel $adminAuth,
+        AdminInspectionViewModel $adminInspection,
+        string $notice,
+        string $alert,
+    ): string {
+        $activeSection = $adminInspection->available() && $adminAuth->showSignedIn() ? 'runtime' : 'setup';
+        $content = $this->renderHeader($csrfToken, $adminAuth)
+            . $notice
+            . $alert
+            . $this->renderMainNavigation($activeSection, $adminInspection->available())
+            . ($activeSection === 'runtime'
+                ? $this->renderRuntimeArea($csrfToken, $adminAuth, $adminInspection)
+                : $this->renderSetupArea($view, $csrfToken, $adminAuth))
+            . $this->renderFooter();
+
+        return $content;
+    }
+
+    private function renderMainNavigation(string $activeSection, bool $runtimeAvailable): string
+    {
+        $items = [
+            ['setup', 'Setup', true],
+            ['runtime', 'Runtime', $runtimeAvailable],
+            ['maintenance', 'Maintenance', $runtimeAvailable],
+        ];
+        $buttons = '';
+        foreach ($items as [$key, $label, $enabled]) {
+            $active = $key === $activeSection;
+            $buttons .= '<button type="button" class="nav-item' . ($active ? ' active' : '') . '"'
+                . ($active ? ' aria-selected="true"' : ' aria-selected="false"')
+                . (!$enabled ? ' disabled' : '')
+                . '>' . $this->e($label) . '</button>';
+        }
+
+        return '<nav class="ui-main-nav view-animate" role="tablist" aria-label="Main views">' . $buttons . '</nav>';
+    }
+
+    private function renderSetupArea(FirstRunViewModel $view, string $csrfToken, AdminAuthViewModel $adminAuth): string
+    {
+        $wizard = '<form class="ui-form ui-wizard-form form-grid" method="post">
+<input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
+' . $this->renderHiddenFields($view) . '
+' . $this->renderSetupCodeField() . '
+' . $this->renderCurrentStep($view) . '
+<div class="action-bar ui-actions full-width">' . $this->renderActions($view) . '</div>
+</form>';
+
+        return '<section class="ui-section setup-view view-animate" data-section="setup" aria-labelledby="setup-title">
+<div class="section-heading">
+<p class="section-kicker">First-run setup</p>
+<h2 id="setup-title">' . $this->e($this->stepTitle($view, $view->currentStep())) . '</h2>
+<p class="section-intro">' . $this->e($this->shortStepDescription($view, $view->currentStep())) . '</p>
+</div>
+' . $this->renderSteps($view) . '
+<div class="setup-layout">
+<section class="card setup-step-card" aria-labelledby="setup-current-step">
+<h3 id="setup-current-step">' . $this->e($this->text->get('section.setup_details')) . '</h3>
+' . $wizard . '
+</section>
+<aside class="card setup-admin-card" aria-labelledby="setup-admin-access">
+<h3 id="setup-admin-access">' . $this->e($this->text->get('section.admin_access')) . '</h3>
+' . $this->renderAdminAccess($csrfToken, $adminAuth) . '
+</aside>
+</div>
+</section>';
+    }
+
+    private function renderRuntimeArea(string $csrfToken, AdminAuthViewModel $adminAuth, AdminInspectionViewModel $adminInspection): string
+    {
+        return '<section class="ui-section runtime-view view-animate" data-section="runtime" aria-labelledby="runtime-title">
+<div class="section-heading">
+<p class="section-kicker">Runtime</p>
+<h2 id="runtime-title">' . $this->e($this->text->get('section.runtime_inspection')) . '</h2>
+<p class="section-intro">' . $this->e($this->text->get('inspection.unavailable_after_signin_intro')) . '</p>
+</div>
+<p class="notice ok" role="status">' . $this->e($this->text->format('admin.signed_in_as', 'username', $adminAuth->username())) . '</p>
+<div class="card runtime-card">' . $this->renderAdminInspection($csrfToken, $adminInspection) . '</div>
+</section>';
     }
 
     private function renderDocument(string $content): string
@@ -6687,6 +6790,10 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 .mode-product .brand-text h1{font-size:clamp(2rem,1.6rem + 1.8vw,3.4rem);line-height:.95;font-weight:950;letter-spacing:-.02em}
 .mode-product .tagline{margin-top:.25rem;color:var(--text-muted);font-size:clamp(.95rem,.85rem + .35vw,1.12rem);font-weight:800}
 .mode-product .header-actions{display:flex;align-items:center;justify-content:flex-end;gap:.65rem;flex-wrap:wrap;max-width:min(100%,42rem)}
+.mode-product .ui-main-nav{display:flex;flex-wrap:wrap;gap:.35rem;width:max-content;max-width:100%;padding:.4rem;margin:0 0 var(--space-l);background:color-mix(in srgb,var(--bg-surface),var(--bg-main)30%);border:1px solid var(--border);border-radius:999px}
+.mode-product .ui-main-nav .nav-item{border:0;border-radius:999px;background:transparent;color:var(--text-muted);min-height:0;padding:.72rem 1.05rem;font-weight:900}
+.mode-product .ui-main-nav .nav-item.active{background:var(--accent);color:#fff;box-shadow:0 6px 18px var(--accent-glow)}
+.mode-product .ui-main-nav .nav-item:disabled{opacity:.45}
 .mode-product .language-menu{position:relative}
 .mode-product .language-menu summary{list-style:none;min-height:46px;display:inline-flex;align-items:center;gap:.65rem;border:1.5px solid var(--border);border-radius:var(--radius-m);background:var(--bg-surface);color:var(--text-primary);font-weight:900;font-size:.95rem;padding:.65rem 2.15rem .65rem .9rem;cursor:pointer;user-select:none}
 .mode-product .language-menu summary::-webkit-details-marker{display:none}
@@ -6715,22 +6822,32 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .stat-label{font-size:.72rem;font-weight:800;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em}
 .mode-product .stat-value{font-size:clamp(1rem,.8rem + 1vw,1.35rem);font-weight:900;overflow-wrap:anywhere}
 .mode-product .stat-desc,.mode-product .helper-text,.mode-product .text-muted{color:var(--text-muted);font-size:.85rem}
-.mode-product .ui-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:var(--space-s)}
-.mode-product .ui-summary dt{font-size:.72rem;font-weight:800;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em}
-.mode-product .ui-summary dd{margin:0;font-size:1rem;font-weight:900;color:var(--text-primary);overflow-wrap:anywhere}
-.mode-product .sub-nav{display:flex;flex-wrap:wrap;gap:.3rem;padding:.3rem;background:color-mix(in srgb,var(--bg-surface),var(--bg-main)38%);border:1px solid var(--border);border-radius:999px;margin:0 0 var(--space-l);box-shadow:0 6px 18px rgba(15,23,42,.045)}
-.mode-product .setup-step-list{padding:.3rem}
-.mode-product .setup-step-list .sub-nav-item{list-style:none;flex:1 1 6.5rem;border-radius:999px;padding:.58rem .85rem;text-align:center;color:var(--text-muted);font-size:.94rem;font-weight:760}
-.mode-product .setup-step-list .sub-nav-item[aria-current=step]{background:var(--bg-card);color:var(--accent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent),transparent 72%),0 5px 14px rgba(15,23,42,.06);animation:toggleSelect .18s ease-out}
+.mode-product .section-heading{margin:0 0 var(--space-m)}
+.mode-product .section-kicker{margin:0 0 .25rem;color:var(--accent);font-size:.78rem;font-weight:950;letter-spacing:.08em;text-transform:uppercase}
+.mode-product .section-intro{color:var(--text-muted);max-width:48rem}
+.mode-product .setup-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(18rem,24rem);gap:var(--space-l);align-items:start}
+.mode-product .setup-step-card{margin-bottom:0}
+.mode-product .setup-admin-card{margin-bottom:0}
+.mode-product .sub-nav{display:flex;flex-wrap:wrap;gap:1.15rem;padding:0;margin:0 0 var(--space-l);background:transparent;border:0;border-bottom:1px solid var(--border);border-radius:0;box-shadow:none}
+.mode-product .setup-step-list{list-style:none;padding-left:0}
+.mode-product .setup-step-list .sub-nav-item{list-style:none;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;padding:.45rem 0 .65rem;color:var(--text-muted);font-size:.92rem;font-weight:850}
+.mode-product .setup-step-list .sub-nav-item[aria-current=step]{color:var(--accent);border-bottom-color:var(--accent)}
 .mode-product .setup-step-list .sub-nav-item.is-complete{color:var(--success)}
 .mode-product .setup-step-list .sub-nav-item.is-blocked{color:var(--danger)}
-.mode-product .setup-step-list small{display:block;font-size:.72rem;font-weight:800;opacity:.88}
+.mode-product .setup-step-list small{display:block;font-size:.72rem;font-weight:800;opacity:.8}
 .mode-product .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:var(--space-m)var(--space-l)}
 .mode-product .full-width,.mode-product fieldset{grid-column:1/-1}
 .mode-product fieldset{border:1px solid var(--border);border-radius:var(--radius-m);padding:var(--space-m);background:var(--bg-surface)}
 .mode-product legend{padding:0 .45rem;font-weight:900;color:var(--text-primary)}
-.mode-product .input-group{margin-bottom:.85rem}
-.mode-product .input-group label,.mode-product .group-label,.mode-product label{font-size:1rem;font-weight:800;color:var(--text-muted);margin-bottom:.55rem}
+.mode-product .input-group{margin-bottom:.95rem}
+.mode-product .field-label-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.45rem}
+.mode-product .input-group label,.mode-product .group-label,.mode-product label{font-size:1rem;font-weight:850;color:var(--text-muted)}
+.mode-product .help-wrap{position:relative;display:inline-flex;align-items:center}
+.mode-product .help-trigger{width:1.45rem;height:1.45rem;min-height:0;padding:0!important;border-radius:999px!important;border:1.5px solid var(--border)!important;background:var(--bg-surface)!important;color:var(--text-muted)!important;font-size:.8rem!important;font-weight:950!important;line-height:1}
+.mode-product .help-popover{position:absolute;right:0;top:calc(100% + .45rem);z-index:60;display:none;width:min(18rem,80vw);padding:.75rem .85rem;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--bg-surface);color:var(--text-primary);box-shadow:0 14px 36px rgba(15,23,42,.22);font-size:.84rem;font-weight:700}
+.mode-product .help-wrap:hover .help-popover,.mode-product .help-wrap:focus-within .help-popover{display:block}
+.mode-product .field-meta{margin:.2rem 0 0;color:var(--text-muted);font-size:.78rem;font-weight:750}
+.mode-product .field-errors{margin:.45rem 0 0;padding-left:1.1rem;color:var(--danger);font-size:.86rem;font-weight:800}
 .mode-product form label{display:grid;gap:.45rem;max-width:44rem}
 .mode-product form label:has(input[type=checkbox]){display:inline-flex;align-items:center;gap:.55rem}
 .mode-product input,.mode-product textarea,.mode-product select{width:100%;padding:.85rem 1rem;background:var(--bg-main);border:1.5px solid var(--border);border-radius:var(--radius-s);color:var(--text-primary);font:inherit;font-weight:600}
@@ -6780,7 +6897,8 @@ html[data-theme=dark] .mode-product .log-line:nth-child(even){background:rgba(23
 .mode-product .footer-nav>a{color:var(--text-muted);font-weight:700;text-decoration:none;padding:.38rem .65rem;border-radius:999px}
 .mode-product .footer-nav>a:hover,.mode-product .footer-nav>a:focus-visible{background:var(--accent-glow);color:var(--accent)}
 @keyframes toggleSelect{0%{transform:scale(.96)}70%{transform:scale(1.025)}100%{transform:scale(1)}}@media(prefers-reduced-motion:reduce){.mode-product *{animation:none!important;transition:none!important}}
-@media(max-width:700px){.mode-product .container{width:min(100% - 1rem,1200px)}.mode-product .header{justify-content:center;text-align:center}.mode-product .brand{justify-content:center;width:100%;flex-direction:column;gap:.65rem}.mode-product .brand-logo{width:clamp(84px,24vw,116px)}.mode-product .brand-text{text-align:center}.mode-product .header-actions{width:100%;max-width:none;justify-content:center}.mode-product .card{padding:1rem}.mode-product .sub-nav{border-radius:26px;padding:.35rem;gap:.35rem}.mode-product .setup-step-list .sub-nav-item{flex:1 1 7.5rem;border-radius:999px;padding:.78rem .85rem}.mode-product .action-bar{align-items:stretch}.mode-product .action-bar button{width:100%}.mode-product dl{grid-template-columns:1fr}.mode-product .footer-nav{border-radius:24px;width:100%}}' . "\n";
+@media(max-width:900px){.mode-product .setup-layout{grid-template-columns:1fr}}
+@media(max-width:700px){.mode-product .container{width:min(100% - 1rem,1200px)}.mode-product .header{justify-content:center;text-align:center}.mode-product .brand{justify-content:center;width:100%;flex-direction:column;gap:.65rem}.mode-product .brand-logo{width:clamp(84px,24vw,116px)}.mode-product .brand-text{text-align:center}.mode-product .header-actions{width:100%;max-width:none;justify-content:center}.mode-product .ui-main-nav{width:100%;justify-content:center}.mode-product .card{padding:1rem}.mode-product .sub-nav{gap:.8rem;overflow-x:auto;flex-wrap:nowrap}.mode-product .setup-step-list .sub-nav-item{flex:0 0 auto;white-space:nowrap}.mode-product .action-bar{align-items:stretch}.mode-product .action-bar button{width:100%}.mode-product dl{grid-template-columns:1fr}.mode-product .footer-nav{border-radius:24px;width:100%}}' . "\n";
     }
 
     public function script(): string
@@ -6920,6 +7038,34 @@ document.querySelectorAll("[data-ui-lang]").forEach(button => button.addEventLis
         return '<div class="dashboard-grid ui-summary">' . $cards . '</div>';
     }
 
+    private function renderSetupCodeField(): string
+    {
+        return $this->renderPlainInputGroup(
+            'setup-code',
+            'setup_code',
+            $this->text->get('wizard.setup_code'),
+            $this->text->get('wizard.setup_code_help'),
+        );
+    }
+
+    private function renderPlainInputGroup(
+        string $id,
+        string $name,
+        string $label,
+        string $hint,
+        string $type = 'text',
+        string $autocomplete = '',
+    ): string {
+        $describedBy = $id . '-help';
+        $autocompleteAttribute = $autocomplete !== '' ? ' autocomplete="' . $this->e($autocomplete) . '"' : '';
+
+        return '<div class="input-group ui-field">'
+            . $this->labelRow($id, $label, $hint)
+            . '<input id="' . $this->e($id) . '" type="' . $this->e($type) . '" name="' . $this->e($name) . '"' . $autocompleteAttribute . ' aria-describedby="' . $this->e($describedBy) . '">'
+            . $this->helperText($describedBy, $hint)
+            . '</div>';
+    }
+
     private function renderAdminAccess(string $csrfToken, AdminAuthViewModel $adminAuth): string
     {
         if ($adminAuth->showConfigBlocked()) {
@@ -6938,7 +7084,7 @@ document.querySelectorAll("[data-ui-lang]").forEach(button => button.addEventLis
             return '<p role="status">' . $this->e($this->text->format('admin.signed_in_as', 'username', $adminAuth->username())) . '</p>
 <form method="post" class="form-grid">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-<div class="input-group"><label for="admin-reauth-password">' . $this->e($this->text->get('admin.reenter_password')) . '</label><input id="admin-reauth-password" type="password" name="reauth_password" autocomplete="current-password"></div>
+' . $this->renderPlainInputGroup('admin-reauth-password', 'reauth_password', $this->text->get('admin.reenter_password'), $this->text->get('admin.reauth_help'), 'password', 'current-password') . '
 <div class="action-bar full-width"><button type="submit" name="action" value="reauth" class="btn-primary">' . $this->e($this->text->get('admin.reauthenticate')) . '</button><button type="submit" name="action" value="logout" class="btn-secondary">' . $this->e($this->text->get('admin.sign_out')) . '</button></div>
 </form>';
         }
@@ -6946,18 +7092,18 @@ document.querySelectorAll("[data-ui-lang]").forEach(button => button.addEventLis
         if ($adminAuth->showLogin()) {
             return '<form method="post" class="form-grid">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-<div class="input-group"><label for="admin-login-username">' . $this->e($this->text->get('admin.username')) . '</label><input id="admin-login-username" name="login_username" autocomplete="username"></div>
-<div class="input-group"><label for="admin-login-password">' . $this->e($this->text->get('admin.password')) . '</label><input id="admin-login-password" type="password" name="login_password" autocomplete="current-password"></div>
+' . $this->renderPlainInputGroup('admin-login-username', 'login_username', $this->text->get('admin.username'), $this->text->get('admin.username_help'), 'text', 'username') . '
+' . $this->renderPlainInputGroup('admin-login-password', 'login_password', $this->text->get('admin.password'), $this->text->get('admin.password_help'), 'password', 'current-password') . '
 <div class="action-bar full-width"><button type="submit" name="action" value="login" class="btn-primary">' . $this->e($this->text->get('admin.sign_in')) . '</button></div>
 </form>';
         }
 
         return '<form method="post" class="form-grid">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-<div class="input-group"><label for="admin-setup-code">' . $this->e($this->text->get('admin.setup_code')) . '</label><input id="admin-setup-code" name="setup_code"></div>
-<div class="input-group"><label for="admin-create-username">' . $this->e($this->text->get('admin.create_username')) . '</label><input id="admin-create-username" name="admin_username" autocomplete="username"></div>
-<div class="input-group"><label for="admin-create-password">' . $this->e($this->text->get('admin.create_password')) . '</label><input id="admin-create-password" type="password" name="admin_password" autocomplete="new-password"></div>
-<div class="input-group"><label for="admin-create-password-confirm">' . $this->e($this->text->get('admin.repeat_password')) . '</label><input id="admin-create-password-confirm" type="password" name="admin_password_confirm" autocomplete="new-password"></div>
+' . $this->renderPlainInputGroup('admin-setup-code', 'setup_code', $this->text->get('admin.setup_code'), $this->text->get('wizard.setup_code_help')) . '
+' . $this->renderPlainInputGroup('admin-create-username', 'admin_username', $this->text->get('admin.create_username'), $this->text->get('admin.username_help'), 'text', 'username') . '
+' . $this->renderPlainInputGroup('admin-create-password', 'admin_password', $this->text->get('admin.create_password'), $this->text->get('admin.new_password_help'), 'password', 'new-password') . '
+' . $this->renderPlainInputGroup('admin-create-password-confirm', 'admin_password_confirm', $this->text->get('admin.repeat_password'), $this->text->get('admin.repeat_password_help'), 'password', 'new-password') . '
 <div class="action-bar full-width"><button type="submit" name="action" value="create_admin" class="btn-primary">' . $this->e($this->text->get('admin.create_access')) . '</button></div>
 </form>';
     }
@@ -7125,29 +7271,28 @@ document.querySelectorAll("[data-ui-lang]").forEach(button => button.addEventLis
         $requiredAttribute = $field->required() ? ' required aria-required="true"' : '';
         $invalid = $field->errors() !== [] ? ' aria-invalid="true"' : '';
         $describedBy = $field->describedBy() !== '' ? ' aria-describedby="' . $this->e($field->describedBy()) . '"' : '';
-        $required = $field->required() ? ' <small>' . $this->e($this->text->get('field.required')) . '</small>' : '';
-        $source = ' <small>' . $this->e($this->text->get('field.source')) . ': ' . $this->e($field->source()) . '</small>';
+        $required = $field->required() ? $this->text->get('field.required') : '';
+        $source = $this->text->get('field.source') . ': ' . $this->sourceLabel($field->source());
+        $meta = '<p class="field-meta">' . $this->e(trim($required . ($required !== '' ? ' · ' : '') . $source)) . '</p>';
+        $label = $this->labelRow($field->domId(), $field->label(), $field->hint());
 
         if ($field->control() === 'textarea') {
-            return '<div class="input-group ui-field"><label for="' . $this->e($field->domId()) . '">' . $this->e($field->label())
-                . '</label> <textarea id="' . $this->e($field->domId())
+            return '<div class="input-group ui-field">' . $label . '<textarea id="' . $this->e($field->domId())
                 . '" name="' . $this->e($field->key()) . '"' . $readOnly . $requiredAttribute . $invalid . $describedBy . '>'
-                . $this->e($field->value()) . '</textarea>' . $required . $source . $this->fieldHint($field) . $this->fieldErrors($field) . '</div>';
+                . $this->e($field->value()) . '</textarea>' . $this->fieldHint($field) . $this->fieldErrors($field) . $meta . '</div>';
         }
 
         if ($field->control() === 'checkbox') {
             $checked = $field->value() === '1' ? ' checked' : '';
-            return '<div class="input-group ui-field"><label for="' . $this->e($field->domId()) . '">' . $this->e($field->label())
-                . '</label> <input id="' . $this->e($field->domId())
+            return '<div class="input-group ui-field checkbox-field">' . $label . '<input id="' . $this->e($field->domId())
                 . '" type="checkbox" name="' . $this->e($field->key())
-                . '" value="1"' . $checked . $requiredAttribute . $invalid . $describedBy . '>' . $required . $source . $this->fieldHint($field) . $this->fieldErrors($field) . '</div>';
+                . '" value="1"' . $checked . $requiredAttribute . $invalid . $describedBy . '>' . $this->fieldHint($field) . $this->fieldErrors($field) . $meta . '</div>';
         }
 
-        return '<div class="input-group ui-field"><label for="' . $this->e($field->domId()) . '">' . $this->e($field->label())
-            . '</label> <input id="' . $this->e($field->domId())
+        return '<div class="input-group ui-field">' . $label . '<input id="' . $this->e($field->domId())
             . '" name="' . $this->e($field->key())
             . '" value="' . $this->e($field->value()) . '"' . $readOnly . $requiredAttribute . $invalid . $describedBy
-            . '>' . $required . $source . $this->fieldHint($field) . $this->fieldErrors($field) . '</div>';
+            . '>' . $this->fieldHint($field) . $this->fieldErrors($field) . $meta . '</div>';
     }
 
     private function renderCurrentStep(FirstRunViewModel $view): string
@@ -7290,13 +7435,43 @@ document.querySelectorAll("[data-ui-lang]").forEach(button => button.addEventLis
         return '';
     }
 
+    private function shortStepDescription(FirstRunViewModel $view, string $key): string
+    {
+        foreach ($view->steps() as $step) {
+            if ($step->key() === $key && $step->description() !== '') {
+                $description = $step->description();
+
+                return rtrim(strtok($description, '.') ?: $description, '.') . '.';
+            }
+        }
+
+        return $this->text->get('wizard.no_fields');
+    }
+
+    private function labelRow(string $id, string $label, string $hint): string
+    {
+        return '<div class="field-label-row"><label for="' . $this->e($id) . '">' . $this->e($label) . '</label>'
+            . ($hint !== '' ? $this->helpTrigger($id, $hint) : '')
+            . '</div>';
+    }
+
+    private function helpTrigger(string $id, string $hint): string
+    {
+        return '<span class="help-wrap"><button type="button" class="help-trigger" aria-label="' . $this->e($hint) . '" aria-describedby="' . $this->e($id) . '-popover">?</button><span id="' . $this->e($id) . '-popover" class="help-popover" role="tooltip">' . $this->e($hint) . '</span></span>';
+    }
+
+    private function helperText(string $id, string $hint): string
+    {
+        return $hint !== '' ? '<p id="' . $this->e($id) . '" class="helper-text">' . $this->e($hint) . '</p>' : '';
+    }
+
     private function fieldHint(FirstRunField $field): string
     {
         if ($field->hint() === '') {
             return '';
         }
 
-        return ' <small id="' . $this->e($field->hintId()) . '">' . $this->e($field->hint()) . '</small>';
+        return '<p id="' . $this->e($field->hintId()) . '" class="helper-text">' . $this->e($field->hint()) . '</p>';
     }
 
     private function fieldErrors(FirstRunField $field): string
@@ -7310,7 +7485,7 @@ document.querySelectorAll("[data-ui-lang]").forEach(button => button.addEventLis
             $items .= '<li>' . $this->e($error) . '</li>';
         }
 
-        return '<ul id="' . $this->e($field->errorId()) . '">' . $items . '</ul>';
+        return '<ul id="' . $this->e($field->errorId()) . '" class="field-errors" role="alert">' . $items . '</ul>';
     }
 
     private function sourceLabel(string $source): string
@@ -8862,7 +9037,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '6491441',
+  'source_revision' => '6175810',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

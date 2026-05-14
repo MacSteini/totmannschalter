@@ -137,11 +137,15 @@ final class AdminAuthApplicationService
 
         $webUiEnabled = $discovered->effectiveMainConfig()['web_ui_enabled'] ?? null;
         if ($request->isCreateAdmin()) {
-            if ($discovered->mode() === 'existing' && $webUiEnabled !== true) {
+            if ($webUiEnabled === false || ($discovered->mode() === 'existing' && $webUiEnabled !== true)) {
                 return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
             }
 
             return $this->authService->createAdmin($store, $request->authInput(), $expectedSetupCode, $request->setupCode(), $setupSession, $adminSession);
+        }
+
+        if ($webUiEnabled === false) {
+            return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
         }
 
         if ($discovered->mode() !== 'existing') {
@@ -295,7 +299,7 @@ final class AdminAuthViewModelBuilder
             return AdminAuthViewModel::configBlocked();
         }
 
-        if ($discoveryMode === 'existing' && $webUiEnabled !== true) {
+        if ($webUiEnabled === false || ($discoveryMode === 'existing' && $webUiEnabled !== true)) {
             return AdminAuthViewModel::administrationDisabled();
         }
 
@@ -9244,7 +9248,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'f07b0d1',
+  'source_revision' => '86cd7fc',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

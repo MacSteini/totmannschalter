@@ -50,6 +50,7 @@ final class AdminAuthApplicationResult
 namespace Totman\RuntimeUi\Application;
 
 use Totman\RuntimeUi\Config\DiscoveryResult;
+use Totman\RuntimeUi\Config\WebUiEnabledFlag;
 use Totman\RuntimeUi\Http\FirstRunRequest;
 use Totman\RuntimeUi\Security\AdminAuthService;
 use Totman\RuntimeUi\Security\AdminSessionState;
@@ -135,7 +136,7 @@ final class AdminAuthApplicationService
             return SetupAccessResult::denied('config_blocked', 'Configuration discovery is blocked by an unreadable or invalid runtime config.');
         }
 
-        $webUiEnabled = $this->normaliseWebUiEnabled($discovered->effectiveMainConfig()['web_ui_enabled'] ?? null);
+        $webUiEnabled = WebUiEnabledFlag::normalise($discovered->effectiveMainConfig()['web_ui_enabled'] ?? null);
         if ($request->isCreateAdmin()) {
             if ($webUiEnabled === false || ($discovered->mode() === 'existing' && $webUiEnabled !== true)) {
                 return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
@@ -176,27 +177,6 @@ final class AdminAuthApplicationService
     private function store(string $stateDir): UiPrivateConfigStore
     {
         return UiPrivateConfigStore::forStateDir($stateDir);
-    }
-
-    private function normaliseWebUiEnabled(mixed $value): ?bool
-    {
-        if (is_bool($value)) {
-            return $value;
-        }
-
-        if (is_int($value)) {
-            return $value === 1 ? true : ($value === 0 ? false : null);
-        }
-
-        if (is_string($value)) {
-            return match (strtolower(trim($value))) {
-                '1', 'true', 'on', 'yes' => true,
-                '0', 'false', 'off', 'no', '' => false,
-                default => null,
-            };
-        }
-
-        return null;
     }
 }
 
@@ -301,6 +281,7 @@ final class AdminAuthViewModel
 
 namespace Totman\RuntimeUi\Application;
 
+use Totman\RuntimeUi\Config\WebUiEnabledFlag;
 use Totman\RuntimeUi\Security\AdminSessionState;
 use Totman\RuntimeUi\Security\UiPrivateConfig;
 
@@ -316,8 +297,7 @@ final class AdminAuthViewModelBuilder
             return AdminAuthViewModel::configBlocked();
         }
 
-        $normalisedWebUiEnabled = $this->normaliseWebUiEnabled($webUiEnabled);
-        if ($normalisedWebUiEnabled === false || ($discoveryMode === 'existing' && $normalisedWebUiEnabled !== true)) {
+        if (!WebUiEnabledFlag::allowsAdministration($discoveryMode, $webUiEnabled)) {
             return AdminAuthViewModel::administrationDisabled();
         }
 
@@ -330,27 +310,6 @@ final class AdminAuthViewModelBuilder
         }
 
         return AdminAuthViewModel::signInRequired();
-    }
-
-    private function normaliseWebUiEnabled(mixed $value): ?bool
-    {
-        if (is_bool($value)) {
-            return $value;
-        }
-
-        if (is_int($value)) {
-            return $value === 1 ? true : ($value === 0 ? false : null);
-        }
-
-        if (is_string($value)) {
-            return match (strtolower(trim($value))) {
-                '1', 'true', 'on', 'yes' => true,
-                '0', 'false', 'off', 'no', '' => false,
-                default => null,
-            };
-        }
-
-        return null;
     }
 }
 
@@ -5994,6 +5953,46 @@ final class RecipientConfigWriter
     }
 }
 
+namespace Totman\RuntimeUi\Config;
+
+final class WebUiEnabledFlag
+{
+    public static function normalise(mixed $value): ?bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value)) {
+            return $value === 1 ? true : ($value === 0 ? false : null);
+        }
+
+        if (is_string($value)) {
+            return match (strtolower(trim($value))) {
+                '1', 'true', 'on', 'yes' => true,
+                '0', 'false', 'off', 'no', '' => false,
+                default => null,
+            };
+        }
+
+        return null;
+    }
+
+    public static function allowsAdministration(string $discoveryMode, mixed $value): bool
+    {
+        $normalised = self::normalise($value);
+        if ($normalised === false) {
+            return false;
+        }
+
+        if ($discoveryMode === 'existing' && $normalised !== true) {
+            return false;
+        }
+
+        return true;
+    }
+}
+
 namespace Totman\RuntimeUi\Contracts;
 
 final class RuntimeFileNames
@@ -8625,6 +8624,7 @@ final class SessionSecurity
 namespace Totman\RuntimeUi\Security;
 
 use Totman\RuntimeUi\Config\DiscoveryResult;
+use Totman\RuntimeUi\Config\WebUiEnabledFlag;
 use Totman\RuntimeUi\Http\FirstRunRequest;
 
 final class SetupAccessPolicy
@@ -8668,7 +8668,7 @@ final class SetupAccessPolicy
             return SetupAccessResult::denied('config_blocked', 'Configuration discovery is blocked by an unreadable or invalid runtime config.');
         }
 
-        if (($discovered->effectiveMainConfig()['web_ui_enabled'] ?? null) !== true) {
+        if (!WebUiEnabledFlag::allowsAdministration($discovered->mode(), $discovered->effectiveMainConfig()['web_ui_enabled'] ?? null)) {
             return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
         }
 
@@ -9287,7 +9287,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '41f7164',
+  'source_revision' => 'b18b3ac',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',
@@ -9353,48 +9353,49 @@ array (
     60 => 'src/Config/RecipientConfigImport.php',
     61 => 'src/Config/RecipientConfigImporter.php',
     62 => 'src/Config/RecipientConfigWriter.php',
-    63 => 'src/Contracts/RuntimeFileNames.php',
-    64 => 'src/Deployment/DeploymentCapabilities.php',
-    65 => 'src/Deployment/DeploymentContext.php',
-    66 => 'src/Http/FirstRunRequest.php',
-    67 => 'src/Http/FirstRunRequestMapper.php',
-    68 => 'src/Http/ProductRuntimeContextAdapter.php',
-    69 => 'src/Http/PrototypeController.php',
-    70 => 'src/Http/PrototypeEnvironment.php',
-    71 => 'src/Http/PrototypeEnvironmentFactory.php',
-    72 => 'src/Http/PrototypeRenderer.php',
-    73 => 'src/Http/RuntimeUiMode.php',
-    74 => 'src/Preflight/FirstRunPreflight.php',
-    75 => 'src/Preflight/PreflightCheck.php',
-    76 => 'src/Preflight/PreflightResult.php',
-    77 => 'src/Security/AdminAuthInput.php',
-    78 => 'src/Security/AdminAuthService.php',
-    79 => 'src/Security/AdminCredential.php',
-    80 => 'src/Security/AdminReauthPolicy.php',
-    81 => 'src/Security/AdminSessionLoadResult.php',
-    82 => 'src/Security/AdminSessionState.php',
-    83 => 'src/Security/AdminSessionStore.php',
-    84 => 'src/Security/CsrfTokens.php',
-    85 => 'src/Security/HmacSecretGenerator.php',
-    86 => 'src/Security/InMemoryRateLimiter.php',
-    87 => 'src/Security/PrototypeCsrfPolicy.php',
-    88 => 'src/Security/PrototypeRateLimitPolicy.php',
-    89 => 'src/Security/PrototypeSaveIntentPolicy.php',
-    90 => 'src/Security/SecretRedactor.php',
-    91 => 'src/Security/SessionSecurity.php',
-    92 => 'src/Security/SetupAccessPolicy.php',
-    93 => 'src/Security/SetupAccessResult.php',
-    94 => 'src/Security/SetupCodeVerifier.php',
-    95 => 'src/Security/SetupSessionLoadResult.php',
-    96 => 'src/Security/SetupSessionState.php',
-    97 => 'src/Security/SetupSessionStore.php',
-    98 => 'src/Security/UiPrivateConfig.php',
-    99 => 'src/Security/UiPrivateConfigLoadResult.php',
-    100 => 'src/Security/UiPrivateConfigStore.php',
-    101 => 'src/Setup/FirstRunFlow.php',
-    102 => 'src/Setup/FirstRunOrchestrator.php',
-    103 => 'src/Setup/FirstRunPlanner.php',
-    104 => 'src/Setup/FirstRunStepCatalog.php',
+    63 => 'src/Config/WebUiEnabledFlag.php',
+    64 => 'src/Contracts/RuntimeFileNames.php',
+    65 => 'src/Deployment/DeploymentCapabilities.php',
+    66 => 'src/Deployment/DeploymentContext.php',
+    67 => 'src/Http/FirstRunRequest.php',
+    68 => 'src/Http/FirstRunRequestMapper.php',
+    69 => 'src/Http/ProductRuntimeContextAdapter.php',
+    70 => 'src/Http/PrototypeController.php',
+    71 => 'src/Http/PrototypeEnvironment.php',
+    72 => 'src/Http/PrototypeEnvironmentFactory.php',
+    73 => 'src/Http/PrototypeRenderer.php',
+    74 => 'src/Http/RuntimeUiMode.php',
+    75 => 'src/Preflight/FirstRunPreflight.php',
+    76 => 'src/Preflight/PreflightCheck.php',
+    77 => 'src/Preflight/PreflightResult.php',
+    78 => 'src/Security/AdminAuthInput.php',
+    79 => 'src/Security/AdminAuthService.php',
+    80 => 'src/Security/AdminCredential.php',
+    81 => 'src/Security/AdminReauthPolicy.php',
+    82 => 'src/Security/AdminSessionLoadResult.php',
+    83 => 'src/Security/AdminSessionState.php',
+    84 => 'src/Security/AdminSessionStore.php',
+    85 => 'src/Security/CsrfTokens.php',
+    86 => 'src/Security/HmacSecretGenerator.php',
+    87 => 'src/Security/InMemoryRateLimiter.php',
+    88 => 'src/Security/PrototypeCsrfPolicy.php',
+    89 => 'src/Security/PrototypeRateLimitPolicy.php',
+    90 => 'src/Security/PrototypeSaveIntentPolicy.php',
+    91 => 'src/Security/SecretRedactor.php',
+    92 => 'src/Security/SessionSecurity.php',
+    93 => 'src/Security/SetupAccessPolicy.php',
+    94 => 'src/Security/SetupAccessResult.php',
+    95 => 'src/Security/SetupCodeVerifier.php',
+    96 => 'src/Security/SetupSessionLoadResult.php',
+    97 => 'src/Security/SetupSessionState.php',
+    98 => 'src/Security/SetupSessionStore.php',
+    99 => 'src/Security/UiPrivateConfig.php',
+    100 => 'src/Security/UiPrivateConfigLoadResult.php',
+    101 => 'src/Security/UiPrivateConfigStore.php',
+    102 => 'src/Setup/FirstRunFlow.php',
+    103 => 'src/Setup/FirstRunOrchestrator.php',
+    104 => 'src/Setup/FirstRunPlanner.php',
+    105 => 'src/Setup/FirstRunStepCatalog.php',
   ),
   'excluded' =>
   array (

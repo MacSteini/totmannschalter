@@ -6873,7 +6873,7 @@ final class PrototypeRenderer
 
         if ($this->setupRequired($view, $adminInspection)) {
             return $this->renderHeader($csrfToken, $adminAuth)
-                . $this->renderSetupArea($view, $csrfToken, $adminAuth, false)
+                . $this->renderSetupArea($view, $csrfToken, $adminAuth, false, false, false)
                 . $this->renderFooter();
         }
 
@@ -6970,12 +6970,20 @@ final class PrototypeRenderer
         return '<nav class="ui-main-nav view-animate" role="tablist" aria-label="Main views">' . $buttons . '</nav>';
     }
 
-    private function renderSetupArea(FirstRunViewModel $view, string $csrfToken, AdminAuthViewModel $adminAuth, bool $showAdminCard = true): string
-    {
+    private function renderSetupArea(
+        FirstRunViewModel $view,
+        string $csrfToken,
+        AdminAuthViewModel $adminAuth,
+        bool $showAdminCard = true,
+        bool $showSetupCode = true,
+        bool $showSteps = true,
+    ): string {
+        $setupCodeField = $showSetupCode ? $this->renderSetupCodeField() : '';
+        $steps = $showSteps ? $this->renderSteps($view) : '';
         $wizard = '<form class="ui-form ui-wizard-form form-grid" method="post">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
 ' . $this->renderHiddenFields($view) . '
-' . $this->renderSetupCodeField() . '
+' . $setupCodeField . '
 ' . $this->renderCurrentStep($view) . '
 <div class="action-bar ui-actions full-width">' . $this->renderActions($view) . '</div>
 </form>';
@@ -6990,7 +6998,7 @@ final class PrototypeRenderer
 <h2 id="setup-title">' . $this->e($this->text->get('nav.setup')) . '</h2>
 <p class="section-intro">' . $this->e($this->shortStepDescription($view, $view->currentStep())) . '</p>
 </div>
-' . $this->renderSteps($view) . '
+' . $steps . '
 <div class="' . ($showAdminCard ? 'setup-layout' : 'setup-layout setup-layout-single') . '">
 <section class="card setup-step-card" aria-labelledby="setup-current-step">
 <h3 id="setup-current-step">' . $this->e($this->stepTitle($view, $view->currentStep())) . '</h3>
@@ -9115,6 +9123,10 @@ final class SetupAccessPolicy
                 return SetupAccessResult::allow();
             }
 
+            if ($adminSessionState->authenticated()) {
+                return SetupAccessResult::allow();
+            }
+
             if ($expectedSetupCode === '' || !$this->setupCodeVerifier->verify($expectedSetupCode, $request->setupCode())) {
                 return SetupAccessResult::denied('setup_code_required', 'A valid setup code is required before saving first-run configuration.');
             }
@@ -9803,7 +9815,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '83e190c',
+  'source_revision' => 'a10c544',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

@@ -135,20 +135,16 @@ final class AdminAuthApplicationService
             return SetupAccessResult::denied('config_blocked', 'Configuration discovery is blocked by an unreadable or invalid runtime config.');
         }
 
-        $webUiEnabled = $this->normaliseWebUiEnabled($discovered->effectiveMainConfig()['web_ui_enabled'] ?? null);
+        $webUiEnabled = $discovered->effectiveMainConfig()['web_ui_enabled'] ?? null;
         if ($request->isCreateAdmin()) {
-            if ($webUiEnabled === false || ($discovered->mode() === 'existing' && $webUiEnabled !== true)) {
+            if ($this->browserAdministrationBlocked($discovered, $webUiEnabled)) {
                 return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
             }
 
             return $this->authService->createAdmin($store, $request->authInput(), $expectedSetupCode, $request->setupCode(), $setupSession, $adminSession);
         }
 
-        if ($webUiEnabled === false) {
-            return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
-        }
-
-        if ($discovered->mode() === 'existing' && $webUiEnabled !== true) {
+        if ($this->browserAdministrationBlocked($discovered, $webUiEnabled)) {
             return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
         }
 
@@ -178,25 +174,11 @@ final class AdminAuthApplicationService
         return UiPrivateConfigStore::forStateDir($stateDir);
     }
 
-    private function normaliseWebUiEnabled(mixed $value): ?bool
+    private function browserAdministrationBlocked(DiscoveryResult $discovered, mixed $webUiEnabled): bool
     {
-        if (is_bool($value)) {
-            return $value;
-        }
-
-        if (is_int($value)) {
-            return $value === 1 ? true : ($value === 0 ? false : null);
-        }
-
-        if (is_string($value)) {
-            return match (strtolower(trim($value))) {
-                '1', 'true', 'on', 'yes' => true,
-                '0', 'false', 'off', 'no', '' => false,
-                default => null,
-            };
-        }
-
-        return null;
+        return $webUiEnabled === false
+            || ($webUiEnabled !== null && $webUiEnabled !== true)
+            || ($discovered->mode() === 'existing' && $webUiEnabled !== true);
     }
 }
 
@@ -316,8 +298,11 @@ final class AdminAuthViewModelBuilder
             return AdminAuthViewModel::configBlocked();
         }
 
-        $normalisedWebUiEnabled = $this->normaliseWebUiEnabled($webUiEnabled);
-        if ($normalisedWebUiEnabled === false || ($discoveryMode === 'existing' && $normalisedWebUiEnabled !== true)) {
+        if (
+            $webUiEnabled === false
+            || ($webUiEnabled !== null && $webUiEnabled !== true)
+            || ($discoveryMode === 'existing' && $webUiEnabled !== true)
+        ) {
             return AdminAuthViewModel::administrationDisabled();
         }
 
@@ -330,27 +315,6 @@ final class AdminAuthViewModelBuilder
         }
 
         return AdminAuthViewModel::signInRequired();
-    }
-
-    private function normaliseWebUiEnabled(mixed $value): ?bool
-    {
-        if (is_bool($value)) {
-            return $value;
-        }
-
-        if (is_int($value)) {
-            return $value === 1 ? true : ($value === 0 ? false : null);
-        }
-
-        if (is_string($value)) {
-            return match (strtolower(trim($value))) {
-                '1', 'true', 'on', 'yes' => true,
-                '0', 'false', 'off', 'no', '' => false,
-                default => null,
-            };
-        }
-
-        return null;
     }
 }
 
@@ -2756,7 +2720,7 @@ final class MainConfigDraftBuilder
             'download_lease_seconds' => $this->value('', $current, 'download_lease_seconds', 300),
             'base_url' => $this->value($input->publicUrl(), $current, 'base_url', ''),
             'hmac_secret_hex' => (!$hmac->invalid() && !$hmac->placeholder() && is_string($hmac->value())) ? $hmac->value() : $this->hmacSecretGenerator->generateHex(),
-            'web_ui_enabled' => $input->webUiEnabled() ?? (array_key_exists('web_ui_enabled', $current) ? (bool)$current['web_ui_enabled'] : true),
+            'web_ui_enabled' => $input->webUiEnabled() ?? (array_key_exists('web_ui_enabled', $current) && is_bool($current['web_ui_enabled']) ? $current['web_ui_enabled'] : true),
             'check_interval_seconds' => $this->value('', $current, 'check_interval_seconds', 86400),
             'confirm_window_seconds' => $this->value('', $current, 'confirm_window_seconds', 7200),
             'remind_every_seconds' => $this->value('', $current, 'remind_every_seconds', 1800),
@@ -9413,7 +9377,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '804562f',
+  'source_revision' => 'd167686',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

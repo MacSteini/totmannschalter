@@ -4340,6 +4340,10 @@ final class RuntimeUiTextCatalog
         $text = [
             'page.title' => 'totman runtime UI',
             'product.name' => 'totman',
+            'header.language' => 'Language',
+            'header.toggle_theme' => 'Toggle theme',
+            'footer.label' => 'Footer',
+            'footer.documentation' => 'Documentation',
             'notice.draft_saved' => 'Prototype draft saved.',
             'notice.draft_discarded' => 'Prototype draft discarded.',
             'notice.config_saved' => 'Prototype config saved.',
@@ -4504,6 +4508,9 @@ final class RuntimeUiTextCatalog
             'summary.state_dir_hidden',
             'section.admin_access',
             'section.runtime_inspection',
+            'header.language',
+            'header.toggle_theme',
+            'footer.documentation',
             'field.base_url.label',
             'field.message_body.hint',
             'action.save_runtime',
@@ -6629,14 +6636,15 @@ final class PrototypeRenderer
 <div class="action-bar ui-actions full-width">' . $this->renderActions($view) . '</div>
 </form>';
 
-        $content = $this->renderHeader()
+        $content = $this->renderHeader($csrfToken, $adminAuth ?? AdminAuthViewModel::accessMissing())
             . $notice
             . $alert
             . $this->renderSection('summary', $this->text->get('section.summary'), $this->renderSummary($view))
             . $this->renderSection('steps', $this->text->get('section.steps'), $steps)
             . $this->renderSection('admin-access', $this->text->get('section.admin_access'), $this->renderAdminAccess($csrfToken, $adminAuth ?? AdminAuthViewModel::accessMissing()))
             . $this->renderSection('runtime-inspection', $this->text->get('section.runtime_inspection'), $this->renderAdminInspection($csrfToken, $adminInspection ?? AdminInspectionViewModel::unavailable($this->text->get('admin.unavailable_after_signin'))))
-            . $this->renderSection('wizard', $this->text->get('section.wizard_step'), $wizard);
+            . $this->renderSection('wizard', $this->text->get('section.wizard_step'), $wizard)
+            . $this->renderFooter();
 
         return $this->renderDocument($content);
     }
@@ -6657,6 +6665,7 @@ final class PrototypeRenderer
 ' . $content . '
 </main>
 </div>
+' . $this->renderScriptLink() . '
 </body>
 </html>';
     }
@@ -6668,7 +6677,7 @@ final class PrototypeRenderer
         }
 
         return ':root{--bg-main:#f1f5f9;--bg-surface:#fff;--text-primary:#0f172a;--text-muted:#334155;--bg-card:rgba(255,255,255,.9);--accent:#c1121f;--accent-hover:#9f0f1a;--accent-glow:rgba(193,18,31,.16);--border:#cbd5e1;--success:#15803d;--warning:#2563eb;--danger:#b91c1c;--radius-s:8px;--radius-m:12px;--space-s:.5rem;--space-m:1rem;--space-l:1.6rem}
-@media(prefers-color-scheme:dark){:root{--bg-main:#0b0f1a;--bg-surface:#161e2e;--bg-card:rgba(22,30,46,.92);--text-primary:#f8fafc;--text-muted:#cbd5e1;--accent:#e63946;--accent-hover:#ff5d68;--accent-glow:rgba(230,57,70,.25);--border:#334155;--success:#22c55e;--warning:#60a5fa;--danger:#f87171}}
+html[data-theme=dark]{--bg-main:#0b0f1a;--bg-surface:#161e2e;--bg-card:rgba(22,30,46,.92);--text-primary:#f8fafc;--text-muted:#cbd5e1;--accent:#e63946;--accent-hover:#ff5d68;--accent-glow:rgba(230,57,70,.25);--border:#334155;--success:#22c55e;--warning:#60a5fa;--danger:#f87171}
 *{box-sizing:border-box;margin:0;padding:0}
 body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg-main);color:var(--text-primary);line-height:1.55;min-height:100vh}
 .mode-product .container{width:min(100% - 3rem,1200px);margin-inline:auto;padding-block:var(--space-l)}
@@ -6677,18 +6686,44 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 .mode-product .brand-logo{width:clamp(56px,9vw,112px);height:auto;display:block}
 .mode-product .brand-text h1{font-size:clamp(2rem,1.6rem + 1.8vw,3.4rem);line-height:.95;font-weight:950;letter-spacing:-.02em}
 .mode-product .tagline{margin-top:.25rem;color:var(--text-muted);font-size:clamp(.95rem,.85rem + .35vw,1.12rem);font-weight:800}
+.mode-product .header-actions{display:flex;align-items:center;justify-content:flex-end;gap:.65rem;flex-wrap:wrap;max-width:min(100%,42rem)}
+.mode-product .language-menu{position:relative}
+.mode-product .language-menu summary{list-style:none;min-height:46px;display:inline-flex;align-items:center;gap:.65rem;border:1.5px solid var(--border);border-radius:var(--radius-m);background:var(--bg-surface);color:var(--text-primary);font-weight:900;font-size:.95rem;padding:.65rem 2.15rem .65rem .9rem;cursor:pointer;user-select:none}
+.mode-product .language-menu summary::-webkit-details-marker{display:none}
+.mode-product .language-menu summary:after{content:"";position:absolute;right:.9rem;top:50%;width:.55rem;height:.55rem;border-right:2px solid var(--text-muted);border-bottom:2px solid var(--text-muted);transform:translateY(-65%) rotate(45deg);pointer-events:none}
+.mode-product .language-menu[open] summary{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-glow);background:var(--bg-surface)}
+.mode-product .language-menu[open] summary:after{transform:translateY(-25%) rotate(225deg)}
+.mode-product .language-options{position:absolute;right:0;top:calc(100% + .45rem);z-index:50;min-width:100%;padding:.35rem;border:1px solid var(--border);border-radius:var(--radius-m);background:var(--bg-surface);box-shadow:0 14px 36px rgba(15,23,42,.2);display:grid;gap:.25rem}
+.mode-product .language-options button{min-height:0;border:0;border-radius:8px;background:transparent;color:var(--text-primary);font:inherit;font-weight:800;text-align:left;padding:.6rem .75rem;cursor:pointer;justify-content:flex-start}
+.mode-product .language-options button:hover,.mode-product .language-options button[aria-current=true]{background:var(--accent-glow);color:var(--accent)}
+.mode-product .theme-toggle{width:46px;height:46px;min-height:46px;padding:0!important;font-size:1.25rem;line-height:1;color:var(--text-primary);font-weight:900}
+.mode-product .theme-icon{display:none;line-height:1}
+.mode-product .theme-toggle[data-theme-resolved=light] .theme-icon-light,.mode-product .theme-toggle[data-theme-resolved=dark] .theme-icon-dark{display:block}
+.mode-product .signout-btn{border-color:rgba(185,28,28,.35)!important;background:rgba(185,28,28,.08)!important;color:var(--danger)!important}
+.mode-product .signout-btn:hover:not(:disabled){border-color:var(--danger)!important;background:rgba(185,28,28,.14)!important;color:var(--danger)!important}
 .mode-product .card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-m);padding:var(--space-l);margin-bottom:var(--space-l);box-shadow:0 1px 3px rgba(0,0,0,.1)}
 .mode-product .card>h2,.mode-product .card>h3{margin-bottom:calc(var(--space-m) + .45rem)}
 .mode-product h2{font-size:clamp(1.25rem,1.05rem + .8vw,1.75rem);line-height:1.15}
 .mode-product h3{font-size:1.08rem;margin:var(--space-m) 0 .55rem}
 .mode-product h4{font-size:1rem;margin:var(--space-m) 0 .45rem}
 .mode-product p{margin-bottom:var(--space-m)}
+.mode-product .dashboard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:var(--space-s);margin-bottom:var(--space-m)}
+.mode-product .stat-card{display:flex;align-items:center;gap:1rem;padding:1rem;margin-bottom:0;background:var(--bg-surface);min-height:86px}
+.mode-product .stat-icon{width:42px;height:42px;background:rgba(100,116,139,.14);color:#475569;border-radius:10px;display:grid;place-items:center;font-weight:900;flex:0 0 auto}
+html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);color:#cbd5e1}
+.mode-product .stat-content{display:flex;flex-direction:column;gap:2px;min-width:0}
+.mode-product .stat-label{font-size:.72rem;font-weight:800;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em}
+.mode-product .stat-value{font-size:clamp(1rem,.8rem + 1vw,1.35rem);font-weight:900;overflow-wrap:anywhere}
+.mode-product .stat-desc,.mode-product .helper-text,.mode-product .text-muted{color:var(--text-muted);font-size:.85rem}
 .mode-product .ui-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr));gap:var(--space-s)}
 .mode-product .ui-summary dt{font-size:.72rem;font-weight:800;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em}
 .mode-product .ui-summary dd{margin:0;font-size:1rem;font-weight:900;color:var(--text-primary);overflow-wrap:anywhere}
-.mode-product .setup-step-list{display:flex;flex-wrap:wrap;padding:.35rem;background:color-mix(in srgb,var(--bg-surface),var(--bg-main)26%);border:1px solid var(--border);border-radius:999px;box-shadow:0 10px 28px rgba(15,23,42,.06);gap:.35rem;margin:0}
-.mode-product .setup-step-list li{list-style:none;flex:1 1 8rem;border-radius:999px;padding:.78rem .9rem;text-align:center;color:var(--text-muted);font-weight:750}
-.mode-product .setup-step-list li[aria-current=step]{background:var(--accent);color:#fff;box-shadow:0 4px 15px var(--accent-glow);animation:toggleSelect .18s ease-out}
+.mode-product .sub-nav{display:flex;flex-wrap:wrap;gap:.3rem;padding:.3rem;background:color-mix(in srgb,var(--bg-surface),var(--bg-main)38%);border:1px solid var(--border);border-radius:999px;margin:0 0 var(--space-l);box-shadow:0 6px 18px rgba(15,23,42,.045)}
+.mode-product .setup-step-list{padding:.3rem}
+.mode-product .setup-step-list .sub-nav-item{list-style:none;flex:1 1 6.5rem;border-radius:999px;padding:.58rem .85rem;text-align:center;color:var(--text-muted);font-size:.94rem;font-weight:760}
+.mode-product .setup-step-list .sub-nav-item[aria-current=step]{background:var(--bg-card);color:var(--accent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent),transparent 72%),0 5px 14px rgba(15,23,42,.06);animation:toggleSelect .18s ease-out}
+.mode-product .setup-step-list .sub-nav-item.is-complete{color:var(--success)}
+.mode-product .setup-step-list .sub-nav-item.is-blocked{color:var(--danger)}
 .mode-product .setup-step-list small{display:block;font-size:.72rem;font-weight:800;opacity:.88}
 .mode-product .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:var(--space-m)var(--space-l)}
 .mode-product .full-width,.mode-product fieldset{grid-column:1/-1}
@@ -6721,6 +6756,13 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 .mode-product .preflight-item.status-warn{border-left-color:var(--warning)}
 .mode-product .preflight-item.status-fail{border-left-color:var(--danger)}
 .mode-product .preflight-item small,.mode-product .helper-text,.mode-product .text-muted{color:var(--text-muted);font-size:.85rem}
+.mode-product .terminal-card{background:var(--bg-card);color:var(--text-primary)}
+.mode-product .log-window{display:block;white-space:normal;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--bg-main);color:var(--text-primary);padding:.35rem;min-height:18rem;max-height:clamp(18rem,52vh,42rem);overflow:auto}
+.mode-product .log-line{white-space:pre-wrap;overflow-wrap:anywhere;padding:.42rem .55rem;border-radius:6px}
+.mode-product .log-line:nth-child(odd){background:rgba(15,23,42,.035)}
+.mode-product .log-line:nth-child(even){background:rgba(193,18,31,.06)}
+html[data-theme=dark] .mode-product .log-line:nth-child(odd){background:rgba(248,250,252,.045)}
+html[data-theme=dark] .mode-product .log-line:nth-child(even){background:rgba(230,57,70,.12)}
 .mode-product .maintenance-danger-zone{background:#fff1f2;border:1px solid #b91c1c;border-left:6px solid #7f1d1d;border-radius:var(--radius-m);padding:var(--space-m);color:#0f172a;margin-top:var(--space-l)}
 .mode-product .maintenance-danger-zone h3,.mode-product .maintenance-danger-zone h4{color:#7f1d1d}
 @media(prefers-color-scheme:dark){.mode-product .maintenance-danger-zone{background:#2a1014;border-color:#f87171;border-left-color:#fca5a5;color:#f8fafc}.mode-product .maintenance-danger-zone h3,.mode-product .maintenance-danger-zone h4{color:#fecaca}}
@@ -6730,9 +6772,66 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 .mode-product dt{font-weight:900;color:var(--text-muted)}
 .mode-product dd{margin:0;color:var(--text-primary);overflow-wrap:anywhere}
 .mode-product ul,.mode-product ol{padding-left:1.2rem}
+.mode-product .sub-nav{padding-left:.3rem}
 .mode-product li+li{margin-top:.35rem}
+.mode-product .sub-nav li+li{margin-top:0}
+.mode-product .site-footer{border-top:0;margin-top:3rem;padding-block:clamp(1rem,2.4vw,1.5rem) clamp(1.4rem,3vw,2rem)}
+.mode-product .footer-nav{display:flex;flex-wrap:wrap;justify-content:center;gap:.35rem;width:fit-content;max-width:100%;margin-inline:auto;padding:.45rem;background:color-mix(in srgb,var(--bg-surface),var(--bg-main)30%);border:1px solid var(--border);border-radius:999px}
+.mode-product .footer-nav>a{color:var(--text-muted);font-weight:700;text-decoration:none;padding:.38rem .65rem;border-radius:999px}
+.mode-product .footer-nav>a:hover,.mode-product .footer-nav>a:focus-visible{background:var(--accent-glow);color:var(--accent)}
 @keyframes toggleSelect{0%{transform:scale(.96)}70%{transform:scale(1.025)}100%{transform:scale(1)}}@media(prefers-reduced-motion:reduce){.mode-product *{animation:none!important;transition:none!important}}
-@media(max-width:700px){.mode-product .container{width:min(100% - 1rem,1200px)}.mode-product .header{justify-content:center;text-align:center}.mode-product .brand{justify-content:center;width:100%;flex-direction:column;gap:.65rem}.mode-product .brand-logo{width:clamp(84px,24vw,116px)}.mode-product .brand-text{text-align:center}.mode-product .card{padding:1rem}.mode-product .setup-step-list{border-radius:26px}.mode-product .setup-step-list li{flex:1 1 100%}.mode-product .action-bar{align-items:stretch}.mode-product .action-bar button{width:100%}.mode-product dl{grid-template-columns:1fr}}' . "\n";
+@media(max-width:700px){.mode-product .container{width:min(100% - 1rem,1200px)}.mode-product .header{justify-content:center;text-align:center}.mode-product .brand{justify-content:center;width:100%;flex-direction:column;gap:.65rem}.mode-product .brand-logo{width:clamp(84px,24vw,116px)}.mode-product .brand-text{text-align:center}.mode-product .header-actions{width:100%;max-width:none;justify-content:center}.mode-product .card{padding:1rem}.mode-product .sub-nav{border-radius:26px;padding:.35rem;gap:.35rem}.mode-product .setup-step-list .sub-nav-item{flex:1 1 7.5rem;border-radius:999px;padding:.78rem .85rem}.mode-product .action-bar{align-items:stretch}.mode-product .action-bar button{width:100%}.mode-product dl{grid-template-columns:1fr}.mode-product .footer-nav{border-radius:24px;width:100%}}' . "\n";
+    }
+
+    public function script(): string
+    {
+        if (!$this->text->productMode()) {
+            return '';
+        }
+
+        return '(() => {
+"use strict";
+const themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
+const storageKey = "totman_theme_mode";
+const storageGet = key => { try { return localStorage.getItem(key); } catch (error) { return null; } };
+const storageSet = (key, value) => { try { localStorage.setItem(key, value); } catch (error) {} };
+const normalise = mode => ["light","dark"].includes(mode) ? mode : null;
+const systemMode = () => themeMedia.matches ? "dark" : "light";
+const applyTheme = mode => {
+  mode = normalise(mode);
+  const resolved = mode || systemMode();
+  document.documentElement.setAttribute("data-theme", resolved);
+  document.documentElement.dataset.themeMode = mode || "system";
+  const toggle = document.getElementById("theme-toggle");
+  if (toggle) {
+    toggle.dataset.themeResolved = resolved;
+    toggle.setAttribute("aria-pressed", resolved === "dark" ? "true" : "false");
+  }
+};
+const toggleTheme = () => {
+  const next = (document.documentElement.getAttribute("data-theme") || systemMode()) === "dark" ? "light" : "dark";
+  storageSet(storageKey, next);
+  applyTheme(next);
+};
+const langKey = "totman_ui_language";
+const applyLanguageLabel = value => {
+  const summary = document.querySelector("[data-language-current]");
+  const selected = document.querySelector(`[data-ui-lang="${CSS.escape(value)}"]`);
+  if (summary && selected) summary.textContent = selected.textContent || value;
+  document.querySelectorAll("[data-ui-lang]").forEach(button => button.setAttribute("aria-current", button.dataset.uiLang === value ? "true" : "false"));
+};
+applyTheme(storageGet(storageKey));
+themeMedia.addEventListener?.("change", () => { if (!normalise(storageGet(storageKey))) applyTheme(null); });
+document.getElementById("theme-toggle")?.addEventListener("click", toggleTheme);
+const storedLang = storageGet(langKey) || "en";
+applyLanguageLabel(storedLang);
+document.querySelectorAll("[data-ui-lang]").forEach(button => button.addEventListener("click", () => {
+  const value = button.dataset.uiLang || "en";
+  storageSet(langKey, value);
+  applyLanguageLabel(value);
+  button.closest("details")?.removeAttribute("open");
+}));
+})();' . "\n";
     }
 
     private function renderStylesheetLink(): string
@@ -6744,6 +6843,15 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
         return '<link rel="stylesheet" href="' . $this->e($this->stylesheetUrl()) . '">';
     }
 
+    private function renderScriptLink(): string
+    {
+        if (!$this->text->productMode()) {
+            return '';
+        }
+
+        return '<script src="' . $this->e($this->scriptUrl()) . '" defer></script>';
+    }
+
     private function stylesheetUrl(): string
     {
         $scriptName = basename((string)($_SERVER['SCRIPT_NAME'] ?? 'totman-ui.php')) ?: 'totman-ui.php';
@@ -6752,13 +6860,35 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
         return $scriptName . '?totman_ui_asset=css&v=' . $version;
     }
 
-    private function renderHeader(): string
+    private function scriptUrl(): string
+    {
+        $scriptName = basename((string)($_SERVER['SCRIPT_NAME'] ?? 'totman-ui.php')) ?: 'totman-ui.php';
+        $version = substr(hash('sha256', $this->script()), 0, 12);
+
+        return $scriptName . '?totman_ui_asset=js&v=' . $version;
+    }
+
+    private function renderHeader(string $csrfToken, AdminAuthViewModel $adminAuth): string
     {
         if (!$this->text->productMode()) {
             return '<header class="ui-header"><p class="ui-product">' . $this->e($this->text->get('product.name')) . '</p><h1>' . $this->e($this->text->get('page.title')) . '</h1></header>';
         }
 
-        return '<header class="header ui-header view-animate"><div class="brand brand-link"><img class="brand-logo" src="' . self::PRODUCT_LOGO_DATA_URI . '" alt="' . $this->e($this->text->get('product.name')) . '"><div class="brand-text"><h1>' . $this->e($this->text->get('product.name')) . '</h1><h2 class="tagline">A Deadman’s Switch for E-mail.</h2></div></div></header>';
+        $signOut = '';
+        if ($adminAuth->showSignedIn()) {
+            $signOut = '<form method="post" class="header-logout-form"><input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '"><button type="submit" name="action" value="logout" class="btn-secondary compact-btn signout-btn">' . $this->e($this->text->get('admin.sign_out')) . '</button></form>';
+        }
+
+        return '<header class="header ui-header view-animate"><div class="brand brand-link"><img class="brand-logo" src="' . self::PRODUCT_LOGO_DATA_URI . '" alt="" aria-hidden="true"><div class="brand-text"><h1>' . $this->e($this->text->get('product.name')) . '</h1><h2 class="tagline">A Deadman’s Switch for E-mail.</h2></div></div><div class="header-actions"><details class="language-menu"><summary aria-label="' . $this->e($this->text->get('header.language')) . '"><span data-language-current>English</span></summary><div class="language-options"><button type="button" data-ui-lang="en" aria-current="true">English</button><button type="button" data-ui-lang="de">Deutsch</button></div></details><button type="button" id="theme-toggle" class="btn-secondary compact-btn theme-toggle" aria-label="' . $this->e($this->text->get('header.toggle_theme')) . '" title="' . $this->e($this->text->get('header.toggle_theme')) . '"><span class="theme-icon theme-icon-light" aria-hidden="true">☀</span><span class="theme-icon theme-icon-dark" aria-hidden="true">◐</span></button>' . $signOut . '</div></header>';
+    }
+
+    private function renderFooter(): string
+    {
+        if (!$this->text->productMode()) {
+            return '';
+        }
+
+        return '<footer class="site-footer"><nav class="footer-nav" aria-label="' . $this->e($this->text->get('footer.label')) . '"><a href="https://github.com/MacSteini/totmannschalter">GitHub</a><a href="https://github.com/MacSteini/">MacSteini &copy; 2026</a><a href="https://github.com/MacSteini/totmannschalter/tree/main/docs">' . $this->e($this->text->get('footer.documentation')) . '</a></nav></footer>';
     }
 
     private function renderSection(string $key, string $title, string $content): string
@@ -6774,13 +6904,20 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 
     private function renderSummary(FirstRunViewModel $view): string
     {
-        return '<dl class="ui-summary">
-<dt>' . $this->e($this->text->get('summary.state_dir')) . '</dt><dd>' . $this->e($this->summaryStateDir($view)) . '</dd>
-<dt>' . $this->e($this->text->get('summary.mode')) . '</dt><dd>' . $this->e($view->mode()) . '</dd>
-<dt>' . $this->e($this->text->get('summary.current_step')) . '</dt><dd>' . $this->e($view->currentStep()) . '</dd>
-<dt>' . $this->e($this->text->get('summary.preflight')) . '</dt><dd>' . $this->e($view->preflightStatus()) . '</dd>
-<dt>' . $this->e($this->text->get('summary.path_fields')) . '</dt><dd>' . ($view->pathFieldsReadOnly() ? $this->text->get('summary.paths_read_only') : $this->text->get('summary.paths_editable')) . '</dd>
-</dl>';
+        $items = [
+            ['D', $this->text->get('summary.state_dir'), $this->summaryStateDir($view)],
+            ['M', $this->text->get('summary.mode'), $view->mode()],
+            ['S', $this->text->get('summary.current_step'), $this->stepTitle($view, $view->currentStep())],
+            ['P', $this->text->get('summary.preflight'), $view->preflightStatus()],
+            ['F', $this->text->get('summary.path_fields'), $view->pathFieldsReadOnly() ? $this->text->get('summary.paths_read_only') : $this->text->get('summary.paths_editable')],
+        ];
+
+        $cards = '';
+        foreach ($items as [$icon, $label, $value]) {
+            $cards .= '<article class="stat-card"><div class="stat-icon" aria-hidden="true">' . $this->e($icon) . '</div><div class="stat-content"><span class="stat-label">' . $this->e($label) . '</span><span class="stat-value">' . $this->e($value) . '</span></div></article>';
+        }
+
+        return '<div class="dashboard-grid ui-summary">' . $cards . '</div>';
     }
 
     private function renderAdminAccess(string $csrfToken, AdminAuthViewModel $adminAuth): string
@@ -6799,30 +6936,29 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 
         if ($adminAuth->showSignedIn()) {
             return '<p role="status">' . $this->e($this->text->format('admin.signed_in_as', 'username', $adminAuth->username())) . '</p>
-<form method="post">
+<form method="post" class="form-grid">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-<label>' . $this->e($this->text->get('admin.reenter_password')) . ' <input type="password" name="reauth_password" autocomplete="current-password"></label>
-<button type="submit" name="action" value="reauth">' . $this->e($this->text->get('admin.reauthenticate')) . '</button>
-<button type="submit" name="action" value="logout">' . $this->e($this->text->get('admin.sign_out')) . '</button>
+<div class="input-group"><label for="admin-reauth-password">' . $this->e($this->text->get('admin.reenter_password')) . '</label><input id="admin-reauth-password" type="password" name="reauth_password" autocomplete="current-password"></div>
+<div class="action-bar full-width"><button type="submit" name="action" value="reauth" class="btn-primary">' . $this->e($this->text->get('admin.reauthenticate')) . '</button><button type="submit" name="action" value="logout" class="btn-secondary">' . $this->e($this->text->get('admin.sign_out')) . '</button></div>
 </form>';
         }
 
         if ($adminAuth->showLogin()) {
-            return '<form method="post">
+            return '<form method="post" class="form-grid">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-<label>' . $this->e($this->text->get('admin.username')) . ' <input name="login_username" autocomplete="username"></label><br>
-<label>' . $this->e($this->text->get('admin.password')) . ' <input type="password" name="login_password" autocomplete="current-password"></label><br>
-<button type="submit" name="action" value="login">' . $this->e($this->text->get('admin.sign_in')) . '</button>
+<div class="input-group"><label for="admin-login-username">' . $this->e($this->text->get('admin.username')) . '</label><input id="admin-login-username" name="login_username" autocomplete="username"></div>
+<div class="input-group"><label for="admin-login-password">' . $this->e($this->text->get('admin.password')) . '</label><input id="admin-login-password" type="password" name="login_password" autocomplete="current-password"></div>
+<div class="action-bar full-width"><button type="submit" name="action" value="login" class="btn-primary">' . $this->e($this->text->get('admin.sign_in')) . '</button></div>
 </form>';
         }
 
-        return '<form method="post">
+        return '<form method="post" class="form-grid">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-<label>' . $this->e($this->text->get('admin.setup_code')) . ' <input name="setup_code"></label><br>
-<label>' . $this->e($this->text->get('admin.create_username')) . ' <input name="admin_username" autocomplete="username"></label><br>
-<label>' . $this->e($this->text->get('admin.create_password')) . ' <input type="password" name="admin_password" autocomplete="new-password"></label><br>
-<label>' . $this->e($this->text->get('admin.repeat_password')) . ' <input type="password" name="admin_password_confirm" autocomplete="new-password"></label><br>
-<button type="submit" name="action" value="create_admin">' . $this->e($this->text->get('admin.create_access')) . '</button>
+<div class="input-group"><label for="admin-setup-code">' . $this->e($this->text->get('admin.setup_code')) . '</label><input id="admin-setup-code" name="setup_code"></div>
+<div class="input-group"><label for="admin-create-username">' . $this->e($this->text->get('admin.create_username')) . '</label><input id="admin-create-username" name="admin_username" autocomplete="username"></div>
+<div class="input-group"><label for="admin-create-password">' . $this->e($this->text->get('admin.create_password')) . '</label><input id="admin-create-password" type="password" name="admin_password" autocomplete="new-password"></div>
+<div class="input-group"><label for="admin-create-password-confirm">' . $this->e($this->text->get('admin.repeat_password')) . '</label><input id="admin-create-password-confirm" type="password" name="admin_password_confirm" autocomplete="new-password"></div>
+<div class="action-bar full-width"><button type="submit" name="action" value="create_admin" class="btn-primary">' . $this->e($this->text->get('admin.create_access')) . '</button></div>
 </form>';
     }
 
@@ -6851,7 +6987,7 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 ' . $this->renderRuntimePaths($summary->paths()) . '
 <h3>' . $this->e($this->text->get('inspection.log_tail')) . '</h3>
 <p>' . $this->e($logTail->status()) . ': ' . $this->e($logTail->message()) . '</p>
-' . ($logTail->lines() !== [] ? '<pre>' . $this->e(implode("\n", $logTail->lines())) . '</pre>' : '') . '
+' . ($logTail->lines() !== [] ? '<div class="log-window terminal-card">' . $this->renderLogLines($logTail->lines()) . '</div>' : '') . '
 <h3>' . $this->e($this->text->get('inspection.file_aliases')) . '</h3>
 ' . $this->renderFileAliases($aliases) . '
 <section class="maintenance-danger-zone">
@@ -6945,7 +7081,7 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 <input type="hidden" name="admin_command" value="' . $this->e($command) . '">
 <input type="hidden" name="admin_command_phase" value="' . MaintenanceCommandResult::PREVIEW . '">
 ' . ($command === AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION ? '<label>' . $this->e($this->text->get('danger.alias')) . ' <input name="admin_command_target_alias"></label> ' : '') . '
-<button type="submit" name="action" value="admin_command">' . $this->e($label) . '</button>
+<button type="submit" name="action" value="admin_command" class="btn-secondary">' . $this->e($label) . '</button>
 </form>
 <form class="action-bar danger-action-row" method="post">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
@@ -6953,11 +7089,24 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 <input type="hidden" name="admin_command_phase" value="' . MaintenanceCommandResult::EXECUTE . '">
 ' . ($command === AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION ? '<label>' . $this->e($this->text->get('danger.alias')) . ' <input name="admin_command_target_alias"></label> ' : '') . '
 <label><input type="checkbox" name="confirm_admin_command" value="1"> ' . $this->e($this->text->get('danger.confirm_execute')) . '</label>
-<button type="submit" name="action" value="admin_command">' . $this->e($this->text->get('danger.execute')) . ': ' . $this->e($label) . '</button>
+<button type="submit" name="action" value="admin_command" class="btn-secondary danger">' . $this->e($this->text->get('danger.execute')) . ': ' . $this->e($label) . '</button>
 </form>';
         }
 
         return $forms;
+    }
+
+    /**
+     * @param list<string> $lines
+     */
+    private function renderLogLines(array $lines): string
+    {
+        $html = '';
+        foreach ($lines as $line) {
+            $html .= '<div class="log-line">' . $this->e($line) . '</div>';
+        }
+
+        return $html;
     }
 
     private function e(string $value): string
@@ -7076,12 +7225,17 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
                 continue;
             }
 
-            $buttons .= '<button type="submit" name="action" value="' . $this->e($action->key()) . '"'
+            $buttons .= '<button type="submit" name="action" value="' . $this->e($action->key()) . '" class="' . $this->e($this->actionClass($action->key())) . '"'
                 . ($action->disabled() ? ' disabled' : '')
                 . '>' . $this->e($action->label()) . '</button>';
         }
 
         return $buttons;
+    }
+
+    private function actionClass(string $key): string
+    {
+        return in_array($key, ['save_runtime', 'next_step'], true) ? 'btn-primary' : 'btn-secondary';
     }
 
     private function renderHiddenFields(FirstRunViewModel $view): string
@@ -7099,9 +7253,15 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
         $items = '';
         foreach ($view->steps() as $step) {
             $marker = $step->current() ? ' aria-current="step"' : '';
-            $items .= '<li' . $marker . '><strong>' . $this->e($step->title()) . '</strong> '
+            $classes = ['sub-nav-item'];
+            if ($step->complete()) {
+                $classes[] = 'is-complete';
+            }
+            if ($step->blocked()) {
+                $classes[] = 'is-blocked';
+            }
+            $items .= '<li class="' . $this->e(implode(' ', $classes)) . '"' . $marker . '><strong>' . $this->e($step->title()) . '</strong> '
                 . '<small>' . $this->e($step->status()) . '</small>'
-                . ($step->current() && $step->description() !== '' ? '<br><small>' . $this->e($step->description()) . '</small>' : '')
                 . '</li>';
         }
 
@@ -8835,6 +8995,12 @@ final class PrototypeBundle
             return;
         }
 
+        if (($_GET['totman_ui_asset'] ?? '') === 'js') {
+            self::sendSecurityHeaders();
+            self::serveScript($runtimeUiMode);
+            return;
+        }
+
         self::sendSecurityHeaders();
         self::startSession();
 
@@ -8859,6 +9025,14 @@ final class PrototypeBundle
         header('Cache-Control: no-store, max-age=0');
         header('X-Content-Type-Options: nosniff');
         echo (new PrototypeRenderer(text: new RuntimeUiTextCatalog($runtimeUiMode)))->stylesheet();
+    }
+
+    private static function serveScript(string $runtimeUiMode): void
+    {
+        header('Content-Type: application/javascript; charset=UTF-8');
+        header('Cache-Control: no-store, max-age=0');
+        header('X-Content-Type-Options: nosniff');
+        echo (new PrototypeRenderer(text: new RuntimeUiTextCatalog($runtimeUiMode)))->script();
     }
 
     private static function sendSecurityHeaders(): void

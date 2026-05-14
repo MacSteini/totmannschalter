@@ -6698,6 +6698,17 @@ final class PrototypeRenderer
             ));
         }
 
+        $authView = $adminAuth ?? AdminAuthViewModel::accessMissing();
+        if ($authView->showLogin()) {
+            $content = $this->renderHeader($csrfToken, $authView)
+                . $notice
+                . $alert
+                . $this->renderSection('admin-access', $this->text->get('section.admin_access'), $this->renderAdminAccess($csrfToken, $authView))
+                . $this->renderFooter();
+
+            return $this->renderDocument($content);
+        }
+
         $wizard = '<form class="ui-form ui-wizard-form form-grid" method="post">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
 ' . $this->renderHiddenFields($view) . '
@@ -6706,12 +6717,12 @@ final class PrototypeRenderer
 <div class="action-bar ui-actions full-width">' . $this->renderActions($view) . '</div>
 </form>';
 
-        $content = $this->renderHeader($csrfToken, $adminAuth ?? AdminAuthViewModel::accessMissing())
+        $content = $this->renderHeader($csrfToken, $authView)
             . $notice
             . $alert
             . $this->renderSection('summary', $this->text->get('section.summary'), $this->renderSummary($view))
             . $this->renderSection('steps', $this->text->get('section.steps'), $steps)
-            . $this->renderSection('admin-access', $this->text->get('section.admin_access'), $this->renderAdminAccess($csrfToken, $adminAuth ?? AdminAuthViewModel::accessMissing()))
+            . $this->renderSection('admin-access', $this->text->get('section.admin_access'), $this->renderAdminAccess($csrfToken, $authView))
             . $this->renderSection('runtime-inspection', $this->text->get('section.runtime_inspection'), $this->renderAdminInspection($csrfToken, $adminInspection ?? AdminInspectionViewModel::unavailable($this->text->get('admin.unavailable_after_signin'))))
             . $this->renderSection('wizard', $this->text->get('section.wizard_step'), $wizard)
             . $this->renderFooter();
@@ -6743,6 +6754,14 @@ final class PrototypeRenderer
                 . $this->renderFooter();
         }
 
+        if ($adminAuth->showLogin()) {
+            return $this->renderHeader($csrfToken, $adminAuth)
+                . $notice
+                . $alert
+                . $this->renderProductLogin($csrfToken, $adminAuth)
+                . $this->renderFooter();
+        }
+
         $activeSection = $adminInspection->available() && $adminAuth->showSignedIn() ? 'runtime' : 'setup';
         $content = $this->renderHeader($csrfToken, $adminAuth)
             . $notice
@@ -6770,6 +6789,16 @@ final class PrototypeRenderer
 ' . $this->renderReadonlyInputGroup('setup-state-dir', $this->text->get('setup.data_directory'), $this->text->get('setup.data_directory_default'), $this->text->get('setup.data_directory_help'), 'full-width') . '
 <div class="action-bar full-width"><button type="submit" name="action" value="create_admin" class="btn-primary">' . $this->e($this->text->get('setup.create_access')) . '</button></div>
 </form>
+</section>
+</div>';
+    }
+
+    private function renderProductLogin(string $csrfToken, AdminAuthViewModel $adminAuth): string
+    {
+        return '<div class="auth-main view-animate">
+<section class="card auth-card" aria-labelledby="admin-login-title">
+<h2 id="admin-login-title">' . $this->e($this->text->get('admin.sign_in')) . '</h2>
+' . $this->renderAdminAccess($csrfToken, $adminAuth) . '
 </section>
 </div>';
     }
@@ -9177,7 +9206,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '7087edf',
+  'source_revision' => 'aade2b7',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

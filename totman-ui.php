@@ -135,7 +135,7 @@ final class AdminAuthApplicationService
             return SetupAccessResult::denied('config_blocked', 'Configuration discovery is blocked by an unreadable or invalid runtime config.');
         }
 
-        $webUiEnabled = $discovered->effectiveMainConfig()['web_ui_enabled'] ?? null;
+        $webUiEnabled = $this->normaliseWebUiEnabled($discovered->effectiveMainConfig()['web_ui_enabled'] ?? null);
         if ($request->isCreateAdmin()) {
             if ($webUiEnabled === false || ($discovered->mode() === 'existing' && $webUiEnabled !== true)) {
                 return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
@@ -176,6 +176,27 @@ final class AdminAuthApplicationService
     private function store(string $stateDir): UiPrivateConfigStore
     {
         return UiPrivateConfigStore::forStateDir($stateDir);
+    }
+
+    private function normaliseWebUiEnabled(mixed $value): ?bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value)) {
+            return $value === 1 ? true : ($value === 0 ? false : null);
+        }
+
+        if (is_string($value)) {
+            return match (strtolower(trim($value))) {
+                '1', 'true', 'on', 'yes' => true,
+                '0', 'false', 'off', 'no', '' => false,
+                default => null,
+            };
+        }
+
+        return null;
     }
 }
 
@@ -295,7 +316,8 @@ final class AdminAuthViewModelBuilder
             return AdminAuthViewModel::configBlocked();
         }
 
-        if ($webUiEnabled === false || ($discoveryMode === 'existing' && $webUiEnabled !== true)) {
+        $normalisedWebUiEnabled = $this->normaliseWebUiEnabled($webUiEnabled);
+        if ($normalisedWebUiEnabled === false || ($discoveryMode === 'existing' && $normalisedWebUiEnabled !== true)) {
             return AdminAuthViewModel::administrationDisabled();
         }
 
@@ -308,6 +330,27 @@ final class AdminAuthViewModelBuilder
         }
 
         return AdminAuthViewModel::signInRequired();
+    }
+
+    private function normaliseWebUiEnabled(mixed $value): ?bool
+    {
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value)) {
+            return $value === 1 ? true : ($value === 0 ? false : null);
+        }
+
+        if (is_string($value)) {
+            return match (strtolower(trim($value))) {
+                '1', 'true', 'on', 'yes' => true,
+                '0', 'false', 'off', 'no', '' => false,
+                default => null,
+            };
+        }
+
+        return null;
     }
 }
 
@@ -9244,7 +9287,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'cbb4ecd',
+  'source_revision' => '41f7164',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

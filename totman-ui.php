@@ -4375,7 +4375,7 @@ final class RuntimeUiTextCatalog
             'footer.documentation' => 'Documentation',
             'setup.initial_title' => 'Initial setup',
             'setup.locked' => 'Setup is locked until a setup code is configured.',
-            'setup.locked_help' => 'Edit the totman-ui.php file on the server and set TOTMAN_UI_SETUP_CODE near the top, then reload this page. Docker or managed hosting can set the same value in the server environment instead.',
+            'setup.locked_help' => 'Edit the deployed UI PHP file on the server and set TOTMAN_UI_SETUP_CODE near the top, then reload this page. Docker or managed hosting can set the same value in the server environment instead.',
             'setup.code' => 'Setup Code',
             'setup.code_help' => 'One-time code configured before first setup.',
             'setup.username' => 'Username',
@@ -9177,7 +9177,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'a21da4d',
+  'source_revision' => '7087edf',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

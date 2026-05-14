@@ -30,7 +30,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 - Web timestamps stay in your configured `mail_timezone`, even when the browser language changes.
 - Runtime web pages load the product logo from the project’s GitHub-hosted image URL by default; the pages remain functional if that decorative image is blocked.
 - Rate limiting runs in **fail-open** mode to reduce abuse without breaking functionality.
-- `totman-ui.php` provides an optional browser-based administration add-on. The default config keeps post-setup administration off; enable it explicitly with `web_ui_enabled`.
+- `totman-ui.php` provides an optional browser-based administration add-on. You may rename the deployed file; the UI uses its current request filename for its CSS and JavaScript assets. The default config keeps post-setup administration off; enable it explicitly with `web_ui_enabled`.
 
 ## Requirements
 - Linux host with `systemd` (timer + oneshot service).
@@ -83,7 +83,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 	- If two recipients should receive the same file, repeat the same file alias in both recipient rows
 	- Public web pages use the browser language from `Accept-Language`; if only a base language such as `de` is sent, the runtime picks the closest supported locale such as `de-DE`
 	- If no supported browser language matches, the web endpoint falls back to `en-US`
-	- To use the optional Web UI, deploy `totman-ui.php` into the webroot, set the setup code near the top of that file or set `TOTMAN_UI_SETUP_CODE` server-side for Docker/managed hosting, and use `web_ui_enabled` to control browser administration after setup
+	- To use the optional Web UI, deploy `totman-ui.php` or a renamed copy into the webroot, set the setup code near the top of that deployed UI file or set `TOTMAN_UI_SETUP_CODE` server-side for Docker/managed hosting, and use `web_ui_enabled` to control browser administration after setup
 	- The Web UI imports existing live/template config, guides first-run values, creates a private `.totman-ui.php` admin file in the state directory, and writes runtime files only from explicit save or maintenance actions
 	- When the Web UI saves configuration, it writes stable runtime-compatible PHP arrays in the same broad order as the `.dist.php` templates; detailed template comments are not preserved
 4. Set permissions:

@@ -52,7 +52,7 @@ Important:
 - If it is missing, or `web_css_file` is empty, pages remain functional but unstyled.
 
 ## Optional Web UI add-on (`totman-ui.php`)
-`totman-ui.php` provides a separate optional administration interface. The normal runtime never uses it for confirmation, ACK, download delivery, reminders, escalation, or `systemd` ticks.
+`totman-ui.php` provides a separate optional administration interface. You may rename the deployed file; the UI uses its current request filename for its CSS and JavaScript assets. The normal runtime never uses it for confirmation, ACK, download delivery, reminders, escalation, or `systemd` ticks.
 
 The default config keeps browser administration off after setup. Existing manual operation remains fully supported. First-run setup can still import templates or live config and write runtime files with the server-side setup code; after that, administration requires the effective main config to contain:
 ```php
@@ -60,9 +60,9 @@ The default config keeps browser administration off after setup. Existing manual
 ```
 
 Use it only when you intentionally want browser-based administration:
-- deploy `totman-ui.php` into an HTTPS webroot
+- deploy `totman-ui.php` or a renamed copy into an HTTPS webroot
 - ensure it resolves the same private state directory as `totman.php`, preferably with `TOTMAN_STATE_DIR`
-- set the setup code near the top of `totman-ui.php` before first setup; Docker and managed hosting can instead set `TOTMAN_UI_SETUP_CODE` server-side
+- set the setup code near the top of the deployed UI file before first setup; Docker and managed hosting can instead set `TOTMAN_UI_SETUP_CODE` server-side
 - keep the generated `.totman-ui.php`, `.totman-ui-backups/`, `state_dir`, logs, state files, and downloads outside public web access
 - keep HTTPS enabled; if PHP runs behind a TLS-terminating proxy, configure the PHP runtime so session cookies are still treated as secure
 
@@ -72,7 +72,7 @@ The private `.totman-ui.php` file is UI-only state in the resolved state directo
 
 The administration area exposes read-only runtime summary, bounded log tail, and file-alias inventory. Maintenance actions such as HMAC rotation, runtime-state reset, safe log clear, and file-alias deletion require admin login, CSRF protection, recent reauthentication, rate-limit allowance, and explicit confirmation.
 
-To stop using it, set `web_ui_enabled` back to `false` or remove `totman-ui.php` from the webroot. The normal runtime continues to work from the same config files.
+To stop using it, set `web_ui_enabled` back to `false` or remove the deployed UI file from the webroot. The normal runtime continues to work from the same config files.
 
 ## Product logo
 Runtime web pages render the product logo from this GitHub-hosted image URL:

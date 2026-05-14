@@ -40,7 +40,7 @@ Private download directory (outside webroot):
 In your webroot:
 - your configured `web_file` (template default: `totman.php`)
 - optional stylesheet for web pages: your configured `web_css_file` (template default: `totman.css`)
-- optional administration add-on: `totman-ui.php`
+- optional administration add-on: `totman-ui.php` (may be renamed after deployment)
 ## Before you start: identify the real web identity
 **This is the most important step**: you must find the actual user and group that execute your configured web endpoint file (`web_file`). On Debian/Ubuntu with PHP-FPM, the pool configuration is the source of truth.
 
@@ -135,17 +135,17 @@ Only runtime filenames referenced from the effective config are configurable. If
 `totman-ui.php` provides an optional single-file administration interface for the same runtime configuration files. The runtime does not depend on it: manual editing of `totman.inc.php` and the configured recipient file remains valid at any time.
 
 To enable the add-on for first-run setup:
-1. Deploy `totman-ui.php` into the HTTPS webroot.
+1. Deploy `totman-ui.php` or a renamed copy into the HTTPS webroot.
 2. Ensure the UI resolves the same private state directory as the runtime, preferably with `TOTMAN_STATE_DIR=/var/lib/totman`.
-3. Set the setup code near the top of `totman-ui.php` before first setup. Docker and managed hosting can instead set `TOTMAN_UI_SETUP_CODE` server-side.
-4. Open `totman-ui.php`, enter the setup code, create the UI account, review the imported template/live values, and write the runtime files explicitly.
+3. Set the setup code near the top of the deployed UI file before first setup. Docker and managed hosting can instead set `TOTMAN_UI_SETUP_CODE` server-side.
+4. Open the deployed UI file in the browser, enter the setup code, create the UI account, review the imported template/live values, and write the runtime files explicitly.
 5. Keep `web_ui_enabled` set to `true` if you want browser administration after setup. Set it to `false` to keep the runtime manual-only after the first-run files are written.
 
 Security requirements:
 - keep `state_dir`, the generated `.totman-ui.php`, `.totman-ui-backups/`, logs, state files, and download files outside public web access
 - the private `.totman-ui.php` file is written inside the resolved state directory, stores only UI admin metadata such as password hashes, and must not be copied into release archives
 - use HTTPS; if a proxy terminates TLS before PHP, configure the PHP runtime so secure cookies are still enforced
-- remove `totman-ui.php` from the webroot or set `web_ui_enabled` back to `false` when you no longer want browser administration
+- remove the deployed UI file from the webroot or set `web_ui_enabled` back to `false` when you no longer want browser administration
 
 The Web UI can import existing live config, import `.dist.php` templates, guide a fresh first-run setup, create the private admin state, and show preflight before writing runtime files. It uses CSRF protection, session-based admin login, rate limits, and recent reauthentication for maintenance actions.
 

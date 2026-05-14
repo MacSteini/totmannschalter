@@ -77,11 +77,16 @@ final class AdminAuthApplicationService
             return AdminAuthApplicationResult::preview(AdminAuthViewModel::privateConfigBlocked());
         }
 
+        $view = $this->view($discovered, $configResult->config(), $adminSession);
+        if ($view->showAdministrationDisabled()) {
+            return AdminAuthApplicationResult::preview($view);
+        }
+
         if (!$configResult->config()->hasAdminCredential() && $expectedSetupCode === '') {
             return AdminAuthApplicationResult::preview(AdminAuthViewModel::setupLocked());
         }
 
-        return AdminAuthApplicationResult::preview($this->view($discovered, $configResult->config(), $adminSession));
+        return AdminAuthApplicationResult::preview($view);
     }
 
     public function handle(
@@ -139,8 +144,12 @@ final class AdminAuthApplicationService
             return $this->authService->createAdmin($store, $request->authInput(), $expectedSetupCode, $request->setupCode(), $setupSession, $adminSession);
         }
 
-        if ($discovered->mode() !== 'existing' || $webUiEnabled !== true) {
-            return SetupAccessResult::denied('login_unavailable', 'Admin sign-in is available only after browser administration is enabled.');
+        if ($discovered->mode() !== 'existing') {
+            return SetupAccessResult::denied('login_unavailable', 'Admin sign-in is available after runtime configuration exists.');
+        }
+
+        if ($webUiEnabled !== true) {
+            return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
         }
 
         if ($request->isLogin()) {
@@ -286,12 +295,12 @@ final class AdminAuthViewModelBuilder
             return AdminAuthViewModel::configBlocked();
         }
 
-        if (!$uiConfig->hasAdminCredential()) {
-            return AdminAuthViewModel::accessMissing();
-        }
-
         if ($discoveryMode === 'existing' && $webUiEnabled !== true) {
             return AdminAuthViewModel::administrationDisabled();
+        }
+
+        if (!$uiConfig->hasAdminCredential()) {
+            return AdminAuthViewModel::accessMissing();
         }
 
         if ($adminSession->authenticated()) {
@@ -4384,8 +4393,8 @@ final class RuntimeUiTextCatalog
             'setup.password_help' => 'Minimum length: 10 characters.',
             'setup.repeat_password' => 'Repeat Password',
             'setup.repeat_password_help' => 'Password repetition catches typing mistakes.',
-            'password.show' => 'Show password',
-            'password.hide' => 'Hide password',
+            'password.show' => 'Show',
+            'password.hide' => 'Hide',
             'setup.data_directory' => 'Data directory',
             'setup.data_directory_default' => '/var/lib/totman',
             'setup.data_directory_help' => 'Default runtime state directory. Set TOTMAN_STATE_DIR on the server before loading this page if another path is needed.',
@@ -4410,7 +4419,7 @@ final class RuntimeUiTextCatalog
             'admin.unavailable_after_signin' => 'Runtime inspection is available after admin sign-in.',
             'admin.config_blocked' => 'Admin access is unavailable while configuration discovery is blocked.',
             'admin.private_config_blocked' => 'Admin access is unavailable because the private UI config is unreadable or invalid.',
-            'admin.disabled' => 'Browser administration is disabled by web_ui_enabled.',
+            'admin.disabled' => 'Browser administration is disabled. Set web_ui_enabled to true in the effective runtime configuration, then reload this page.',
             'admin.signed_in_as' => 'Signed in as {username}.',
             'admin.reenter_password' => 'Re-enter password',
             'admin.sign_in' => 'Sign in',
@@ -6699,6 +6708,16 @@ final class PrototypeRenderer
         }
 
         $authView = $adminAuth ?? AdminAuthViewModel::accessMissing();
+        if ($authView->showAdministrationDisabled()) {
+            $content = $this->renderHeader($csrfToken, $authView)
+                . $notice
+                . $alert
+                . $this->renderSection('admin-access', $this->text->get('section.admin_access'), $this->renderAdminAccess($csrfToken, $authView))
+                . $this->renderFooter();
+
+            return $this->renderDocument($content);
+        }
+
         if ($authView->showLogin()) {
             $content = $this->renderHeader($csrfToken, $authView)
                 . $notice
@@ -6754,6 +6773,14 @@ final class PrototypeRenderer
                 . $this->renderFooter();
         }
 
+        if ($adminAuth->showAdministrationDisabled()) {
+            return $this->renderHeader($csrfToken, $adminAuth)
+                . $notice
+                . $alert
+                . $this->renderProductAdministrationDisabled()
+                . $this->renderFooter();
+        }
+
         if ($adminAuth->showLogin()) {
             return $this->renderHeader($csrfToken, $adminAuth)
                 . $notice
@@ -6789,6 +6816,16 @@ final class PrototypeRenderer
 ' . $this->renderReadonlyInputGroup('setup-state-dir', $this->text->get('setup.data_directory'), $this->text->get('setup.data_directory_default'), $this->text->get('setup.data_directory_help'), 'full-width') . '
 <div class="action-bar full-width"><button type="submit" name="action" value="create_admin" class="btn-primary">' . $this->e($this->text->get('setup.create_access')) . '</button></div>
 </form>
+</section>
+</div>';
+    }
+
+    private function renderProductAdministrationDisabled(): string
+    {
+        return '<div class="auth-main view-animate">
+<section class="card auth-card" aria-labelledby="admin-disabled-title">
+<h2 id="admin-disabled-title">' . $this->e($this->text->get('section.admin_access')) . '</h2>
+<p class="notice neutral" role="status">' . $this->e($this->text->get('admin.disabled')) . '</p>
 </section>
 </div>';
     }
@@ -6997,6 +7034,7 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .notice{padding:.9rem 1rem;border-radius:var(--radius-s);margin-bottom:var(--space-m);font-weight:800}
 .mode-product .notice.ok{background:rgba(21,128,61,.12);color:var(--success);border:1px solid rgba(21,128,61,.3)}
 .mode-product .notice.error{background:rgba(185,28,28,.12);color:var(--danger);border:1px solid rgba(185,28,28,.3)}
+.mode-product .notice.neutral{background:rgba(37,99,235,.12);color:var(--warning);border:1px solid rgba(37,99,235,.3)}
 .mode-product .ui-alert{padding-left:2rem}
 .mode-product .preflight-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:.75rem;margin-top:var(--space-m)}
 .mode-product .preflight-item{display:flex;flex-direction:column;gap:.25rem;border:1px solid var(--border);border-left-width:5px;border-radius:var(--radius-s);padding:.75rem;background:var(--bg-surface)}
@@ -7083,8 +7121,8 @@ document.querySelectorAll("[data-ui-lang]").forEach(button => button.addEventLis
 document.querySelectorAll("[data-password-toggle]").forEach(button => {
   const input = document.getElementById(button.dataset.passwordToggle || "");
   if (!input) return;
-  const showLabel = button.dataset.showLabel || "Show password";
-  const hideLabel = button.dataset.hideLabel || "Hide password";
+  const showLabel = button.dataset.showLabel || "Show";
+  const hideLabel = button.dataset.hideLabel || "Hide";
   const sync = visible => {
     input.type = visible ? "text" : "password";
     button.textContent = visible ? hideLabel : showLabel;
@@ -9206,7 +9244,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'aade2b7',
+  'source_revision' => 'f07b0d1',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

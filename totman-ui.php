@@ -8640,7 +8640,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'bb99f19',
+  'source_revision' => '4d93cb8',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',
@@ -8765,6 +8765,8 @@ final class PrototypeBundle
 {
     public static function run(): void
     {
+        self::startSession();
+
         $runtimeUiMode ='product';
         $env =[
             'TOTMAN_UI_DEPLOYMENT_CONTEXT' => getenv('TOTMAN_UI_DEPLOYMENT_CONTEXT') ?: '',
@@ -8779,6 +8781,20 @@ final class PrototypeBundle
 
         $controller = (new PrototypeApplicationFactory(expectedSetupCode: $environment->expectedSetupCode(), runtimeUiMode: $runtimeUiMode))->controller();
         echo $controller->handle($environment->stateDir(), $environment->context(), $environment->method(), $environment->post());
+    }
+
+    private static function startSession(): void
+    {
+        if (session_status() !== PHP_SESSION_NONE) {
+            return;
+        }
+
+        session_set_cookie_params([
+            'httponly' => true,
+            'samesite' => 'Strict',
+            'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
+        ]);
+        session_start();
     }
 }
 

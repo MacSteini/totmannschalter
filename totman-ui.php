@@ -457,7 +457,7 @@ final class AdminCommandCatalog
         }
 
         $this->commands = [
-            self::READ_RUNTIME_SUMMARY => new AdminCommand(self::READ_RUNTIME_SUMMARY, 'Runtime summary', AdminCommand::READ_ONLY),
+            self::READ_RUNTIME_SUMMARY => new AdminCommand(self::READ_RUNTIME_SUMMARY, 'System status', AdminCommand::READ_ONLY),
             self::VIEW_LOGS => new AdminCommand(self::VIEW_LOGS, 'View logs', AdminCommand::READ_ONLY),
             self::VIEW_FILE_ALIASES => new AdminCommand(self::VIEW_FILE_ALIASES, 'File aliases', AdminCommand::READ_ONLY),
             self::PREVIEW_HMAC_ROTATION => new AdminCommand(self::PREVIEW_HMAC_ROTATION, 'Preview HMAC rotation', AdminCommand::DANGER),
@@ -3869,7 +3869,7 @@ final class PrototypePageApplicationService
         ?MaintenanceCommandResult $maintenanceCommand = null,
     ): AdminInspectionViewModel {
         if (!$adminAuth->showSignedIn()) {
-            return AdminInspectionViewModel::unavailable('Runtime inspection is available after admin sign-in.');
+            return AdminInspectionViewModel::unavailable('Status is available after admin sign-in.');
         }
 
         return AdminInspectionViewModel::fromReadModels(
@@ -4127,7 +4127,7 @@ final class RuntimeLogReader
         $lines = array_slice($lines, -self::MAX_LINES);
         $lines = array_map(fn (string $line): string => $this->redactor->redactText($line), $lines);
 
-        return new RuntimeLogTail($path, 'loaded', 'Log tail loaded.', $lines, $bytes);
+        return new RuntimeLogTail($path, 'loaded', 'Log entries loaded.', $lines, $bytes);
     }
 }
 
@@ -4447,10 +4447,41 @@ final class RuntimeUiTextCatalog
             'section.summary' => 'Summary',
             'section.steps' => 'Setup steps',
             'section.admin_access' => 'Admin access',
-            'section.runtime_inspection' => 'Runtime inspection',
+            'section.runtime_inspection' => 'Status',
             'section.wizard_step' => 'Wizard step',
             'section.setup_details' => 'Setup details',
-            'admin.unavailable_after_signin' => 'Runtime inspection is available after admin sign-in.',
+            'nav.setup' => 'Setup',
+            'nav.status' => 'Status',
+            'nav.configuration' => 'Configuration',
+            'nav.recipients' => 'Recipients',
+            'nav.activity_log' => 'Activity Log',
+            'nav.maintenance' => 'Maintenance',
+            'subnav.system_status' => 'System status',
+            'subnav.preflight' => 'Preflight',
+            'subnav.cycle' => 'Cycle',
+            'subnav.general' => 'General',
+            'subnav.schedule' => 'Schedule',
+            'subnav.delivery' => 'Delivery',
+            'subnav.security_web' => 'Security & Web',
+            'subnav.paths' => 'Paths',
+            'subnav.recipients' => 'Recipients',
+            'subnav.messages' => 'Messages',
+            'subnav.files' => 'Files',
+            'subnav.log_entries' => 'Log entries',
+            'subnav.security' => 'Security',
+            'subnav.runtime_state' => 'Runtime state',
+            'subnav.logs' => 'Logs',
+            'subnav.file_aliases' => 'File aliases',
+            'status.ready' => 'Ready. The current configuration passes the system check.',
+            'status.warning' => 'Ready with warnings. Review the system check before relying on automation.',
+            'status.not_ready' => 'Not ready. Fix the blocking items before totman can run safely.',
+            'status.no_issues' => 'No blocking issues are currently reported.',
+            'advanced.details' => 'Advanced technical details',
+            'configuration.source_help' => 'These values come from the effective runtime configuration. Editing remains available through the setup/configuration flow.',
+            'configuration.no_values' => 'No values are available in this section yet.',
+            'recipients.configured_help' => 'Recipient records are loaded from the effective recipient configuration.',
+            'recipients.messages_help' => 'Message templates are loaded from the effective recipient configuration.',
+            'admin.unavailable_after_signin' => 'Status is available after admin sign-in.',
             'admin.config_blocked' => 'Admin access is unavailable while configuration discovery is blocked.',
             'admin.private_config_blocked' => 'Admin access is unavailable because the private UI config is unreadable or invalid.',
             'admin.disabled' => 'Browser administration is disabled. Set web_ui_enabled to true in the effective runtime configuration, then reload this page.',
@@ -4471,33 +4502,33 @@ final class RuntimeUiTextCatalog
             'admin.create_password' => 'Admin password',
             'admin.repeat_password' => 'Repeat admin password',
             'admin.create_access' => 'Create admin access',
-            'inspection.unavailable' => 'Runtime inspection is unavailable.',
-            'inspection.summary' => 'Runtime summary',
-            'inspection.main_source' => 'Main config source',
-            'inspection.recipient_source' => 'Recipient source',
-            'inspection.state_file' => 'State file',
-            'inspection.paths' => 'Runtime paths',
-            'inspection.log_tail' => 'Log tail',
-            'inspection.file_aliases' => 'File aliases',
-            'inspection.download_base_dir' => 'Download base directory',
+            'inspection.unavailable' => 'Status is unavailable.',
+            'inspection.summary' => 'System status',
+            'inspection.main_source' => 'Configuration source',
+            'inspection.recipient_source' => 'Recipient configuration',
+            'inspection.state_file' => 'Cycle data',
+            'inspection.paths' => 'Paths',
+            'inspection.log_tail' => 'Log entries',
+            'inspection.file_aliases' => 'Files',
+            'inspection.download_base_dir' => 'Download folder',
             'inspection.no_aliases' => 'No file aliases configured.',
             'inspection.alias_normal' => 'normal',
             'inspection.alias_single_use' => 'single-use',
             'inspection.alias_file' => 'file',
             'inspection.file_present' => 'present',
             'inspection.file_missing' => 'missing',
-            'inspection.unavailable_after_signin_intro' => 'Inspect runtime status and maintenance actions after admin sign-in.',
-            'danger.heading' => 'Maintenance commands',
+            'inspection.unavailable_after_signin_intro' => 'Review status, logs, files, and guarded maintenance actions after sign-in.',
+            'danger.heading' => 'Danger Zone',
             'danger.none_selected' => 'No maintenance command selected.',
             'danger.status' => 'Status',
             'danger.phase' => 'Phase',
             'danger.effects' => 'Effects',
             'danger.allowed' => 'Allowed',
             'danger.blocked' => 'Blocked',
-            'danger.hmac_rotation' => 'Preview HMAC rotation',
-            'danger.runtime_reset' => 'Preview runtime reset',
-            'danger.log_clear' => 'Preview log clear',
-            'danger.file_alias_deletion' => 'Preview file alias deletion',
+            'danger.hmac_rotation' => 'HMAC rotation',
+            'danger.runtime_reset' => 'Runtime state',
+            'danger.log_clear' => 'Log',
+            'danger.file_alias_deletion' => 'File alias',
             'danger.preview' => 'Preview',
             'danger.execute' => 'Execute',
             'danger.confirm_execute' => 'Confirm execution',
@@ -6840,15 +6871,15 @@ final class PrototypeRenderer
                 . $this->renderFooter();
         }
 
-        $activeSection = $adminInspection->available() && $adminAuth->showSignedIn() ? 'runtime' : 'setup';
-        $content = $this->renderHeader($csrfToken, $adminAuth)
-            . $this->renderMainNavigation($activeSection, $adminInspection->available())
-            . ($activeSection === 'runtime'
-                ? $this->renderRuntimeArea($csrfToken, $adminAuth, $adminInspection)
-                : $this->renderSetupArea($view, $csrfToken, $adminAuth))
-            . $this->renderFooter();
+        if ($this->setupRequired($view, $adminInspection)) {
+            return $this->renderHeader($csrfToken, $adminAuth)
+                . $this->renderSetupArea($view, $csrfToken, $adminAuth, false)
+                . $this->renderFooter();
+        }
 
-        return $content;
+        return $this->renderHeader($csrfToken, $adminAuth)
+            . $this->renderProductAdminShell($csrfToken, $adminInspection)
+            . $this->renderFooter();
     }
 
     private function renderProductInitialSetup(string $csrfToken): string
@@ -6899,26 +6930,47 @@ final class PrototypeRenderer
 </div>';
     }
 
-    private function renderMainNavigation(string $activeSection, bool $runtimeAvailable): string
+    private function setupRequired(FirstRunViewModel $view, AdminInspectionViewModel $adminInspection): bool
+    {
+        return !$adminInspection->available()
+            || $view->mode() !== 'existing'
+            || $view->preflightStatus() === 'FAIL';
+    }
+
+    private function renderProductAdminShell(string $csrfToken, AdminInspectionViewModel $adminInspection): string
+    {
+        return '<div class="admin-shell view-animate" data-tab-scope="main">'
+            . $this->renderMainNavigation('status')
+            . $this->renderStatusArea($adminInspection)
+            . $this->renderConfigurationArea($adminInspection)
+            . $this->renderRecipientsArea($adminInspection)
+            . $this->renderActivityLogArea($adminInspection)
+            . $this->renderMaintenanceArea($csrfToken, $adminInspection)
+            . '</div>';
+    }
+
+    private function renderMainNavigation(string $activeSection): string
     {
         $items = [
-            ['setup', 'Setup', true],
-            ['runtime', 'Runtime', $runtimeAvailable],
-            ['maintenance', 'Maintenance', $runtimeAvailable],
+            ['status', $this->text->get('nav.status')],
+            ['configuration', $this->text->get('nav.configuration')],
+            ['recipients', $this->text->get('nav.recipients')],
+            ['activity-log', $this->text->get('nav.activity_log')],
+            ['maintenance', $this->text->get('nav.maintenance')],
         ];
         $buttons = '';
-        foreach ($items as [$key, $label, $enabled]) {
+        foreach ($items as [$key, $label]) {
             $active = $key === $activeSection;
             $buttons .= '<button type="button" class="nav-item' . ($active ? ' active' : '') . '"'
                 . ($active ? ' aria-selected="true"' : ' aria-selected="false"')
-                . (!$enabled ? ' disabled' : '')
+                . ' aria-controls="main-' . $this->e($key) . '" data-tab-target="main-' . $this->e($key) . '"'
                 . '>' . $this->e($label) . '</button>';
         }
 
         return '<nav class="ui-main-nav view-animate" role="tablist" aria-label="Main views">' . $buttons . '</nav>';
     }
 
-    private function renderSetupArea(FirstRunViewModel $view, string $csrfToken, AdminAuthViewModel $adminAuth): string
+    private function renderSetupArea(FirstRunViewModel $view, string $csrfToken, AdminAuthViewModel $adminAuth, bool $showAdminCard = true): string
     {
         $wizard = '<form class="ui-form ui-wizard-form form-grid" method="post">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
@@ -6928,36 +6980,278 @@ final class PrototypeRenderer
 <div class="action-bar ui-actions full-width">' . $this->renderActions($view) . '</div>
 </form>';
 
+        $adminCard = $showAdminCard ? '<aside class="card setup-admin-card" aria-labelledby="setup-admin-access">
+<h3 id="setup-admin-access">' . $this->e($this->text->get('section.admin_access')) . '</h3>
+' . $this->renderAdminAccess($csrfToken, $adminAuth) . '
+</aside>' : '';
+
         return '<section class="ui-section setup-view view-animate" data-section="setup" aria-labelledby="setup-title">
 <div class="section-heading">
-<p class="section-kicker">First-run setup</p>
-<h2 id="setup-title">' . $this->e($this->stepTitle($view, $view->currentStep())) . '</h2>
+<h2 id="setup-title">' . $this->e($this->text->get('nav.setup')) . '</h2>
 <p class="section-intro">' . $this->e($this->shortStepDescription($view, $view->currentStep())) . '</p>
 </div>
 ' . $this->renderSteps($view) . '
-<div class="setup-layout">
+<div class="' . ($showAdminCard ? 'setup-layout' : 'setup-layout setup-layout-single') . '">
 <section class="card setup-step-card" aria-labelledby="setup-current-step">
-<h3 id="setup-current-step">' . $this->e($this->text->get('section.setup_details')) . '</h3>
+<h3 id="setup-current-step">' . $this->e($this->stepTitle($view, $view->currentStep())) . '</h3>
 ' . $wizard . '
 </section>
-<aside class="card setup-admin-card" aria-labelledby="setup-admin-access">
-<h3 id="setup-admin-access">' . $this->e($this->text->get('section.admin_access')) . '</h3>
-' . $this->renderAdminAccess($csrfToken, $adminAuth) . '
-</aside>
+' . $adminCard . '
 </div>
 </section>';
     }
 
-    private function renderRuntimeArea(string $csrfToken, AdminAuthViewModel $adminAuth, AdminInspectionViewModel $adminInspection): string
+    private function renderStatusArea(AdminInspectionViewModel $inspection): string
     {
-        return '<section class="ui-section runtime-view view-animate" data-section="runtime" aria-labelledby="runtime-title">
-<div class="section-heading">
-<p class="section-kicker">Runtime</p>
-<h2 id="runtime-title">' . $this->e($this->text->get('section.runtime_inspection')) . '</h2>
-<p class="section-intro">' . $this->e($this->text->get('inspection.unavailable_after_signin_intro')) . '</p>
+        if (!$inspection->available() || $inspection->summary() === null) {
+            return $this->renderMainPanel('status', $this->text->get('nav.status'), '<p>' . $this->e($inspection->notice() ?: $this->text->get('inspection.unavailable')) . '</p>', true);
+        }
+
+        $summary = $inspection->summary();
+        $system = '<section id="status-system" class="tab-panel" data-tab-panel="status-system">
+<div class="card">
+<h3>' . $this->e($this->text->get('subnav.system_status')) . '</h3>
+<p class="status-lede status-' . $this->e(strtolower($summary->preflight()->status())) . '">' . $this->e($this->humanPreflightSummary($summary->preflight()->status())) . '</p>
+' . $this->renderSummaryIssues($summary->issues()) . '
+<details><summary>' . $this->e($this->text->get('advanced.details')) . '</summary>
+<dl>
+<dt>' . $this->e($this->text->get('summary.mode')) . '</dt><dd>' . $this->e($summary->mode()) . '</dd>
+<dt>' . $this->e($this->text->get('inspection.main_source')) . '</dt><dd>' . $this->e($summary->mainSource()) . '</dd>
+<dt>' . $this->e($this->text->get('inspection.recipient_source')) . '</dt><dd>' . $this->e($summary->recipientSource()) . '</dd>
+</dl>
+</details>
 </div>
-<div class="card runtime-card">' . $this->renderAdminInspection($csrfToken, $adminInspection) . '</div>
 </section>';
+
+        $preflight = '<section id="status-preflight" class="tab-panel" data-tab-panel="status-preflight" hidden>
+<div class="card preflight-card">
+<h3>' . $this->e($this->text->get('subnav.preflight')) . '</h3>
+<div class="preflight-grid">' . $this->preflightResultItems($summary->preflight()) . '</div>
+</div>
+</section>';
+
+        $cycle = '<section id="status-cycle" class="tab-panel" data-tab-panel="status-cycle" hidden>
+<div class="card">
+<h3>' . $this->e($this->text->get('subnav.cycle')) . '</h3>
+<p>' . $this->e($summary->stateFile()->message()) . '</p>
+<details><summary>' . $this->e($this->text->get('advanced.details')) . '</summary>
+<dl><dt>' . $this->e($this->text->get('inspection.state_file')) . '</dt><dd>' . $this->e($summary->stateFile()->status()) . '</dd></dl>
+</details>
+</div>
+</section>';
+
+        return $this->renderMainPanel(
+            'status',
+            $this->text->get('nav.status'),
+            '<div data-tab-scope="status">'
+            . $this->renderSubNavigation('status', [
+                ['system', $this->text->get('subnav.system_status')],
+                ['preflight', $this->text->get('subnav.preflight')],
+                ['cycle', $this->text->get('subnav.cycle')],
+            ], 'system')
+            . $system
+            . $preflight
+            . $cycle
+            . '</div>',
+            true,
+        );
+    }
+
+    private function renderConfigurationArea(AdminInspectionViewModel $inspection): string
+    {
+        if (!$inspection->available() || $inspection->summary() === null) {
+            return $this->renderMainPanel('configuration', $this->text->get('nav.configuration'), '<p>' . $this->e($inspection->notice() ?: $this->text->get('inspection.unavailable')) . '</p>');
+        }
+
+        $summary = $inspection->summary();
+        $config = $summary->redactedConfig();
+        $general = '<section id="configuration-general" class="tab-panel" data-tab-panel="configuration-general">
+<div class="card">
+<h3>' . $this->e($this->text->get('subnav.general')) . '</h3>
+' . $this->renderRedactedConfigList($config, ['base_url', 'timezone', 'language']) . '
+<details><summary>' . $this->e($this->text->get('advanced.details')) . '</summary><p>' . $this->e($this->text->get('configuration.source_help')) . '</p></details>
+</div>
+</section>';
+        $schedule = '<section id="configuration-schedule" class="tab-panel" data-tab-panel="configuration-schedule" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.schedule')) . '</h3>' . $this->renderRedactedConfigList($config, ['interval_days', 'grace_days', 'reminder_days']) . '</div></section>';
+        $delivery = '<section id="configuration-delivery" class="tab-panel" data-tab-panel="configuration-delivery" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.delivery')) . '</h3>' . $this->renderRedactedConfigList($config, ['mail_from', 'sendmail_path', 'to_self']) . '</div></section>';
+        $security = '<section id="configuration-security" class="tab-panel" data-tab-panel="configuration-security" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.security_web')) . '</h3>' . $this->renderRedactedConfigList($config, ['web_ui_enabled']) . '</div></section>';
+        $paths = '<section id="configuration-paths" class="tab-panel" data-tab-panel="configuration-paths" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.paths')) . '</h3>' . $this->renderRuntimePaths($summary->paths()) . '</div></section>';
+
+        return $this->renderMainPanel(
+            'configuration',
+            $this->text->get('nav.configuration'),
+            '<div data-tab-scope="configuration">'
+            . $this->renderSubNavigation('configuration', [
+                ['general', $this->text->get('subnav.general')],
+                ['schedule', $this->text->get('subnav.schedule')],
+                ['delivery', $this->text->get('subnav.delivery')],
+                ['security', $this->text->get('subnav.security_web')],
+                ['paths', $this->text->get('subnav.paths')],
+            ], 'general')
+            . $general . $schedule . $delivery . $security . $paths
+            . '</div>',
+        );
+    }
+
+    private function renderRecipientsArea(AdminInspectionViewModel $inspection): string
+    {
+        if (!$inspection->available() || $inspection->fileAliases() === null) {
+            return $this->renderMainPanel('recipients', $this->text->get('nav.recipients'), '<p>' . $this->e($inspection->notice() ?: $this->text->get('inspection.unavailable')) . '</p>');
+        }
+
+        $recipients = '<section id="recipients-people" class="tab-panel" data-tab-panel="recipients-people"><div class="card"><h3>' . $this->e($this->text->get('subnav.recipients')) . '</h3><p class="helper-text">' . $this->e($this->text->get('recipients.configured_help')) . '</p></div></section>';
+        $messages = '<section id="recipients-messages" class="tab-panel" data-tab-panel="recipients-messages" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.messages')) . '</h3><p class="helper-text">' . $this->e($this->text->get('recipients.messages_help')) . '</p></div></section>';
+        $files = '<section id="recipients-files" class="tab-panel" data-tab-panel="recipients-files" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.files')) . '</h3>' . $this->renderFileAliases($inspection->fileAliases()) . '</div></section>';
+
+        return $this->renderMainPanel(
+            'recipients',
+            $this->text->get('nav.recipients'),
+            '<div data-tab-scope="recipients">'
+            . $this->renderSubNavigation('recipients', [
+                ['people', $this->text->get('subnav.recipients')],
+                ['messages', $this->text->get('subnav.messages')],
+                ['files', $this->text->get('subnav.files')],
+            ], 'people')
+            . $recipients . $messages . $files
+            . '</div>',
+        );
+    }
+
+    private function renderActivityLogArea(AdminInspectionViewModel $inspection): string
+    {
+        if (!$inspection->available() || $inspection->logTail() === null) {
+            return $this->renderMainPanel('activity-log', $this->text->get('nav.activity_log'), '<p>' . $this->e($inspection->notice() ?: $this->text->get('inspection.unavailable')) . '</p>');
+        }
+
+        $logTail = $inspection->logTail();
+        $content = '<div data-tab-scope="activity-log">'
+            . $this->renderSubNavigation('activity-log', [['entries', $this->text->get('subnav.log_entries')]], 'entries')
+            . '<section id="activity-log-entries" class="tab-panel" data-tab-panel="activity-log-entries"><div class="card terminal-card"><h3>' . $this->e($this->text->get('subnav.log_entries')) . '</h3><p>' . $this->e($logTail->status()) . ': ' . $this->e($logTail->message()) . '</p>'
+            . ($logTail->lines() !== [] ? '<div class="log-window">' . $this->renderLogLines($logTail->lines()) . '</div>' : '')
+            . '</div></section></div>';
+
+        return $this->renderMainPanel('activity-log', $this->text->get('nav.activity_log'), $content);
+    }
+
+    private function renderMaintenanceArea(string $csrfToken, AdminInspectionViewModel $inspection): string
+    {
+        $content = '<div data-tab-scope="maintenance">'
+            . $this->renderSubNavigation('maintenance', [
+                ['security', $this->text->get('subnav.security')],
+                ['runtime-state', $this->text->get('subnav.runtime_state')],
+                ['logs', $this->text->get('subnav.logs')],
+                ['file-aliases', $this->text->get('subnav.file_aliases')],
+            ], 'security')
+            . '<section id="maintenance-security" class="tab-panel" data-tab-panel="maintenance-security"><div class="maintenance-danger-zone"><h3>' . $this->e($this->text->get('danger.heading')) . '</h3>' . $this->renderDangerPreview($inspection) . $this->renderDangerPreviewForms($csrfToken, [AdminCommandCatalog::PREVIEW_HMAC_ROTATION]) . '</div></section>'
+            . '<section id="maintenance-runtime-state" class="tab-panel" data-tab-panel="maintenance-runtime-state" hidden><div class="maintenance-danger-zone"><h3>' . $this->e($this->text->get('subnav.runtime_state')) . '</h3>' . $this->renderDangerPreviewForms($csrfToken, [AdminCommandCatalog::PREVIEW_RUNTIME_RESET]) . '</div></section>'
+            . '<section id="maintenance-logs" class="tab-panel" data-tab-panel="maintenance-logs" hidden><div class="maintenance-danger-zone"><h3>' . $this->e($this->text->get('subnav.logs')) . '</h3>' . $this->renderDangerPreviewForms($csrfToken, [AdminCommandCatalog::PREVIEW_LOG_CLEAR]) . '</div></section>'
+            . '<section id="maintenance-file-aliases" class="tab-panel" data-tab-panel="maintenance-file-aliases" hidden><div class="maintenance-danger-zone"><h3>' . $this->e($this->text->get('subnav.file_aliases')) . '</h3>' . $this->renderDangerPreviewForms($csrfToken, [AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION]) . '</div></section>'
+            . '</div>';
+
+        return $this->renderMainPanel('maintenance', $this->text->get('nav.maintenance'), $content);
+    }
+
+    private function renderMainPanel(string $key, string $title, string $content, bool $active = false): string
+    {
+        return '<section id="main-' . $this->e($key) . '" class="ui-section main-panel view-animate" data-section="' . $this->e($key) . '" data-tab-panel="main-' . $this->e($key) . '" aria-labelledby="main-' . $this->e($key) . '-title"' . ($active ? '' : ' hidden') . '>
+<div class="section-heading">
+<h2 id="main-' . $this->e($key) . '-title">' . $this->e($title) . '</h2>
+</div>
+' . $content . '
+</section>';
+    }
+
+    /**
+     * @param list<array{0: string, 1: string}> $items
+     */
+    private function renderSubNavigation(string $scope, array $items, string $activeKey): string
+    {
+        $buttons = '';
+        foreach ($items as [$key, $label]) {
+            $target = $scope . '-' . $key;
+            $active = $key === $activeKey;
+            $buttons .= '<button type="button" class="sub-nav-item' . ($active ? ' active' : '') . '"'
+                . ($active ? ' aria-selected="true"' : ' aria-selected="false"')
+                . ' aria-controls="' . $this->e($target) . '" data-tab-target="' . $this->e($target) . '">'
+                . $this->e($label)
+                . '</button>';
+        }
+
+        return '<nav class="sub-nav" role="tablist" aria-label="' . $this->e($scope) . '">' . $buttons . '</nav>';
+    }
+
+    private function humanPreflightSummary(string $status): string
+    {
+        return match ($status) {
+            'OK' => $this->text->get('status.ready'),
+            'WARN' => $this->text->get('status.warning'),
+            'FAIL' => $this->text->get('status.not_ready'),
+            default => $status,
+        };
+    }
+
+    /**
+     * @param list<string> $issues
+     */
+    private function renderSummaryIssues(array $issues): string
+    {
+        if ($issues === []) {
+            return '<p class="helper-text">' . $this->e($this->text->get('status.no_issues')) . '</p>';
+        }
+
+        $items = '';
+        foreach ($issues as $issue) {
+            $items .= '<li>' . $this->e($issue) . '</li>';
+        }
+
+        return '<ul class="notice neutral">' . $items . '</ul>';
+    }
+
+    private function preflightResultItems(\Totman\RuntimeUi\Preflight\PreflightResult $preflight): string
+    {
+        $checks = '';
+        foreach ($preflight->checks() as $check) {
+            $checks .= '<div class="preflight-item status-' . $this->e(strtolower($check->status())) . '"><strong>' . $this->e($this->statusLabel($check->status())) . '</strong> '
+                . '<code>' . $this->e($check->code()) . '</code>: ' . $this->e($check->message())
+                . ($check->fix() !== '' ? ' <small>' . $this->e($this->text->get('preflight.fix')) . ': ' . $this->e($check->fix()) . '</small>' : '')
+                . '</div>';
+        }
+
+        return $checks;
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     * @param list<string> $keys
+     */
+    private function renderRedactedConfigList(array $config, array $keys): string
+    {
+        $items = '';
+        foreach ($keys as $key) {
+            if (!array_key_exists($key, $config)) {
+                continue;
+            }
+
+            $value = $config[$key];
+            if (is_bool($value)) {
+                $value = $value ? 'true' : 'false';
+            } elseif (is_array($value)) {
+                $value = '[' . count($value) . ']';
+            } elseif ($value === null) {
+                $value = '';
+            } elseif (!is_scalar($value)) {
+                $value = get_debug_type($value);
+            }
+
+            $items .= '<dt>' . $this->e($this->humanConfigKey($key)) . '</dt><dd>' . $this->e((string)$value) . '</dd>';
+        }
+
+        return $items !== '' ? '<dl>' . $items . '</dl>' : '<p class="helper-text">' . $this->e($this->text->get('configuration.no_values')) . '</p>';
+    }
+
+    private function humanConfigKey(string $key): string
+    {
+        return ucwords(str_replace('_', ' ', $key));
     }
 
     /**
@@ -7080,6 +7374,7 @@ body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"
 .mode-product .ui-main-nav .nav-item:hover:not(:disabled):not(.active){background:var(--accent-glow);color:var(--accent);transform:translateY(-1px)}
 .mode-product .ui-main-nav .nav-item.active{background:var(--accent);color:#fff;box-shadow:0 6px 18px var(--accent-glow)}
 .mode-product .ui-main-nav .nav-item:disabled{opacity:.45}
+.mode-product .main-panel[hidden],.mode-product .tab-panel[hidden]{display:none!important}
 .mode-product .language-menu{position:relative}
 .mode-product .language-menu summary{list-style:none;min-height:46px;display:inline-flex;align-items:center;gap:.65rem;border:1.5px solid var(--border);border-radius:var(--radius-m);background:var(--bg-surface);color:var(--text-primary);font-weight:900;font-size:.95rem;padding:.65rem 2.15rem .65rem .9rem;cursor:pointer;user-select:none}
 .mode-product .language-menu summary::-webkit-details-marker{display:none}
@@ -7115,9 +7410,12 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .section-kicker{margin:0 0 .25rem;color:var(--accent);font-size:.78rem;font-weight:950;letter-spacing:.08em;text-transform:uppercase}
 .mode-product .section-intro{color:var(--text-muted);max-width:48rem}
 .mode-product .setup-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(18rem,24rem);gap:var(--space-l);align-items:start}
+.mode-product .setup-layout-single{grid-template-columns:minmax(0,760px);justify-content:center}
 .mode-product .setup-step-card{margin-bottom:0}
 .mode-product .setup-admin-card{margin-bottom:0}
 .mode-product .sub-nav{display:flex;flex-wrap:wrap;gap:1.15rem;padding:0;margin:0 0 var(--space-l);background:transparent;border:0;border-bottom:1px solid var(--border);border-radius:0;box-shadow:none}
+.mode-product .sub-nav .sub-nav-item{border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;color:var(--text-muted);min-height:0;padding:.45rem 0 .65rem;font-size:.92rem;font-weight:850;transition:color .18s ease,border-color .18s ease}
+.mode-product .sub-nav .sub-nav-item:hover,.mode-product .sub-nav .sub-nav-item.active,.mode-product .sub-nav .sub-nav-item[aria-selected=true]{color:var(--accent);border-bottom-color:var(--accent)}
 .mode-product .setup-step-list{list-style:none;padding-left:0}
 .mode-product .setup-step-list .sub-nav-item{list-style:none;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;padding:.45rem 0 .65rem;color:var(--text-muted);font-size:.92rem;font-weight:850;transition:color .18s ease,border-color .18s ease}
 .mode-product .setup-step-list .sub-nav-item[aria-current=step]{color:var(--accent);border-bottom-color:var(--accent)}
@@ -7160,6 +7458,10 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .notice.error{background:rgba(185,28,28,.12);color:var(--danger);border:1px solid rgba(185,28,28,.3)}
 .mode-product .notice.neutral{background:rgba(37,99,235,.12);color:var(--warning);border:1px solid rgba(37,99,235,.3)}
 .mode-product .ui-alert{padding-left:2rem}
+.mode-product .status-lede{font-weight:900;font-size:1.05rem}
+.mode-product .status-ok{color:var(--success)}
+.mode-product .status-warn{color:var(--warning)}
+.mode-product .status-fail{color:var(--danger)}
 .mode-product .notification-backdrop{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:1rem;background:rgba(15,23,42,.32);backdrop-filter:blur(3px)}
 .mode-product .notification-backdrop.hidden{display:none}
 .mode-product .notification-dialog{position:relative;overflow:hidden;width:min(100%,34rem);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-m);box-shadow:0 24px 70px rgba(15,23,42,.34);padding:var(--space-l);color:var(--text-primary)}
@@ -7266,6 +7568,23 @@ document.querySelectorAll("[data-password-toggle]").forEach(button => {
   };
   sync(input.type === "text");
   button.addEventListener("click", () => sync(input.type === "password"));
+});
+document.querySelectorAll("[data-tab-scope]").forEach(scope => {
+  const scoped = selector => Array.from(scope.querySelectorAll(selector)).filter(element => element.closest("[data-tab-scope]") === scope);
+  const buttons = scoped("[data-tab-target]");
+  const panels = scoped("[data-tab-panel]");
+  if (buttons.length === 0 || panels.length === 0) return;
+  const activate = target => {
+    panels.forEach(panel => { panel.hidden = panel.dataset.tabPanel !== target; });
+    buttons.forEach(button => {
+      const selected = button.dataset.tabTarget === target;
+      button.classList.toggle("active", selected);
+      button.setAttribute("aria-selected", selected ? "true" : "false");
+    });
+  };
+  const selected = buttons.find(button => button.getAttribute("aria-selected") === "true") || buttons[0];
+  activate(selected.dataset.tabTarget || "");
+  buttons.forEach(button => button.addEventListener("click", () => activate(button.dataset.tabTarget || "")));
 });
 const notificationModal = document.getElementById("notification-modal");
 let notificationTimer = null;
@@ -7596,7 +7915,10 @@ if (notificationModal) {
             . '</section>';
     }
 
-    private function renderDangerPreviewForms(string $csrfToken): string
+    /**
+     * @param list<string>|null $onlyCommands
+     */
+    private function renderDangerPreviewForms(string $csrfToken, ?array $onlyCommands = null): string
     {
         $commands = [
             AdminCommandCatalog::PREVIEW_HMAC_ROTATION => $this->text->get('danger.hmac_rotation'),
@@ -7607,6 +7929,10 @@ if (notificationModal) {
 
         $forms = '';
         foreach ($commands as $command => $label) {
+            if ($onlyCommands !== null && !in_array($command, $onlyCommands, true)) {
+                continue;
+            }
+
             $forms .= '<form class="action-bar" method="post">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
 <input type="hidden" name="admin_command" value="' . $this->e($command) . '">
@@ -9477,7 +9803,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '9990022',
+  'source_revision' => '83e190c',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

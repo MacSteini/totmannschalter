@@ -6873,7 +6873,7 @@ final class PrototypeRenderer
 
         if ($this->setupRequired($view, $adminInspection)) {
             return $this->renderHeader($csrfToken, $adminAuth)
-                . $this->renderSetupArea($view, $csrfToken, $adminAuth, false, false, false)
+                . $this->renderSetupArea($view, $csrfToken, $adminAuth, false, false, false, false)
                 . $this->renderFooter();
         }
 
@@ -6977,15 +6977,18 @@ final class PrototypeRenderer
         bool $showAdminCard = true,
         bool $showSetupCode = true,
         bool $showSteps = true,
+        bool $showDraftActions = true,
     ): string {
         $setupCodeField = $showSetupCode ? $this->renderSetupCodeField() : '';
         $steps = $showSteps ? $this->renderSteps($view) : '';
+        $compactSingleFieldStep = $this->compactSingleFieldStep($view);
+        $stepHeading = '<h3 id="setup-current-step"' . ($compactSingleFieldStep ? ' class="sr-only"' : '') . '>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</h3>';
         $wizard = '<form class="ui-form ui-wizard-form form-grid" method="post">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
 ' . $this->renderHiddenFields($view) . '
 ' . $setupCodeField . '
 ' . $this->renderCurrentStep($view) . '
-<div class="action-bar ui-actions full-width">' . $this->renderActions($view) . '</div>
+<div class="action-bar ui-actions full-width">' . $this->renderActions($view, $showDraftActions) . '</div>
 </form>';
 
         $adminCard = $showAdminCard ? '<aside class="card setup-admin-card" aria-labelledby="setup-admin-access">
@@ -7001,7 +7004,7 @@ final class PrototypeRenderer
 ' . $steps . '
 <div class="' . ($showAdminCard ? 'setup-layout' : 'setup-layout setup-layout-single') . '">
 <section class="card setup-step-card" aria-labelledby="setup-current-step">
-<h3 id="setup-current-step">' . $this->e($this->stepTitle($view, $view->currentStep())) . '</h3>
+' . $stepHeading . '
 ' . $wizard . '
 </section>
 ' . $adminCard . '
@@ -7370,8 +7373,8 @@ final class PrototypeRenderer
 html[data-theme=dark]{--bg-main:#0b0f1a;--bg-surface:#161e2e;--bg-card:rgba(22,30,46,.92);--text-primary:#f8fafc;--text-muted:#cbd5e1;--accent:#e63946;--accent-hover:#ff5d68;--accent-glow:rgba(230,57,70,.25);--border:#334155;--success:#22c55e;--warning:#60a5fa;--danger:#f87171}
 *{box-sizing:border-box;margin:0;padding:0}
 body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg-main);color:var(--text-primary);line-height:1.55;min-height:100vh}
-.mode-product .container{width:min(100% - 3rem,1200px);margin-inline:auto;padding-block:var(--space-l)}
-.mode-product .header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-bottom:var(--space-m);gap:var(--space-m)}
+.mode-product .container{width:min(100% - 3rem,1200px);margin-inline:auto;padding-block:clamp(1.6rem,3vw,2.75rem)}
+.mode-product .header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-bottom:clamp(2.2rem,5vw,4rem);gap:var(--space-m)}
 .mode-product .brand{display:flex;align-items:center;gap:1rem;color:inherit;text-decoration:none;border-radius:var(--radius-m)}
 .mode-product .brand-logo{width:clamp(56px,9vw,112px);height:auto;display:block}
 .mode-product .brand-text h1{font-size:clamp(2rem,1.6rem + 1.8vw,3.4rem);line-height:.95;font-weight:950;letter-spacing:-.02em}
@@ -7414,10 +7417,10 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .stat-label{font-size:.72rem;font-weight:800;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em}
 .mode-product .stat-value{font-size:clamp(1rem,.8rem + 1vw,1.35rem);font-weight:900;overflow-wrap:anywhere}
 .mode-product .stat-desc,.mode-product .helper-text,.mode-product .text-muted{color:var(--text-muted);font-size:.85rem}
-.mode-product .section-heading{margin:0 0 var(--space-m)}
+.mode-product .section-heading{margin:0 0 clamp(1.5rem,3vw,2.4rem)}
 .mode-product .section-kicker{margin:0 0 .25rem;color:var(--accent);font-size:.78rem;font-weight:950;letter-spacing:.08em;text-transform:uppercase}
 .mode-product .section-intro{color:var(--text-muted);max-width:48rem}
-.mode-product .setup-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(18rem,24rem);gap:var(--space-l);align-items:start}
+.mode-product .setup-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(18rem,24rem);gap:var(--space-l);align-items:start;margin-top:.25rem}
 .mode-product .setup-layout-single{grid-template-columns:minmax(0,760px);justify-content:center}
 .mode-product .setup-step-card{margin-bottom:0}
 .mode-product .setup-admin-card{margin-bottom:0}
@@ -7460,6 +7463,7 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product button:not([name=action]):hover:not(:disabled),.mode-product button[name=action][value=update_draft]:hover:not(:disabled),.mode-product button[name=action][value=discard_draft]:hover:not(:disabled),.mode-product button[name=action][value=previous_step]:hover:not(:disabled),.mode-product button[name=action][value=next_step]:hover:not(:disabled),.mode-product button[name=action][value=reauth]:hover:not(:disabled),.mode-product button[name=action][value=logout]:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
 .mode-product button:disabled{opacity:.55;cursor:not-allowed}
 .mode-product :focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.mode-product .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .mode-product .action-bar{display:flex;justify-content:flex-end;align-items:center;gap:.8rem;width:100%;margin-block:var(--space-l);flex-wrap:wrap}
 .mode-product .notice{padding:.9rem 1rem;border-radius:var(--radius-s);margin-bottom:var(--space-m);font-weight:800}
 .mode-product .notice.ok{background:rgba(21,128,61,.12);color:var(--success);border:1px solid rgba(21,128,61,.3)}
@@ -7660,18 +7664,21 @@ if (notificationModal) {
 
     private function stylesheetUrl(): string
     {
-        $scriptName = basename((string)($_SERVER['SCRIPT_NAME'] ?? 'totman-ui.php')) ?: 'totman-ui.php';
         $version = substr(hash('sha256', $this->stylesheet()), 0, 12);
 
-        return $scriptName . '?totman_ui_asset=css&v=' . $version;
+        return $this->pageUrl() . '?totman_ui_asset=css&v=' . $version;
     }
 
     private function scriptUrl(): string
     {
-        $scriptName = basename((string)($_SERVER['SCRIPT_NAME'] ?? 'totman-ui.php')) ?: 'totman-ui.php';
         $version = substr(hash('sha256', $this->script()), 0, 12);
 
-        return $scriptName . '?totman_ui_asset=js&v=' . $version;
+        return $this->pageUrl() . '?totman_ui_asset=js&v=' . $version;
+    }
+
+    private function pageUrl(): string
+    {
+        return basename((string)($_SERVER['SCRIPT_NAME'] ?? 'totman-ui.php')) ?: 'totman-ui.php';
     }
 
     private function renderHeader(string $csrfToken, AdminAuthViewModel $adminAuth): string
@@ -7685,7 +7692,7 @@ if (notificationModal) {
             $signOut = '<form method="post" class="header-logout-form"><input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '"><button type="submit" name="action" value="logout" class="btn-secondary compact-btn signout-btn">' . $this->e($this->text->get('admin.sign_out')) . '</button></form>';
         }
 
-        return '<header class="header ui-header view-animate"><div class="brand brand-link"><img class="brand-logo" src="' . self::PRODUCT_LOGO_DATA_URI . '" alt="" aria-hidden="true"><div class="brand-text"><h1>' . $this->e($this->text->get('product.name')) . '</h1><h2 class="tagline">A Deadman’s Switch for E-mail.</h2></div></div><div class="header-actions"><details class="language-menu"><summary aria-label="' . $this->e($this->text->get('header.language')) . '"><span data-language-current>English</span></summary><div class="language-options"><button type="button" data-ui-lang="en" aria-current="true">English</button><button type="button" data-ui-lang="de">Deutsch</button></div></details><button type="button" id="theme-toggle" class="btn-secondary compact-btn theme-toggle" aria-label="' . $this->e($this->text->get('header.toggle_theme')) . '" title="' . $this->e($this->text->get('header.toggle_theme')) . '"><span class="theme-icon theme-icon-light" aria-hidden="true">☀</span><span class="theme-icon theme-icon-dark" aria-hidden="true">◐</span></button>' . $signOut . '</div></header>';
+        return '<header class="header ui-header view-animate"><a class="brand brand-link" href="' . $this->e($this->pageUrl()) . '"><img class="brand-logo" src="' . self::PRODUCT_LOGO_DATA_URI . '" alt="" aria-hidden="true"><div class="brand-text"><h1>' . $this->e($this->text->get('product.name')) . '</h1><h2 class="tagline">A Deadman’s Switch for E-mail.</h2></div></a><div class="header-actions"><details class="language-menu"><summary aria-label="' . $this->e($this->text->get('header.language')) . '"><span data-language-current>English</span></summary><div class="language-options"><button type="button" data-ui-lang="en" aria-current="true">English</button><button type="button" data-ui-lang="de">Deutsch</button></div></details><button type="button" id="theme-toggle" class="btn-secondary compact-btn theme-toggle" aria-label="' . $this->e($this->text->get('header.toggle_theme')) . '" title="' . $this->e($this->text->get('header.toggle_theme')) . '"><span class="theme-icon theme-icon-light" aria-hidden="true">☀</span><span class="theme-icon theme-icon-dark" aria-hidden="true">◐</span></button>' . $signOut . '</div></header>';
     }
 
     private function renderFooter(): string
@@ -8037,7 +8044,10 @@ if (notificationModal) {
             return '<fieldset class="full-width"><legend>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</legend>' . $this->stepDescription($view, $view->currentStep()) . '<p>' . $this->e($this->text->get('wizard.no_fields')) . '</p></fieldset>';
         }
 
-        $inputs = '<fieldset class="full-width"><legend>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</legend>' . $this->stepDescription($view, $view->currentStep());
+        $compactSingleFieldStep = $this->compactSingleFieldStep($view);
+        $legendClass = $compactSingleFieldStep ? ' class="sr-only"' : '';
+        $description = $compactSingleFieldStep ? '' : $this->stepDescription($view, $view->currentStep());
+        $inputs = '<fieldset class="full-width"><legend' . $legendClass . '>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</legend>' . $description;
         foreach ($fields as $field) {
             $inputs .= $this->renderField($field);
         }
@@ -8081,11 +8091,14 @@ if (notificationModal) {
         return $checks;
     }
 
-    private function renderActions(FirstRunViewModel $view): string
+    private function renderActions(FirstRunViewModel $view, bool $showDraftActions = true): string
     {
         $buttons = '';
         foreach ($view->actions() as $action) {
             if (!$action->visible()) {
+                continue;
+            }
+            if (!$showDraftActions && in_array($action->key(), ['update_draft', 'discard_draft'], true)) {
                 continue;
             }
 
@@ -8141,6 +8154,17 @@ if (notificationModal) {
         }
 
         return $key;
+    }
+
+    private function compactSingleFieldStep(FirstRunViewModel $view): bool
+    {
+        if (!$this->text->productMode()) {
+            return false;
+        }
+
+        $fields = $view->currentStepFields();
+
+        return count($fields) === 1 && $fields[0]->label() === $this->stepTitle($view, $view->currentStep());
     }
 
     private function stepDescription(FirstRunViewModel $view, string $key): string
@@ -9815,7 +9839,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'a10c544',
+  'source_revision' => '791e572',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

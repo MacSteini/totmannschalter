@@ -4017,6 +4017,21 @@ final class PrototypePageApplicationService
 
         if ($request->isRuntimeSave()) {
             $wizard = $this->wizardService->handle($stateDir, $context, FirstRunWizardCommand::saveRuntime(), $draft);
+
+            if ($wizard->runtimeSaved() && $this->text->productMode()) {
+                $this->draftStore->clear();
+                $postSaveDiscovered = $this->discovery->discover($stateDir);
+                $postSaveAuth = $this->adminAuthService->preview($stateDir, $postSaveDiscovered, $adminSession, $this->expectedSetupCode)->view();
+
+                return new PrototypePageResult(
+                    $this->setupService->preview($stateDir, $context, $this->text->get('notice.config_saved'), draft: new FirstRunDraftState()),
+                    $access,
+                    $csrfToken,
+                    $postSaveAuth,
+                    $this->adminInspection($stateDir, $context, $postSaveAuth)
+                );
+            }
+
             $this->saveDraftIfChanged($wizard);
 
             return new PrototypePageResult($wizard->view(), $access, $csrfToken, $adminAuth, $adminInspection);

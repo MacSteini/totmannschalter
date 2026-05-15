@@ -4765,7 +4765,7 @@ final class RuntimeUiTextCatalog
             'step.first-recipient.description' => 'Define the first recipient for escalation mail.',
             'step.first-message.description' => 'Define the first recipient-specific escalation message.',
             'step.optional-download.description' => 'Attach an optional private download to the first recipient.',
-            'step.review.description' => 'Review non-secret values and their sources before preflight.',
+            'step.review.description' => 'Review the values before the system check.',
             'step.preflight.description' => 'Check the current draft before runtime files can be written.',
             'step.save.description' => 'Write runtime files only after confirmation and passing preflight.',
             'step.complete.description' => 'The first-run flow has finished.',
@@ -4778,6 +4778,9 @@ final class RuntimeUiTextCatalog
             'wizard.save_notice' => 'Runtime files will only be written after this confirmation and a passing draft preflight.',
             'wizard.confirm_save' => 'Confirm save',
             'wizard.complete' => 'First-run setup is complete.',
+            'review.enabled' => 'Enabled',
+            'review.disabled' => 'Disabled',
+            'review.not_set' => 'Not set',
             'preflight.fix' => 'Fix',
             'preflight.status_ok' => 'OK',
             'preflight.status_warn' => 'WARN',
@@ -5622,7 +5625,7 @@ final class MainConfigImporter
     private function hasValidMailbox(mixed $value): bool
     {
         if (is_string($value)) {
-            return filter_var($value, FILTER_VALIDATE_EMAIL) !== false;
+            return $this->isMailbox($value);
         }
 
         if (!is_array($value)) {
@@ -5630,12 +5633,40 @@ final class MainConfigImporter
         }
 
         foreach ($value as $item) {
-            if (!is_string($item) || filter_var($item, FILTER_VALIDATE_EMAIL) === false) {
+            if (!is_string($item) || !$this->isMailbox($item)) {
                 return false;
             }
         }
 
         return $value !== [];
+    }
+
+    private function isMailbox(string $value): bool
+    {
+        $value = trim($value);
+        if ($value === '' || preg_match('/[\r\n]/', $value) === 1 || str_contains($value, ',') || str_contains($value, ';')) {
+            return false;
+        }
+
+        if (preg_match('/^<([^<>\s]+@[^<>\s]+)>$/', $value, $matches) === 1) {
+            return $this->isMailboxAddress($matches[1]);
+        }
+
+        if (preg_match('/^(?:"[^"\r\n<>]+"|[^"<>,;]+)\s+<([^<>\s]+@[^<>\s]+)>$/', $value, $matches) === 1) {
+            return $this->isMailboxAddress($matches[1]);
+        }
+
+        return $this->isMailboxAddress($value);
+    }
+
+    private function isMailboxAddress(string $address): bool
+    {
+        if (filter_var($address, FILTER_VALIDATE_EMAIL) !== false) {
+            return true;
+        }
+
+        return str_contains($address, '@')
+            && preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $address) === 1;
     }
 }
 
@@ -6104,14 +6135,30 @@ final class RecipientConfigImporter
 
     private function validMailbox(string $mailbox): bool
     {
-        $address = trim(str_replace(["\r", "\n"], '', $mailbox));
-        if (preg_match('/^<([^>]+)>$/', $address, $match) === 1) {
-            $address = $match[1];
-        } elseif (preg_match('/^(.*)<([^>]+)>$/', $address, $match) === 1) {
-            $address = $match[2];
+        $mailbox = trim($mailbox);
+        if ($mailbox === '' || preg_match('/[\r\n]/', $mailbox) === 1 || str_contains($mailbox, ',') || str_contains($mailbox, ';')) {
+            return false;
         }
 
-        return filter_var($address, FILTER_VALIDATE_EMAIL) !== false;
+        if (preg_match('/^<([^<>\s]+@[^<>\s]+)>$/', $mailbox, $match) === 1) {
+            return $this->validMailboxAddress($match[1]);
+        }
+
+        if (preg_match('/^(?:"[^"\r\n<>]+"|[^"<>,;]+)\s+<([^<>\s]+@[^<>\s]+)>$/', $mailbox, $match) === 1) {
+            return $this->validMailboxAddress($match[1]);
+        }
+
+        return $this->validMailboxAddress($mailbox);
+    }
+
+    private function validMailboxAddress(string $address): bool
+    {
+        if (filter_var($address, FILTER_VALIDATE_EMAIL) !== false) {
+            return true;
+        }
+
+        return str_contains($address, '@')
+            && preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $address) === 1;
     }
 
     private function placeholder(string $value): bool
@@ -7649,6 +7696,7 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .password-input-wrap input{min-width:0}
 .mode-product .password-toggle{min-height:0!important;padding:.75rem .9rem!important;white-space:nowrap}
 .mode-product textarea{min-height:8.5rem;resize:vertical}
+.mode-product textarea.auto-grow{overflow:hidden}
 .mode-product input[type=checkbox]{width:1.05rem;height:1.05rem;margin:0;accent-color:var(--accent)}
 .mode-product input:focus,.mode-product textarea:focus,.mode-product select:focus{outline:none;border-color:var(--accent);background:var(--bg-surface);box-shadow:0 0 0 4px var(--accent-glow)}
 .mode-product input[readonly]{opacity:.78}
@@ -7689,6 +7737,8 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .preflight-item.status-ok{border-left-color:var(--success)}
 .mode-product .preflight-item.status-warn{border-left-color:var(--warning)}
 .mode-product .preflight-item.status-fail{border-left-color:var(--danger)}
+.mode-product .preflight-item span{font-weight:850;color:var(--text-primary)}
+.mode-product .preflight-item p{margin:0;color:var(--text-muted)}
 .mode-product .preflight-item small,.mode-product .helper-text,.mode-product .text-muted{color:var(--text-muted);font-size:.85rem}
 .mode-product .terminal-card{background:var(--bg-card);color:var(--text-primary)}
 .mode-product .log-window{display:block;white-space:normal;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--bg-main);color:var(--text-primary);padding:.35rem;min-height:18rem;max-height:clamp(18rem,52vh,42rem);overflow:auto}
@@ -7778,6 +7828,15 @@ document.querySelectorAll("[data-password-toggle]").forEach(button => {
   };
   sync(input.type === "text");
   button.addEventListener("click", () => sync(input.type === "password"));
+});
+const autoGrow = textarea => {
+  if (!(textarea instanceof HTMLTextAreaElement)) return;
+  textarea.style.height = "auto";
+  textarea.style.height = `${textarea.scrollHeight + 2}px`;
+};
+document.querySelectorAll("textarea.auto-grow").forEach(autoGrow);
+document.addEventListener("input", event => {
+  if (event.target instanceof HTMLTextAreaElement && event.target.classList.contains("auto-grow")) autoGrow(event.target);
 });
 document.querySelectorAll("[data-tab-scope]").forEach(scope => {
   const scoped = selector => Array.from(scope.querySelectorAll(selector)).filter(element => element.closest("[data-tab-scope]") === scope);
@@ -8201,7 +8260,7 @@ if (notificationModal) {
         $label = $this->labelRow($field->domId(), $field->label());
 
         if ($field->control() === 'textarea') {
-            return '<div class="input-group ui-field">' . $label . '<textarea id="' . $this->e($field->domId())
+            return '<div class="input-group ui-field">' . $label . '<textarea class="auto-grow" id="' . $this->e($field->domId())
                 . '" name="' . $this->e($field->key()) . '"' . $readOnly . $requiredAttribute . $invalid . $describedBy . '>'
                 . $this->e($field->value()) . '</textarea>' . $this->fieldHint($field) . $this->fieldErrors($field) . $meta . '</div>';
         }
@@ -8265,11 +8324,21 @@ if (notificationModal) {
     {
         $items = '';
         foreach ($view->reviewFields() as $field) {
-            $items .= '<dt>' . $this->e($field->label()) . '</dt><dd>' . $this->e($field->value())
-                . ' <small>' . $this->e($this->text->get('field.source')) . ': ' . $this->e($this->sourceLabel($field->source())) . '</small></dd>';
+            $source = $this->text->productMode() ? '' : ' <small>' . $this->e($this->text->get('field.source')) . ': ' . $this->e($this->sourceLabel($field->source())) . '</small>';
+            $items .= '<dt>' . $this->e($field->label()) . '</dt><dd>' . $this->e($this->reviewValue($field)) . $source . '</dd>';
         }
 
         return '<fieldset class="full-width"><legend>' . $this->e($this->text->get('wizard.review')) . '</legend><dl>' . $items . '</dl></fieldset>';
+    }
+
+    private function reviewValue(FirstRunField $field): string
+    {
+        if ($field->control() === 'checkbox') {
+            return $field->value() === '1' ? $this->text->get('review.enabled') : $this->text->get('review.disabled');
+        }
+
+        $value = trim($field->value());
+        return $value !== '' ? $value : $this->text->get('review.not_set');
     }
 
     private function renderPreflight(FirstRunViewModel $view): string
@@ -8288,8 +8357,10 @@ if (notificationModal) {
     {
         $checks = '';
         foreach ($view->preflightChecks() as $check) {
-            $checks .= '<div class="preflight-item status-' . $this->e($check->status()) . '"><strong>' . $this->e($this->statusLabel($check->status())) . '</strong> '
-                . '<code>' . $this->e($check->code()) . '</code>: ' . $this->e($check->message())
+            $code = $this->text->productMode() ? '' : ' <code>' . $this->e($check->code()) . '</code>';
+            $checks .= '<div class="preflight-item status-' . $this->e(strtolower($check->status())) . '"><strong>' . $this->e($this->statusLabel($check->status())) . '</strong>'
+                . '<span>' . $this->e($this->preflightLabel($check->code())) . '</span>'
+                . '<p>' . $this->e($check->message()) . $code . '</p>'
                 . ($check->fix() !== '' ? ' <small>' . $this->e($this->text->get('preflight.fix')) . ': ' . $this->e($check->fix()) . '</small>' : '')
                 . '</div>';
         }
@@ -8459,6 +8530,21 @@ if (notificationModal) {
         };
     }
 
+    private function preflightLabel(string $code): string
+    {
+        return match ($code) {
+            'public_url' => 'Public URL',
+            'mail_from' => 'Sender mailbox',
+            'operator_mailbox' => 'Operator mailbox',
+            'delivery_command' => 'Mail delivery',
+            'hmac_will_generate', 'hmac_secret' => 'Security key',
+            'state_dir' => 'Data directory',
+            'download_base_dir' => 'Download directory',
+            'recipients' => 'Recipients and message',
+            default => $code,
+        };
+    }
+
     private function maintenanceStatusLabel(MaintenanceCommandResult $result): string
     {
         if ($result->status() === MaintenanceCommandResult::BLOCKED) {
@@ -8514,7 +8600,7 @@ final class FirstRunPreflight
     private function fieldCheck(ImportedField $field, string $code, string $okMessage, string $fix, DeploymentContext $context): PreflightCheck
     {
         if ($field->placeholder() || $field->invalid() || $field->source() === 'missing') {
-            return PreflightCheck::fail($code, $field->key() . ' is missing, invalid, or still placeholder-like.', $fix, $context->kind());
+            return PreflightCheck::fail($code, $this->fieldLabel($field->key()) . ' is missing, invalid, or still uses a placeholder.', $fix, $context->kind());
         }
 
         return PreflightCheck::ok($code, $okMessage, $context->kind());
@@ -8536,14 +8622,14 @@ final class FirstRunPreflight
     private function pathCheck(ImportedField $field, string $code, DeploymentContext $context): PreflightCheck
     {
         if ($context->pathFieldsAreReadOnly()) {
-            return PreflightCheck::ok($code, $field->key() . ' is controlled by the deployment context.', $context->kind());
+            return PreflightCheck::ok($code, $this->fieldLabel($field->key()) . ' is controlled by the deployment context.', $context->kind());
         }
 
         if ($field->invalid() || $field->placeholder() || $field->source() === 'missing') {
-            return PreflightCheck::fail($code, $field->key() . ' is missing or invalid.', 'Set a usable path for classic hosting.', $context->kind());
+            return PreflightCheck::fail($code, $this->fieldLabel($field->key()) . ' is missing or invalid.', 'Set a usable path for classic hosting.', $context->kind());
         }
 
-        return PreflightCheck::ok($code, $field->key() . ' is configured.', $context->kind());
+        return PreflightCheck::ok($code, $this->fieldLabel($field->key()) . ' is configured.', $context->kind());
     }
 
     private function recipientCheck(RecipientConfigImport $recipients, DeploymentContext $context): PreflightCheck
@@ -8553,6 +8639,19 @@ final class FirstRunPreflight
         }
 
         return PreflightCheck::fail('recipients', 'Recipient configuration is incomplete or invalid.', 'Create at least one real recipient and message, then fix listed recipient issues.', $context->kind());
+    }
+
+    private function fieldLabel(string $key): string
+    {
+        return match ($key) {
+            'base_url' => 'Public URL',
+            'mail_from' => 'Sender mailbox',
+            'to_self' => 'Operator mailbox',
+            'sendmail_path' => 'Mail delivery command',
+            'state_dir' => 'Data directory',
+            'download_base_dir' => 'Download directory',
+            default => $key,
+        };
     }
 }
 
@@ -10042,7 +10141,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '40e5a70',
+  'source_revision' => 'd8bf14b',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

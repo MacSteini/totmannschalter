@@ -1364,6 +1364,102 @@ final class FirstRunField
 
 namespace Totman\RuntimeUi\Application;
 
+final class FirstRunFieldFormatValidator
+{
+    /**
+     * @return list<string>
+     */
+    public function validate(FirstRunInput $input): array
+    {
+        $errors = [];
+
+        if ($input->publicUrl() !== '' && !$this->isHttpsUrl($input->publicUrl())) {
+            $errors[] = 'base_url: Enter a valid HTTPS address, for example https://example.com/totman.';
+        }
+
+        if ($input->mailFrom() !== '' && !$this->isEmail($input->mailFrom())) {
+            $errors[] = 'mail_from: Enter a valid sender email address.';
+        }
+
+        if ($input->operatorMailbox() !== '' && !$this->isEmail($input->operatorMailbox())) {
+            $errors[] = 'to_self: Enter a valid operator email address.';
+        }
+
+        if ($input->recipientMailbox() !== '' && !$this->isEmail($input->recipientMailbox())) {
+            $errors[] = 'recipient_mailbox: Enter a valid recipient email address.';
+        }
+
+        if ($input->downloadPath() !== '' && !$this->isSafeRelativePath($input->downloadPath())) {
+            $errors[] = 'download_path: Enter a relative file path inside the download directory.';
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @param list<string> $keys
+     * @return list<string>
+     */
+    public function validateOnly(FirstRunInput $input, array $keys): array
+    {
+        $wanted = array_fill_keys($keys, true);
+        $errors = [];
+        foreach ($this->validate($input) as $error) {
+            $key = strstr($error, ':', true);
+            if (is_string($key) && isset($wanted[$key])) {
+                $errors[] = $error;
+            }
+        }
+
+        return $errors;
+    }
+
+    private function isHttpsUrl(string $value): bool
+    {
+        if (filter_var($value, FILTER_VALIDATE_URL) === false) {
+            return false;
+        }
+
+        $parts = parse_url($value);
+        if (!is_array($parts)) {
+            return false;
+        }
+
+        return ($parts['scheme'] ?? '') === 'https'
+            && isset($parts['host'])
+            && $parts['host'] !== ''
+            && !isset($parts['user'])
+            && !isset($parts['pass']);
+    }
+
+    private function isEmail(string $value): bool
+    {
+        return filter_var($value, FILTER_VALIDATE_EMAIL) !== false;
+    }
+
+    private function isSafeRelativePath(string $value): bool
+    {
+        if (str_starts_with($value, '/') || str_contains($value, "\0")) {
+            return false;
+        }
+
+        $parts = preg_split('#[\\\\/]+#', $value);
+        if (!is_array($parts)) {
+            return false;
+        }
+
+        foreach ($parts as $part) {
+            if ($part === '..') {
+                return false;
+            }
+        }
+
+        return trim($value) !== '';
+    }
+}
+
+namespace Totman\RuntimeUi\Application;
+
 final class FirstRunHiddenFieldPolicy
 {
     private const DENIED_KEYS = [
@@ -1519,6 +1615,11 @@ use Totman\RuntimeUi\Config\DiscoveryResult;
 
 final class FirstRunInputValidator
 {
+    public function __construct(
+        private readonly FirstRunFieldFormatValidator $formatValidator = new FirstRunFieldFormatValidator(),
+    ) {
+    }
+
     /**
      * @return list<string>
      */
@@ -1550,7 +1651,7 @@ final class FirstRunInputValidator
             $errors[] = 'download_alias and download_path must be supplied together.';
         }
 
-        return $errors;
+        return array_merge($errors, $this->formatValidator->validate($input));
     }
 
     /**
@@ -1815,6 +1916,11 @@ use Totman\RuntimeUi\Setup\FirstRunStepCatalog;
 
 final class FirstRunStepValidator
 {
+    public function __construct(
+        private readonly FirstRunFieldFormatValidator $formatValidator = new FirstRunFieldFormatValidator(),
+    ) {
+    }
+
     /**
      * @return list<string>
      */
@@ -1823,16 +1929,16 @@ final class FirstRunStepValidator
         $input = $draft->toInput();
 
         return match ($step) {
-            FirstRunStepCatalog::PUBLIC_URL => $this->requiredWhenFresh($discovered, [
+            FirstRunStepCatalog::PUBLIC_URL => array_merge($this->requiredWhenFresh($discovered, [
                 'base_url' => $input->publicUrl(),
-            ]),
-            FirstRunStepCatalog::MAIL_DELIVERY => $this->requiredWhenFresh($discovered, [
+            ]), $this->formatValidator->validateOnly($input, ['base_url'])),
+            FirstRunStepCatalog::MAIL_DELIVERY => array_merge($this->requiredWhenFresh($discovered, [
                 'mail_from' => $input->mailFrom(),
                 'sendmail_path' => $input->sendmailPath(),
-            ]),
-            FirstRunStepCatalog::OPERATOR_MAILBOX => $this->requiredWhenFresh($discovered, [
+            ]), $this->formatValidator->validateOnly($input, ['mail_from'])),
+            FirstRunStepCatalog::OPERATOR_MAILBOX => array_merge($this->requiredWhenFresh($discovered, [
                 'to_self' => $input->operatorMailbox(),
-            ]),
+            ]), $this->formatValidator->validateOnly($input, ['to_self'])),
             FirstRunStepCatalog::FIRST_RECIPIENT => $this->recipientErrors($discovered, $input),
             FirstRunStepCatalog::FIRST_MESSAGE => $this->messageErrors($discovered, $input),
             FirstRunStepCatalog::OPTIONAL_DOWNLOAD => $this->downloadErrors($input),
@@ -1860,13 +1966,13 @@ final class FirstRunStepValidator
     private function recipientErrors(DiscoveryResult $discovered, FirstRunInput $input): array
     {
         if ($discovered->mode() === 'fresh' || $input->recipientName() !== '' || $input->recipientMailbox() !== '') {
-            return $this->requireFields([
+            return array_merge($this->requireFields([
                 'recipient_name' => $input->recipientName(),
                 'recipient_mailbox' => $input->recipientMailbox(),
-            ], ' is required before the recipient step can continue.');
+            ], ' is required before the recipient step can continue.'), $this->formatValidator->validateOnly($input, ['recipient_mailbox']));
         }
 
-        return [];
+        return $this->formatValidator->validateOnly($input, ['recipient_mailbox']);
     }
 
     /**
@@ -1890,10 +1996,13 @@ final class FirstRunStepValidator
     private function downloadErrors(FirstRunInput $input): array
     {
         if (($input->downloadAlias() === '') !== ($input->downloadPath() === '')) {
-            return ['download_alias and download_path must be supplied together before the download step can continue.'];
+            return array_merge(
+                ['download_alias and download_path must be supplied together before the download step can continue.'],
+                $this->formatValidator->validateOnly($input, ['download_path'])
+            );
         }
 
-        return [];
+        return $this->formatValidator->validateOnly($input, ['download_path']);
     }
 
     /**
@@ -1915,7 +2024,7 @@ final class FirstRunStepValidator
             ], ' is required before runtime files can be written.'));
         }
 
-        return array_merge($errors, $this->downloadErrors($input));
+        return array_merge($errors, $this->formatValidator->validate($input), $this->downloadErrors($input));
     }
 
     /**
@@ -2213,7 +2322,9 @@ final class FirstRunViewModelBuilder
     {
         $matched = [];
         foreach ($errors as $error) {
-            if (str_starts_with($error, $key . ' ') || str_starts_with($error, $key . '_')) {
+            if (str_starts_with($error, $key . ': ')) {
+                $matched[] = substr($error, strlen($key . ': '));
+            } elseif (str_starts_with($error, $key . ' ') || str_starts_with($error, $key . '_')) {
                 $matched[] = $error;
             }
         }
@@ -9848,7 +9959,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '985ea07',
+  'source_revision' => 'dfbea64',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',
@@ -9871,91 +9982,92 @@ array (
     17 => 'src/Application/FirstRunDraftState.php',
     18 => 'src/Application/FirstRunDraftStore.php',
     19 => 'src/Application/FirstRunField.php',
-    20 => 'src/Application/FirstRunHiddenFieldPolicy.php',
-    21 => 'src/Application/FirstRunInput.php',
-    22 => 'src/Application/FirstRunInputValidator.php',
-    23 => 'src/Application/FirstRunSaveResult.php',
-    24 => 'src/Application/FirstRunSetupService.php',
-    25 => 'src/Application/FirstRunStep.php',
-    26 => 'src/Application/FirstRunStepValidator.php',
-    27 => 'src/Application/FirstRunViewModel.php',
-    28 => 'src/Application/FirstRunViewModelBuilder.php',
-    29 => 'src/Application/FirstRunWizardApplicationService.php',
-    30 => 'src/Application/FirstRunWizardCommand.php',
-    31 => 'src/Application/FirstRunWizardNavigationResult.php',
-    32 => 'src/Application/FirstRunWizardNavigator.php',
-    33 => 'src/Application/FirstRunWizardResult.php',
-    34 => 'src/Application/MainConfigDraftBuilder.php',
-    35 => 'src/Application/MaintenanceCommandResult.php',
-    36 => 'src/Application/MaintenanceCommandService.php',
-    37 => 'src/Application/MaintenanceRuntimeMutator.php',
-    38 => 'src/Application/PrototypeApplicationFactory.php',
-    39 => 'src/Application/PrototypePageApplicationService.php',
-    40 => 'src/Application/PrototypePageResult.php',
-    41 => 'src/Application/RecipientConfigDraft.php',
-    42 => 'src/Application/RecipientConfigDraftBuilder.php',
-    43 => 'src/Application/RuntimeLogReader.php',
-    44 => 'src/Application/RuntimeLogTail.php',
-    45 => 'src/Application/RuntimeStateFileStatus.php',
-    46 => 'src/Application/RuntimeSummary.php',
-    47 => 'src/Application/RuntimeSummaryReader.php',
-    48 => 'src/Application/RuntimeUiTextCatalog.php',
-    49 => 'src/Config/ConfigCoverageResult.php',
-    50 => 'src/Config/ConfigDiscovery.php',
-    51 => 'src/Config/ConfigFileStatus.php',
-    52 => 'src/Config/DiscoveryIssue.php',
-    53 => 'src/Config/DiscoveryResult.php',
-    54 => 'src/Config/ImportedField.php',
-    55 => 'src/Config/MainConfigCoverage.php',
-    56 => 'src/Config/MainConfigImport.php',
-    57 => 'src/Config/MainConfigImporter.php',
-    58 => 'src/Config/MainConfigWriter.php',
-    59 => 'src/Config/RecipientConfigCoverage.php',
-    60 => 'src/Config/RecipientConfigImport.php',
-    61 => 'src/Config/RecipientConfigImporter.php',
-    62 => 'src/Config/RecipientConfigWriter.php',
-    63 => 'src/Contracts/RuntimeFileNames.php',
-    64 => 'src/Deployment/DeploymentCapabilities.php',
-    65 => 'src/Deployment/DeploymentContext.php',
-    66 => 'src/Http/FirstRunRequest.php',
-    67 => 'src/Http/FirstRunRequestMapper.php',
-    68 => 'src/Http/ProductRuntimeContextAdapter.php',
-    69 => 'src/Http/PrototypeController.php',
-    70 => 'src/Http/PrototypeEnvironment.php',
-    71 => 'src/Http/PrototypeEnvironmentFactory.php',
-    72 => 'src/Http/PrototypeRenderer.php',
-    73 => 'src/Http/RuntimeUiMode.php',
-    74 => 'src/Preflight/FirstRunPreflight.php',
-    75 => 'src/Preflight/PreflightCheck.php',
-    76 => 'src/Preflight/PreflightResult.php',
-    77 => 'src/Security/AdminAuthInput.php',
-    78 => 'src/Security/AdminAuthService.php',
-    79 => 'src/Security/AdminCredential.php',
-    80 => 'src/Security/AdminReauthPolicy.php',
-    81 => 'src/Security/AdminSessionLoadResult.php',
-    82 => 'src/Security/AdminSessionState.php',
-    83 => 'src/Security/AdminSessionStore.php',
-    84 => 'src/Security/CsrfTokens.php',
-    85 => 'src/Security/HmacSecretGenerator.php',
-    86 => 'src/Security/InMemoryRateLimiter.php',
-    87 => 'src/Security/PrototypeCsrfPolicy.php',
-    88 => 'src/Security/PrototypeRateLimitPolicy.php',
-    89 => 'src/Security/PrototypeSaveIntentPolicy.php',
-    90 => 'src/Security/SecretRedactor.php',
-    91 => 'src/Security/SessionSecurity.php',
-    92 => 'src/Security/SetupAccessPolicy.php',
-    93 => 'src/Security/SetupAccessResult.php',
-    94 => 'src/Security/SetupCodeVerifier.php',
-    95 => 'src/Security/SetupSessionLoadResult.php',
-    96 => 'src/Security/SetupSessionState.php',
-    97 => 'src/Security/SetupSessionStore.php',
-    98 => 'src/Security/UiPrivateConfig.php',
-    99 => 'src/Security/UiPrivateConfigLoadResult.php',
-    100 => 'src/Security/UiPrivateConfigStore.php',
-    101 => 'src/Setup/FirstRunFlow.php',
-    102 => 'src/Setup/FirstRunOrchestrator.php',
-    103 => 'src/Setup/FirstRunPlanner.php',
-    104 => 'src/Setup/FirstRunStepCatalog.php',
+    20 => 'src/Application/FirstRunFieldFormatValidator.php',
+    21 => 'src/Application/FirstRunHiddenFieldPolicy.php',
+    22 => 'src/Application/FirstRunInput.php',
+    23 => 'src/Application/FirstRunInputValidator.php',
+    24 => 'src/Application/FirstRunSaveResult.php',
+    25 => 'src/Application/FirstRunSetupService.php',
+    26 => 'src/Application/FirstRunStep.php',
+    27 => 'src/Application/FirstRunStepValidator.php',
+    28 => 'src/Application/FirstRunViewModel.php',
+    29 => 'src/Application/FirstRunViewModelBuilder.php',
+    30 => 'src/Application/FirstRunWizardApplicationService.php',
+    31 => 'src/Application/FirstRunWizardCommand.php',
+    32 => 'src/Application/FirstRunWizardNavigationResult.php',
+    33 => 'src/Application/FirstRunWizardNavigator.php',
+    34 => 'src/Application/FirstRunWizardResult.php',
+    35 => 'src/Application/MainConfigDraftBuilder.php',
+    36 => 'src/Application/MaintenanceCommandResult.php',
+    37 => 'src/Application/MaintenanceCommandService.php',
+    38 => 'src/Application/MaintenanceRuntimeMutator.php',
+    39 => 'src/Application/PrototypeApplicationFactory.php',
+    40 => 'src/Application/PrototypePageApplicationService.php',
+    41 => 'src/Application/PrototypePageResult.php',
+    42 => 'src/Application/RecipientConfigDraft.php',
+    43 => 'src/Application/RecipientConfigDraftBuilder.php',
+    44 => 'src/Application/RuntimeLogReader.php',
+    45 => 'src/Application/RuntimeLogTail.php',
+    46 => 'src/Application/RuntimeStateFileStatus.php',
+    47 => 'src/Application/RuntimeSummary.php',
+    48 => 'src/Application/RuntimeSummaryReader.php',
+    49 => 'src/Application/RuntimeUiTextCatalog.php',
+    50 => 'src/Config/ConfigCoverageResult.php',
+    51 => 'src/Config/ConfigDiscovery.php',
+    52 => 'src/Config/ConfigFileStatus.php',
+    53 => 'src/Config/DiscoveryIssue.php',
+    54 => 'src/Config/DiscoveryResult.php',
+    55 => 'src/Config/ImportedField.php',
+    56 => 'src/Config/MainConfigCoverage.php',
+    57 => 'src/Config/MainConfigImport.php',
+    58 => 'src/Config/MainConfigImporter.php',
+    59 => 'src/Config/MainConfigWriter.php',
+    60 => 'src/Config/RecipientConfigCoverage.php',
+    61 => 'src/Config/RecipientConfigImport.php',
+    62 => 'src/Config/RecipientConfigImporter.php',
+    63 => 'src/Config/RecipientConfigWriter.php',
+    64 => 'src/Contracts/RuntimeFileNames.php',
+    65 => 'src/Deployment/DeploymentCapabilities.php',
+    66 => 'src/Deployment/DeploymentContext.php',
+    67 => 'src/Http/FirstRunRequest.php',
+    68 => 'src/Http/FirstRunRequestMapper.php',
+    69 => 'src/Http/ProductRuntimeContextAdapter.php',
+    70 => 'src/Http/PrototypeController.php',
+    71 => 'src/Http/PrototypeEnvironment.php',
+    72 => 'src/Http/PrototypeEnvironmentFactory.php',
+    73 => 'src/Http/PrototypeRenderer.php',
+    74 => 'src/Http/RuntimeUiMode.php',
+    75 => 'src/Preflight/FirstRunPreflight.php',
+    76 => 'src/Preflight/PreflightCheck.php',
+    77 => 'src/Preflight/PreflightResult.php',
+    78 => 'src/Security/AdminAuthInput.php',
+    79 => 'src/Security/AdminAuthService.php',
+    80 => 'src/Security/AdminCredential.php',
+    81 => 'src/Security/AdminReauthPolicy.php',
+    82 => 'src/Security/AdminSessionLoadResult.php',
+    83 => 'src/Security/AdminSessionState.php',
+    84 => 'src/Security/AdminSessionStore.php',
+    85 => 'src/Security/CsrfTokens.php',
+    86 => 'src/Security/HmacSecretGenerator.php',
+    87 => 'src/Security/InMemoryRateLimiter.php',
+    88 => 'src/Security/PrototypeCsrfPolicy.php',
+    89 => 'src/Security/PrototypeRateLimitPolicy.php',
+    90 => 'src/Security/PrototypeSaveIntentPolicy.php',
+    91 => 'src/Security/SecretRedactor.php',
+    92 => 'src/Security/SessionSecurity.php',
+    93 => 'src/Security/SetupAccessPolicy.php',
+    94 => 'src/Security/SetupAccessResult.php',
+    95 => 'src/Security/SetupCodeVerifier.php',
+    96 => 'src/Security/SetupSessionLoadResult.php',
+    97 => 'src/Security/SetupSessionState.php',
+    98 => 'src/Security/SetupSessionStore.php',
+    99 => 'src/Security/UiPrivateConfig.php',
+    100 => 'src/Security/UiPrivateConfigLoadResult.php',
+    101 => 'src/Security/UiPrivateConfigStore.php',
+    102 => 'src/Setup/FirstRunFlow.php',
+    103 => 'src/Setup/FirstRunOrchestrator.php',
+    104 => 'src/Setup/FirstRunPlanner.php',
+    105 => 'src/Setup/FirstRunStepCatalog.php',
   ),
   'excluded' =>
   array (

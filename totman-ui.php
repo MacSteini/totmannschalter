@@ -4724,7 +4724,9 @@ final class RuntimeUiTextCatalog
             'danger.preview' => 'Preview',
             'danger.execute' => 'Execute',
             'danger.confirm_execute' => 'Confirm execution',
+            'danger.confirm_execute_help' => 'Required before this maintenance action can change runtime files or state.',
             'danger.alias' => 'Alias',
+            'danger.alias_help' => 'Enter the file alias exactly as it appears in Files.',
             'field.required' => 'Required',
             'field.source' => 'Source',
             'field.base_url.label' => 'Public URL',
@@ -4777,6 +4779,7 @@ final class RuntimeUiTextCatalog
             'wizard.save' => 'Save runtime files',
             'wizard.save_notice' => 'Runtime files will only be written after this confirmation and a passing draft preflight.',
             'wizard.confirm_save' => 'Confirm save',
+            'wizard.confirm_save_help' => 'Required before the UI writes the runtime configuration files.',
             'wizard.complete' => 'First-run setup is complete.',
             'review.enabled' => 'Enabled',
             'review.disabled' => 'Disabled',
@@ -6997,6 +7000,7 @@ use Totman\RuntimeUi\Application\FirstRunViewModel;
 use Totman\RuntimeUi\Application\MaintenanceCommandResult;
 use Totman\RuntimeUi\Application\RuntimeUiTextCatalog;
 use Totman\RuntimeUi\Security\SetupAccessResult;
+use Totman\RuntimeUi\Setup\FirstRunStepCatalog;
 
 final class PrototypeRenderer
 {
@@ -7236,7 +7240,12 @@ final class PrototypeRenderer
 ' . $this->renderAdminAccess($csrfToken, $adminAuth) . '
 </aside>' : '';
 
-        return '<section class="ui-section setup-view view-animate" data-section="setup" aria-labelledby="setup-title">
+        $setupClasses = ['ui-section', 'setup-view', 'view-animate'];
+        if (in_array($view->currentStep(), [FirstRunStepCatalog::REVIEW, FirstRunStepCatalog::PREFLIGHT, FirstRunStepCatalog::SAVE], true)) {
+            $setupClasses[] = 'setup-view-wide';
+        }
+
+        return '<section class="' . $this->e(implode(' ', $setupClasses)) . '" data-section="setup" aria-labelledby="setup-title">
 <div class="section-heading">
 <h2 id="setup-title">' . $this->e($this->text->get('nav.setup')) . '</h2>
 <p class="section-intro">' . $this->e($this->shortStepDescription($view, $view->currentStep())) . '</p>
@@ -7659,11 +7668,12 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .stat-desc,.mode-product .helper-text,.mode-product .text-muted{color:var(--text-muted);font-size:.85rem}
 .mode-product .ui-section{--section-content-width:1200px}
 .mode-product .setup-view{--section-content-width:760px}
+.mode-product .setup-view-wide{--section-content-width:1200px}
 .mode-product .section-heading{width:min(100%,var(--section-content-width));margin:0 auto clamp(1.5rem,3vw,2.4rem)}
 .mode-product .section-kicker{margin:0 0 .25rem;color:var(--accent);font-size:.78rem;font-weight:950;letter-spacing:.08em;text-transform:uppercase}
 .mode-product .section-intro{color:var(--text-muted);max-width:48rem}
 .mode-product .setup-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(18rem,24rem);gap:var(--space-l);align-items:start;margin-top:.25rem}
-.mode-product .setup-layout-single{grid-template-columns:minmax(0,760px);justify-content:center}
+.mode-product .setup-layout-single{grid-template-columns:minmax(0,var(--section-content-width));justify-content:center}
 .mode-product .setup-step-card{margin-bottom:0}
 .mode-product .setup-admin-card{margin-bottom:0}
 .mode-product .sub-nav{display:flex;flex-wrap:wrap;gap:1.15rem;padding:0;margin:0 0 var(--space-l);background:transparent;border:0;border-bottom:1px solid var(--border);border-radius:0;box-shadow:none}
@@ -7700,6 +7710,17 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product input[type=checkbox]{width:1.05rem;height:1.05rem;margin:0;accent-color:var(--accent)}
 .mode-product input:focus,.mode-product textarea:focus,.mode-product select:focus{outline:none;border-color:var(--accent);background:var(--bg-surface);box-shadow:0 0 0 4px var(--accent-glow)}
 .mode-product input[readonly]{opacity:.78}
+.mode-product .checkbox-card{margin:var(--space-m) 0}
+.mode-product .checkbox-card-label{display:grid!important;grid-template-columns:auto minmax(0,1fr);gap:.75rem;align-items:start;max-width:none!important;padding:.9rem 1rem;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--bg-main);cursor:pointer}
+.mode-product .checkbox-card input[type=checkbox]{margin-top:.2rem;flex:0 0 auto}
+.mode-product .checkbox-card-copy{display:grid;gap:.18rem;min-width:0}
+.mode-product .checkbox-card-title{display:block;color:var(--text-primary);font-weight:850}
+.mode-product .checkbox-card .helper-text{margin:0}
+.mode-product .checkbox-card .field-errors{grid-column:1/-1}
+.mode-product .checkbox-card-label:has(input:focus-visible){outline:3px solid var(--accent);outline-offset:3px}
+.mode-product .maintenance-danger-zone .checkbox-card-label{background:rgba(255,255,255,.55)}
+html[data-theme=dark] .mode-product .maintenance-danger-zone .checkbox-card-label{background:rgba(15,23,42,.3)}
+.mode-product .command-alias-field{min-width:min(100%,18rem);margin-bottom:0}
 .mode-product button{border-radius:var(--radius-m);font-weight:700;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;justify-content:center;gap:.6rem;min-height:54px;font:inherit;font-size:1rem;line-height:1.2}
 .mode-product button[name=action][value=save_runtime],.mode-product button[name=action][value=create_admin],.mode-product button[name=action][value=login],.mode-product button[name=action][value=admin_command]{background:var(--accent);color:white;border:0;padding:1rem 1.65rem}
 .mode-product button[name=action][value=save_runtime]:hover:not(:disabled),.mode-product button[name=action][value=create_admin]:hover:not(:disabled),.mode-product button[name=action][value=login]:hover:not(:disabled),.mode-product button[name=action][value=admin_command]:hover:not(:disabled){background:var(--accent-hover);transform:translateY(-1px)}
@@ -7733,6 +7754,7 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .notification-progress{height:3px;margin:1rem -.2rem -.75rem;border-radius:999px;background:rgba(100,116,139,.18);overflow:hidden}
 .mode-product .notification-progress span{display:block;height:100%;width:100%;background:var(--accent);transform-origin:left center;animation:notificationProgress 5.2s linear forwards}
 .mode-product .preflight-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:.75rem;margin-top:var(--space-m)}
+.mode-product .setup-view-wide .preflight-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
 .mode-product .preflight-item{display:flex;flex-direction:column;gap:.25rem;border:1px solid var(--border);border-left-width:5px;border-radius:var(--radius-s);padding:.75rem;background:var(--bg-surface)}
 .mode-product .preflight-item.status-ok{border-left-color:var(--success)}
 .mode-product .preflight-item.status-warn{border-left-color:var(--warning)}
@@ -7764,8 +7786,11 @@ html[data-theme=dark] .mode-product .log-line:nth-child(even){background:rgba(23
 .mode-product .footer-nav>a{color:var(--text-muted);font-weight:700;text-decoration:none;padding:.38rem .65rem;border-radius:999px;transition:background-color .18s ease,color .18s ease}
 .mode-product .footer-nav>a:hover,.mode-product .footer-nav>a:focus-visible{background:var(--accent-glow);color:var(--accent)}
 @keyframes notificationProgress{from{transform:scaleX(1)}to{transform:scaleX(0)}}@keyframes toggleSelect{0%{transform:scale(.96)}70%{transform:scale(1.025)}100%{transform:scale(1)}}@media(prefers-reduced-motion:reduce){.mode-product *{animation:none!important;transition:none!important}}
+@media(max-width:1100px){.mode-product .setup-view-wide .preflight-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){.mode-product .setup-layout{grid-template-columns:1fr}}
-@media(max-width:700px){.mode-product .container{width:min(100% - 1rem,1200px)}.mode-product .header{justify-content:center;text-align:center}.mode-product .brand{justify-content:center;width:100%;flex-direction:column;gap:.65rem}.mode-product .brand-logo{width:clamp(84px,24vw,116px)}.mode-product .brand-text{text-align:center}.mode-product .header-actions{width:100%;max-width:none;justify-content:center}.mode-product .ui-main-nav{width:100%;justify-content:center}.mode-product .card{padding:1rem}.mode-product .sub-nav{gap:.8rem;overflow-x:auto;flex-wrap:nowrap}.mode-product .setup-step-list .sub-nav-item{flex:0 0 auto;white-space:nowrap}.mode-product .action-bar{align-items:stretch}.mode-product .action-bar button{width:100%}.mode-product dl{grid-template-columns:1fr}.mode-product .footer-nav{border-radius:24px;width:100%}}' . "\n";
+@media(max-width:850px){.mode-product .setup-view-wide .preflight-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){.mode-product .container{width:min(100% - 1rem,1200px)}.mode-product .header{justify-content:center;text-align:center}.mode-product .brand{justify-content:center;width:100%;flex-direction:column;gap:.65rem}.mode-product .brand-logo{width:clamp(84px,24vw,116px)}.mode-product .brand-text{text-align:center}.mode-product .header-actions{width:100%;max-width:none;justify-content:center}.mode-product .ui-main-nav{width:100%;justify-content:center}.mode-product .card{padding:1rem}.mode-product .sub-nav{gap:.8rem;overflow-x:auto;flex-wrap:nowrap}.mode-product .setup-step-list .sub-nav-item{flex:0 0 auto;white-space:nowrap}.mode-product .action-bar{align-items:stretch}.mode-product .action-bar button{width:100%}.mode-product dl{grid-template-columns:1fr}.mode-product .footer-nav{border-radius:24px;width:100%}}
+@media(max-width:560px){.mode-product .setup-view-wide .preflight-grid{grid-template-columns:1fr}}' . "\n";
     }
 
     public function script(): string
@@ -8043,6 +8068,40 @@ if (notificationModal) {
             . '</div>';
     }
 
+    private function renderCheckboxCard(
+        string $id,
+        string $name,
+        string $value,
+        string $label,
+        string $hint = '',
+        bool $checked = false,
+        string $class = '',
+        string $extraAttributes = '',
+    ): string {
+        $hintId = $id . '-help';
+        $classAttribute = trim('input-group ui-field checkbox-field checkbox-card ' . $class);
+        $describedBy = $hint !== '' ? ' aria-describedby="' . $this->e($hintId) . '"' : '';
+
+        return '<div class="' . $this->e($classAttribute) . '"><label class="checkbox-card-label" for="' . $this->e($id) . '">'
+            . '<input id="' . $this->e($id) . '" type="checkbox" name="' . $this->e($name) . '" value="' . $this->e($value) . '"'
+            . ($checked ? ' checked' : '') . $describedBy . $extraAttributes . '>'
+            . '<span class="checkbox-card-copy"><span class="checkbox-card-title">' . $this->e($label) . '</span>'
+            . ($hint !== '' ? '<span id="' . $this->e($hintId) . '" class="helper-text">' . $this->e($hint) . '</span>' : '')
+            . '</span></label></div>';
+    }
+
+    private function renderCommandAliasInput(string $command, string $phase): string
+    {
+        $id = 'admin-command-alias-' . preg_replace('/[^a-z0-9_-]/', '-', strtolower($command . '-' . $phase));
+        $hintId = $id . '-help';
+
+        return '<div class="input-group ui-field command-alias-field">'
+            . $this->labelRow($id, $this->text->get('danger.alias'))
+            . '<input id="' . $this->e($id) . '" name="admin_command_target_alias" aria-describedby="' . $this->e($hintId) . '">'
+            . $this->helperText($hintId, $this->text->get('danger.alias_help'))
+            . '</div>';
+    }
+
     private function renderAdminAccess(string $csrfToken, AdminAuthViewModel $adminAuth): string
     {
         if ($adminAuth->showConfigBlocked()) {
@@ -8209,15 +8268,23 @@ if (notificationModal) {
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
 <input type="hidden" name="admin_command" value="' . $this->e($command) . '">
 <input type="hidden" name="admin_command_phase" value="' . MaintenanceCommandResult::PREVIEW . '">
-' . ($command === AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION ? '<label>' . $this->e($this->text->get('danger.alias')) . ' <input name="admin_command_target_alias"></label> ' : '') . '
+' . ($command === AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION ? $this->renderCommandAliasInput($command, MaintenanceCommandResult::PREVIEW) : '') . '
 <button type="submit" name="action" value="admin_command" class="btn-secondary">' . $this->e($label) . '</button>
 </form>
 <form class="action-bar danger-action-row" method="post">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
 <input type="hidden" name="admin_command" value="' . $this->e($command) . '">
 <input type="hidden" name="admin_command_phase" value="' . MaintenanceCommandResult::EXECUTE . '">
-' . ($command === AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION ? '<label>' . $this->e($this->text->get('danger.alias')) . ' <input name="admin_command_target_alias"></label> ' : '') . '
-<label><input type="checkbox" name="confirm_admin_command" value="1"> ' . $this->e($this->text->get('danger.confirm_execute')) . '</label>
+' . ($command === AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION ? $this->renderCommandAliasInput($command, MaintenanceCommandResult::EXECUTE) : '') . '
+' . $this->renderCheckboxCard(
+                'confirm-admin-command-' . (preg_replace('/[^a-z0-9_-]/', '-', strtolower($command)) ?? 'command'),
+                'confirm_admin_command',
+                '1',
+                $this->text->get('danger.confirm_execute'),
+                $this->text->get('danger.confirm_execute_help'),
+                false,
+                'danger-confirm-card',
+            ) . '
 <button type="submit" name="action" value="admin_command" class="btn-secondary danger">' . $this->e($this->text->get('danger.execute')) . ': ' . $this->e($label) . '</button>
 </form>';
         }
@@ -8267,6 +8334,17 @@ if (notificationModal) {
 
         if ($field->control() === 'checkbox') {
             $checked = $field->value() === '1' ? ' checked' : '';
+            if ($this->text->productMode()) {
+                return '<div class="input-group ui-field checkbox-field checkbox-card">'
+                    . '<label class="checkbox-card-label" for="' . $this->e($field->domId()) . '">'
+                    . '<input id="' . $this->e($field->domId())
+                    . '" type="checkbox" name="' . $this->e($field->key())
+                    . '" value="1"' . $checked . $requiredAttribute . $invalid . $describedBy . '>'
+                    . '<span class="checkbox-card-copy"><span class="checkbox-card-title">' . $this->e($field->label()) . '</span>'
+                    . ($field->hint() !== '' ? '<span id="' . $this->e($field->hintId()) . '" class="helper-text">' . $this->e($field->hint()) . '</span>' : '')
+                    . '</span></label>' . $this->fieldErrors($field) . $meta . '</div>';
+            }
+
             return '<div class="input-group ui-field checkbox-field">' . $label . '<input id="' . $this->e($field->domId())
                 . '" type="checkbox" name="' . $this->e($field->key())
                 . '" value="1"' . $checked . $requiredAttribute . $invalid . $describedBy . '>' . $this->fieldHint($field) . $this->fieldErrors($field) . $meta . '</div>';
@@ -8350,7 +8428,8 @@ if (notificationModal) {
     {
         return '<fieldset class="preflight-card full-width"><legend>' . $this->e($this->text->get('wizard.save')) . '</legend><p>' . $this->e($this->text->get('wizard.save_notice')) . '</p>'
             . '<div class="preflight-grid">' . $this->preflightItems($view) . '</div>'
-            . '<label>' . $this->e($this->text->get('wizard.confirm_save')) . ' <input type="checkbox" name="confirm_save" value="1"></label></fieldset>';
+            . $this->renderCheckboxCard('confirm-save', 'confirm_save', '1', $this->text->get('wizard.confirm_save'), $this->text->get('wizard.confirm_save_help'))
+            . '</fieldset>';
     }
 
     private function preflightItems(FirstRunViewModel $view): string
@@ -10141,7 +10220,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'd8bf14b',
+  'source_revision' => 'cf8d155',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

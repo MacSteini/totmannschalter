@@ -3870,6 +3870,7 @@ final class PrototypeApplicationFactory
 namespace Totman\RuntimeUi\Application;
 
 use Totman\RuntimeUi\Config\ConfigDiscovery;
+use Totman\RuntimeUi\Config\DiscoveryResult;
 use Totman\RuntimeUi\Deployment\DeploymentContext;
 use Totman\RuntimeUi\Http\FirstRunRequest;
 use Totman\RuntimeUi\Security\AdminSessionStore;
@@ -3879,6 +3880,7 @@ use Totman\RuntimeUi\Security\PrototypeSaveIntentPolicy;
 use Totman\RuntimeUi\Security\SetupAccessPolicy;
 use Totman\RuntimeUi\Security\SetupAccessResult;
 use Totman\RuntimeUi\Security\SetupSessionStore;
+use Totman\RuntimeUi\Setup\FirstRunStepCatalog;
 
 final class PrototypePageApplicationService
 {
@@ -3913,6 +3915,7 @@ final class PrototypePageApplicationService
         $draft = $draftResult->state();
         $stateNotice = $this->notice($sessionResult->notice(), $adminSessionResult->notice(), $draftResult->notice());
         $discovered = $this->discovery->discover($stateDir);
+        $draft = $this->discardProductCompleteDraft($draft, $discovered);
         $adminAuth = $this->adminAuthService->preview($stateDir, $discovered, $adminSession, $this->expectedSetupCode)->view();
         $csrfToken = $this->csrfPolicy->ensureToken($session);
         $adminInspection = $this->adminInspection($stateDir, $context, $adminAuth);
@@ -4040,6 +4043,20 @@ final class PrototypePageApplicationService
         $wizard = $this->wizardService->handle($stateDir, $context, FirstRunWizardCommand::preview(), $draft);
 
         return new PrototypePageResult($wizard->view(), $access, $csrfToken, $adminAuth, $adminInspection);
+    }
+
+    private function discardProductCompleteDraft(FirstRunDraftState $draft, DiscoveryResult $discovered): FirstRunDraftState
+    {
+        if (!$this->text->productMode() || !$draft->dirty() || $draft->activeStep() !== FirstRunStepCatalog::COMPLETE) {
+            return $draft;
+        }
+
+        $this->draftStore->clear();
+        if ($discovered->mainLiveStatus()->loaded() || $discovered->recipientLiveStatus()->loaded()) {
+            return new FirstRunDraftState([], FirstRunStepCatalog::PREFLIGHT, time(), true);
+        }
+
+        return new FirstRunDraftState();
     }
 
     private function wizardCommand(FirstRunRequest $request): FirstRunWizardCommand
@@ -10235,7 +10252,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'cf8d155',
+  'source_revision' => '6f7bbe0',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

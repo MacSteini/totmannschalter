@@ -44,7 +44,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 2. Create state dir + place files:
 	```sh
 	sudo mkdir -p /var/lib/totman
-	sudo mkdir -p /var/lib/totman/downloads
+	sudo mkdir -p /var/lib/totman/files
 	sudo cp totman.inc.dist.php totman-tick.php totman-lib.php totman-recipients.dist.php /var/lib/totman/
 	sudo cp -R l18n /var/lib/totman/
 	cd /var/lib/totman
@@ -62,7 +62,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 	- `to_self`
 	- `l18n_dir_name` (default: `l18n`)
 	- `recipients_file` (default: `totman-recipients.php`)
-	- `download_base_dir` (private directory for downloadable files; keep it outside webroot)
+	- `download_base_dir` (private directory for downloadable files; default: `/var/lib/totman/files`; keep it outside webroot)
 	- `download_valid_days` (global download-link validity for all files; default: `180`)
 	- `operator_alert_interval_hours` (mandatory operator-warning throttle in whole hours; allowed: `1..24`; missing/invalid values fall back automatically to `2`)
 	- Runtime names: `lib_file`, `l18n_dir_name`, `lock_file`, `log_file_name`, `recipients_file`, `state_file`, `web_file` (filenames/directories only; no paths)

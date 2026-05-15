@@ -47,6 +47,8 @@
  * - Use field 5 only for the special case where a file must be single-use.
  * - File aliases and message keys must match `^[a-z0-9_-]+$`.
  * - All file paths are relative to `download_base_dir` from the effective config.
+ * - With the shipped default, `shared/letter.pdf` means
+ *   `/var/lib/totman/files/shared/letter.pdf`.
  * - Download validity is global via `download_valid_days` in the effective config.
  *
  * Supported mail placeholders:

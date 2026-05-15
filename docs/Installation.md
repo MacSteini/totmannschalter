@@ -35,7 +35,7 @@ Runtime files created automatically (as needed) in `/var/lib/totman`:
 - `totman.log`
 
 Private download directory (outside webroot):
-- your configured `download_base_dir` (common value: `/var/lib/totman/downloads`)
+- your configured `download_base_dir` (shipped default: `/var/lib/totman/files`)
 
 In your webroot:
 - your configured `web_file` (template default: `totman.php`)
@@ -77,7 +77,7 @@ From here on:
 ## Create the state directory
 ```sh
 sudo mkdir -p /var/lib/totman
-sudo mkdir -p /var/lib/totman/downloads
+sudo mkdir -p /var/lib/totman/files
 sudo mkdir -p /var/lib/totman/l18n
 ```
 ## Place the files

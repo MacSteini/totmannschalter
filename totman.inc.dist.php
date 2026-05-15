@@ -53,8 +53,10 @@ return [
 // Private directory for downloadable files.
 // Files served through the `download` action must live inside this directory.
 // Keep this OUTSIDE your webroot.
-// Example: /var/lib/totman/downloads
-'download_base_dir' => '',
+// File aliases in totman-recipients.php are relative to this directory.
+// Example: alias `letter` with path `shared/letter.pdf` resolves to:
+// /var/lib/totman/files/shared/letter.pdf
+'download_base_dir' => '/var/lib/totman/files',
 
 // Validity period for every download link (days).
 // This timer starts at the first escalation mail of that escalation event and then applies

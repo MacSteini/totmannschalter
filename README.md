@@ -35,7 +35,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 ## Requirements
 - Linux host with `systemd` (timer + oneshot service).
 - PHP 8.0+.
-- A sendmail-compatible MTA (e. g., Postfix/Exim) available via `sendmail_path`.
+- A sendmail-compatible MTA (e. g., Postfix/Exim). The shipped `sendmail_path` default is `/usr/sbin/sendmail`; change it only if your server uses another path.
 ## Quick start
 > One rule that matters:
 > The tick runs as `root`, but the web request does not. This means the state directory must be writable by both `root` and your real web user/group – and it must not be inside your webroot.

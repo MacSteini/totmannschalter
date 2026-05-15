@@ -177,9 +177,10 @@ return [
 'trusted_proxies' => ['127.0.0.1', '::1'],
 'trusted_proxy_header' => 'X-Forwarded-For',
 
-// Path to sendmail binary (varies by distro/setup).
-// Example: /usr/sbin/sendmail
-'sendmail_path' => '',
+// Path to sendmail binary.
+// /usr/sbin/sendmail is the common default on many Linux systems. Change it only
+// when your server or hosting provider uses a different sendmail-compatible path.
+'sendmail_path' => '/usr/sbin/sendmail',
 
 // Reminder address(es) (you).
 // Each list entry must be exactly one mailbox string.

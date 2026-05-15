@@ -4,7 +4,7 @@
 ## Prerequisites
 - PHP 8.0+.
 - `systemd` (service + timer).
-- A sendmail-compatible MTA (e. g., Postfix/Exim) reachable via `sendmail_path`.
+- A sendmail-compatible MTA (e. g., Postfix/Exim). The shipped `sendmail_path` default is `/usr/sbin/sendmail`; change it only if your server uses another path.
 ## Install order (recommended)
 1. Identify `<WEB_USER>:<WEB_GROUP>` first.
 2. Create the state directory and place the files.

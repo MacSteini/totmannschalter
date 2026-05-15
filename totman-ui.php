@@ -20,7 +20,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'b4e81a8',
+  'source_revision' => 'f089442',
   'source_files' =>
   array (
     0 => 'resources/product-ui/totman-ui.php',
@@ -218,6 +218,10 @@ function t(string $key, array $params = []): string
         'Stored missed cycles / required cycles' => 'Gespeicherte / benötigte verpasste Zyklen',
         'No message templates remain. Saving this non-runtime-ready configuration needs explicit approval.' => 'Es sind keine Nachrichtenvorlagen mehr vorhanden. Das Speichern dieser noch nicht versandbereiten Konfiguration braucht ausdrückliche Freigabe.',
         'No recipients remain. Saving a configuration without notifications needs explicit approval.' => 'Es sind keine Empfänger:innen mehr vorhanden. Das Speichern einer Konfiguration ohne Benachrichtigungen braucht ausdrückliche Freigabe.',
+        'No message templates are configured. Saving this non-runtime-ready configuration needs explicit approval.' => 'Es sind keine Nachrichtenvorlagen vorhanden. Das Speichern dieser noch nicht versandbereiten Konfiguration braucht ausdrückliche Freigabe.',
+        'No recipients are configured. Saving a configuration without notifications needs explicit approval.' => 'Es sind keine Empfänger:innen vorhanden. Das Speichern einer Konfiguration ohne Benachrichtigungen braucht ausdrückliche Freigabe.',
+        'No message templates are configured. This configuration stays non-runtime-ready until at least one message template exists and each recipient uses one. Save this state?' => 'Es sind keine Nachrichtenvorlagen vorhanden. Diese Konfiguration bleibt noch nicht versandbereit, bis mindestens eine Nachrichtenvorlage vorhanden ist und jede Empfänger:innen-Zeile eine Vorlage nutzt. Diesen Stand speichern?',
+        'No recipients are configured. This configuration cannot notify anyone until at least one recipient exists. Save this state?' => 'Es sind keine Empfänger:innen vorhanden. Diese Konfiguration benachrichtigt niemanden, bis mindestens ein:e Empfänger:in angelegt ist. Diesen Stand speichern?',
         'Approval needed' => 'Freigabe erforderlich',
         'Run action' => 'Ausführen',
         'Password required for this sensitive action.' => 'Passwort für diese sensible Aktion erforderlich.',
@@ -1416,11 +1420,16 @@ function recipients_from_post(array $currentData = [], array &$renameSummary = [
         }
         $recipients[] = $row;
     }
-    if ($messages === [] && !$allowBrokenMessageRefs) {
-        throw new RuntimeException('No message templates remain. Saving this non-runtime-ready configuration needs explicit approval.');
+    $fileAliasOnboardingOnly = $files !== []
+        && $messages === []
+        && $recipients === []
+        && (array)($currentData['messages'] ?? []) === []
+        && (array)($currentData['recipients'] ?? []) === [];
+    if ($messages === [] && !$allowBrokenMessageRefs && !$fileAliasOnboardingOnly) {
+        throw new RuntimeException('No message templates are configured. Saving this non-runtime-ready configuration needs explicit approval.');
     }
-    if ($recipients === [] && !$allowNoRecipients) {
-        throw new RuntimeException('No recipients remain. Saving a configuration without notifications needs explicit approval.');
+    if ($recipients === [] && !$allowNoRecipients && !$fileAliasOnboardingOnly) {
+        throw new RuntimeException('No recipients are configured. Saving a configuration without notifications needs explicit approval.');
     }
     foreach ($messageRenameMap as $old => $new) {
         if (($renameCounts[$old] ?? 0) === 0) {
@@ -2954,7 +2963,7 @@ function render_recipients(array $recips, array $flash, string $downloadBaseDir 
     }
     $messageKeys = array_values(array_unique(array_filter(array_map(static fn(array $row): string=>(string)$row[0], $messageRows), static fn(string $value): bool=>$value !== '')));
     $fileAliases = array_values(array_unique(array_filter(array_map(static fn(array $row): string=>(string)$row[0], $fileRows), static fn(string $value): bool=>$value !== '')));
-    echo'<section id="view-recipients" class="hidden view-animate" role="tabpanel" aria-labelledby="tab-recipients"><form method="post">' . csrf_field() . '<input type="hidden" name="action" value="save_recipients"><input type="hidden" name="recipients_fingerprint" value="' . h($recips['fingerprint']) . '"><input type="hidden" id="allow-broken-message-refs" name="allow_broken_message_refs" value="0"><input type="hidden" id="allow-no-recipients" name="allow_no_recipients" value="0"><div class="sub-nav" role="tablist" aria-label="' . h(t('Recipients sections')) . '"><button type="button" id="tab-recipients-list" class="sub-nav-item active" data-sub="recipients-list" role="tab" aria-selected="true" aria-controls="recipients-list">' . h(t('List')) . '</button><button type="button" id="tab-recipients-messages" class="sub-nav-item" data-sub="recipients-messages" role="tab" aria-selected="false" aria-controls="recipients-messages">' . h(t('Messages')) . '</button><button type="button" id="tab-recipients-files" class="sub-nav-item" data-sub="recipients-files" role="tab" aria-selected="false" aria-controls="recipients-files">' . h(t('Files')) . '</button></div>';
+    echo'<section id="view-recipients" class="hidden view-animate" role="tabpanel" aria-labelledby="tab-recipients"><form method="post" data-initial-message-count="' . count($messageRows) . '" data-initial-recipient-count="' . count($recipientRows) . '">' . csrf_field() . '<input type="hidden" name="action" value="save_recipients"><input type="hidden" name="recipients_fingerprint" value="' . h($recips['fingerprint']) . '"><input type="hidden" id="allow-broken-message-refs" name="allow_broken_message_refs" value="0"><input type="hidden" id="allow-no-recipients" name="allow_no_recipients" value="0"><div class="sub-nav" role="tablist" aria-label="' . h(t('Recipients sections')) . '"><button type="button" id="tab-recipients-list" class="sub-nav-item active" data-sub="recipients-list" role="tab" aria-selected="true" aria-controls="recipients-list">' . h(t('List')) . '</button><button type="button" id="tab-recipients-messages" class="sub-nav-item" data-sub="recipients-messages" role="tab" aria-selected="false" aria-controls="recipients-messages">' . h(t('Messages')) . '</button><button type="button" id="tab-recipients-files" class="sub-nav-item" data-sub="recipients-files" role="tab" aria-selected="false" aria-controls="recipients-files">' . h(t('Files')) . '</button></div>';
     render_flash($flash, 'recipients');
     echo'<div id="recipients-list" class="sub-view" role="tabpanel"><div class="action-bar"><button type="button" class="btn-primary add-row" data-template="recipient-template" data-target="recipient-cards" data-insert="prepend" data-focus="input[name=&quot;recipient_name[]&quot;]">' . h(t('Add Recipient')) . '</button></div><div id="recipient-cards">';
     $recipientIndex = 0;
@@ -3254,7 +3263,7 @@ CSS;
 }
 function js(): string
 {
-    $uiText = json_encode(['continue' => t('Continue?'),'discardUnsavedChanges' => t('Unsaved changes will be discarded; last saved data will be reloaded.'),'howToFix' => t('How to fix:'),'invalidFilePath' => t('Invalid file path. Required: relative path below the download data root, without /, .., or backslashes.'),'fileAliasTooLong' => t('File aliases must be 64 characters or fewer.'),'deleteFileAlias' => t('This removes the alias. If the file exists, the referenced download file is removed as well.'),'noFileAliases' => t('No file aliases configured yet.'),'recipient' => t('Recipient'),'loadingOlderEntries' => t('Loading older entries...'),'noMessageTemplatesWarning' => t('No message templates remain. This configuration stays non-runtime-ready until at least one message template exists and each recipient uses one. Save this state?'),'noRecipientsWarning' => t('No recipients remain. This configuration cannot notify anyone until at least one recipient exists. Save this state?'),], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);$js = <<<'JS'
+    $uiText = json_encode(['continue' => t('Continue?'),'discardUnsavedChanges' => t('Unsaved changes will be discarded; last saved data will be reloaded.'),'howToFix' => t('How to fix:'),'invalidFilePath' => t('Invalid file path. Required: relative path below the download data root, without /, .., or backslashes.'),'fileAliasTooLong' => t('File aliases must be 64 characters or fewer.'),'deleteFileAlias' => t('This removes the alias. If the file exists, the referenced download file is removed as well.'),'noFileAliases' => t('No file aliases configured yet.'),'recipient' => t('Recipient'),'loadingOlderEntries' => t('Loading older entries...'),'noMessageTemplatesWarning' => t('No message templates are configured. This configuration stays non-runtime-ready until at least one message template exists and each recipient uses one. Save this state?'),'noRecipientsWarning' => t('No recipients are configured. This configuration cannot notify anyone until at least one recipient exists. Save this state?'),], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);$js = <<<'JS'
 (() => {
 'use strict';
 const animatePanel = target => {
@@ -3684,6 +3693,11 @@ const address = card.querySelector('input[name="recipient_address[]"]')?.value.t
 const message = card.querySelector('select[name="recipient_message_key[]"]')?.value.trim() || '';
 return name !== '' || address !== '' || message !== '';
 }).length;
+const fileAliasDraftCount = () => [...document.querySelectorAll('#file-registry-body [data-file-row]:not(.is-pending-delete)')].filter(row => {
+const alias = row.querySelector('input[name="file_alias[]"]')?.value.trim() || '';
+const path = row.querySelector('input[name="file_path[]"]')?.value.trim() || '';
+return alias !== '' && path !== '';
+}).length;
 const restoreScrollKey = 'totman_restore_scroll';
 const rememberHmacScroll = form => {
 if (!form || !['generate-hmac-form', 'rotate-hmac-form'].includes(form.id)) return;
@@ -3907,6 +3921,20 @@ return;
 const warnings = [];
 const brokenFlag = document.getElementById('allow-broken-message-refs');
 const emptyFlag = document.getElementById('allow-no-recipients');
+const initialMessageCount = Number.parseInt(e.target.dataset.initialMessageCount || '0', 10) || 0;
+const initialRecipientCount = Number.parseInt(e.target.dataset.initialRecipientCount || '0', 10) || 0;
+const activeRecipientSub = document.querySelector('#view-recipients .sub-nav-item.active')?.dataset.sub || '';
+const fileAliasOnboardingOnly = activeRecipientSub === 'recipients-files'
+&& initialMessageCount === 0
+&& initialRecipientCount === 0
+&& meaningfulMessagesCount() === 0
+&& meaningfulRecipientsCount() === 0
+&& fileAliasDraftCount() > 0;
+if (fileAliasOnboardingOnly) {
+if (brokenFlag) brokenFlag.value = '1';
+if (emptyFlag) emptyFlag.value = '1';
+return;
+}
 if (meaningfulMessagesCount() === 0 && brokenFlag?.value !== '1') warnings.push(uiText.noMessageTemplatesWarning);
 if (meaningfulRecipientsCount() === 0 && emptyFlag?.value !== '1') warnings.push(uiText.noRecipientsWarning);
 if (warnings.length === 0) return;

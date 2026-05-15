@@ -20,7 +20,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '23a86ad',
+  'source_revision' => 'd80b4bc',
   'source_files' =>
   array (
     0 => 'resources/product-ui/totman-ui.php',
@@ -1121,6 +1121,17 @@ function executable_path_value(string $raw, string $label): string
     }
     return $value;
 }
+function optional_executable_path_value(string $raw, string $label): string
+{
+    $value = absolute_path_value($raw, $label, true);
+    if ($value === null) {
+        return '';
+    }
+    if (preg_match('/\s/', $value) || str_contains($value, '\\')) {
+        throw new RuntimeException($label . ' must be one absolute executable path without spaces or arguments.');
+    }
+    return $value;
+}
 function proxy_entry_valid(string $entry): bool
 {
     $entry = trim($entry);
@@ -1187,8 +1198,9 @@ function config_from_post(array $current): array
     $cfg['show_success_details'] = (($_POST['show_success_details'] ?? '0') === '1');
     $cfg['rate_limit_enabled'] = (($_POST['rate_limit_enabled'] ?? '0') === '1');
     $cfg['web_ui_enabled'] = (($_POST['web_ui_enabled'] ?? '0') === '1');
-    $cfg['download_base_dir'] = absolute_path_value((string)($cfg['download_base_dir'] ?? ''), 'Download data root');
-    $cfg['sendmail_path'] = executable_path_value((string)($cfg['sendmail_path'] ?? ''), 'Sendmail path');
+    $downloadBaseDir = absolute_path_value((string)($cfg['download_base_dir'] ?? ''), 'Download data root', true);
+    $cfg['download_base_dir'] = $downloadBaseDir ?? '';
+    $cfg['sendmail_path'] = optional_executable_path_value((string)($cfg['sendmail_path'] ?? ''), 'Sendmail path');
     $cfg['rate_limit_dir'] = nullable_absolute_directory((string)($_POST['rate_limit_dir'] ?? ''), 'Rate limit directory');
     if (!empty($cfg['rate_limit_enabled'])) {
         $cfg['rate_limit_max_requests'] = parse_positive_int((string)($_POST['rate_limit_max_requests'] ?? '30'), 'Web maximum requests');
@@ -1213,10 +1225,10 @@ function config_from_post(array $current): array
     }
     $cfg['log_file'] = $logFile;
     $cfg['to_self'] = array_values(array_filter(array_map('trim', preg_split('/\R/', (string)($_POST['to_self'] ?? '')) ?: [])));
-    if (!base_url_valid((string)$cfg['base_url'])) {
+    if ((string)$cfg['base_url'] !== '' && !base_url_valid((string)$cfg['base_url'])) {
         throw new RuntimeException('Base URL must be a valid HTTPS address without query string, fragment, username, or password.');
     }
-    if (base_url_contains_web_file((string)$cfg['base_url'], (string)$cfg['web_file'])) {
+    if ((string)$cfg['base_url'] !== '' && base_url_contains_web_file((string)$cfg['base_url'], (string)$cfg['web_file'])) {
         throw new RuntimeException('Base URL must not include the web endpoint filename. Web Endpoint is configured separately.');
     }
     if (!in_array($cfg['log_mode'], ['none','syslog','file','both'], true)) {
@@ -1229,24 +1241,19 @@ function config_from_post(array $current): array
         throw new RuntimeException('Timezone must be a valid IANA timezone such as Europe/London.');
     }
     foreach (['subject_reminder' => 'Subject','mail_date_format' => 'Date Format','mail_time_format' => 'Time Format'] as $key => $label) {
-        if (!single_line_text_valid((string)($cfg[$key] ?? ''))) {
+        $value = (string)($cfg[$key] ?? '');
+        if ($value !== '' && !single_line_text_valid($value)) {
             throw new RuntimeException($label . ' must be a non-empty single-line value.');
         }
     }
     if ((string)($cfg['mail_datetime_format'] ?? '') !== '' && !single_line_text_valid((string)$cfg['mail_datetime_format'])) {
         throw new RuntimeException('Combined date/time format must be a single-line value.');
     }
-    if (trim((string)($cfg['body_reminder'] ?? '')) === '' || !str_contains((string)$cfg['body_reminder'], '{CONFIRM_URL}')) {
-        throw new RuntimeException('The body template must include {CONFIRM_URL}.');
-    }
     foreach (['mail_from' => 'From address','reply_to' => 'Reply-To address'] as $key => $label) {
         $mailbox = (string)($cfg[$key] ?? '');
         if ($mailbox !== '' && !mailbox_valid($mailbox)) {
             throw new RuntimeException($label . ' must contain exactly one valid e-mail address, optionally with a display name.');
         }
-    }
-    if ($cfg['to_self'] === []) {
-        throw new RuntimeException('Reminder addresses must contain at least one address.');
     }
     foreach ($cfg['to_self'] as $i => $entry) {
         if (!mailbox_valid($entry)) {
@@ -1262,8 +1269,6 @@ function config_from_post(array $current): array
 function recipients_from_post(array $currentData = [], array &$renameSummary = [], array &$fileDeleteSummary = []): array
 {
     $currentFiles = (array)($currentData['files'] ?? []);
-    $allowBrokenMessageRefs = (($_POST['allow_broken_message_refs'] ?? '0') === '1');
-    $allowNoRecipients = (($_POST['allow_no_recipients'] ?? '0') === '1');
     $deletedAliases = [];
     foreach ((array)($_POST['file_delete_alias'] ?? []) as $i => $deleteAliasRaw) {
         $deleteAlias = trim((string)$deleteAliasRaw);
@@ -1396,8 +1401,7 @@ function recipients_from_post(array $currentData = [], array &$renameSummary = [
         if (!mailbox_valid($address)) {
             throw new RuntimeException("Recipient e-mail address is invalid at row " . ($i + 1) . '.');
         }
-        $messageMissingAllowed = $messages === [] && $allowBrokenMessageRefs;
-        if (!isset($messages[$messageKey]) && !$messageMissingAllowed && $messages !== []) {
+        if ($messages !== [] && !isset($messages[$messageKey])) {
             throw new RuntimeException("Recipient template is missing or unknown at row " . ($i + 1) . '.');
         }
         foreach (array_merge($normal, $single) as $alias) {
@@ -1419,17 +1423,6 @@ function recipients_from_post(array $currentData = [], array &$renameSummary = [
             $row[] = $single;
         }
         $recipients[] = $row;
-    }
-    $fileAliasOnboardingOnly = $files !== []
-        && $messages === []
-        && $recipients === []
-        && (array)($currentData['messages'] ?? []) === []
-        && (array)($currentData['recipients'] ?? []) === [];
-    if ($messages === [] && !$allowBrokenMessageRefs && !$fileAliasOnboardingOnly) {
-        throw new RuntimeException('No message templates are configured. Saving this non-runtime-ready configuration needs explicit approval.');
-    }
-    if ($recipients === [] && !$allowNoRecipients && !$fileAliasOnboardingOnly) {
-        throw new RuntimeException('No recipients are configured. Saving a configuration without notifications needs explicit approval.');
     }
     foreach ($messageRenameMap as $old => $new) {
         if (($renameCounts[$old] ?? 0) === 0) {
@@ -2451,7 +2444,6 @@ try {
             }
             $cfg = config_from_post($main['config']);
             $cfg['hmac_secret_hex'] = (string)($main['config']['hmac_secret_hex'] ?? '');
-            validate_hmac_secret($cfg['hmac_secret_hex']);
             backup_file($main['live_path']);
             write_main_config($main['live_path'], $cfg);
             $redirectScope = posted_config_flash_scope();
@@ -2963,7 +2955,7 @@ function render_recipients(array $recips, array $flash, string $downloadBaseDir 
     }
     $messageKeys = array_values(array_unique(array_filter(array_map(static fn(array $row): string=>(string)$row[0], $messageRows), static fn(string $value): bool=>$value !== '')));
     $fileAliases = array_values(array_unique(array_filter(array_map(static fn(array $row): string=>(string)$row[0], $fileRows), static fn(string $value): bool=>$value !== '')));
-    echo'<section id="view-recipients" class="hidden view-animate" role="tabpanel" aria-labelledby="tab-recipients"><form method="post" data-initial-message-count="' . count($messageRows) . '" data-initial-recipient-count="' . count($recipientRows) . '">' . csrf_field() . '<input type="hidden" name="action" value="save_recipients"><input type="hidden" name="recipients_fingerprint" value="' . h($recips['fingerprint']) . '"><input type="hidden" id="allow-broken-message-refs" name="allow_broken_message_refs" value="0"><input type="hidden" id="allow-no-recipients" name="allow_no_recipients" value="0"><div class="sub-nav" role="tablist" aria-label="' . h(t('Recipients sections')) . '"><button type="button" id="tab-recipients-list" class="sub-nav-item active" data-sub="recipients-list" role="tab" aria-selected="true" aria-controls="recipients-list">' . h(t('List')) . '</button><button type="button" id="tab-recipients-messages" class="sub-nav-item" data-sub="recipients-messages" role="tab" aria-selected="false" aria-controls="recipients-messages">' . h(t('Messages')) . '</button><button type="button" id="tab-recipients-files" class="sub-nav-item" data-sub="recipients-files" role="tab" aria-selected="false" aria-controls="recipients-files">' . h(t('Files')) . '</button></div>';
+    echo'<section id="view-recipients" class="hidden view-animate" role="tabpanel" aria-labelledby="tab-recipients"><form method="post">' . csrf_field() . '<input type="hidden" name="action" value="save_recipients"><input type="hidden" name="recipients_fingerprint" value="' . h($recips['fingerprint']) . '"><div class="sub-nav" role="tablist" aria-label="' . h(t('Recipients sections')) . '"><button type="button" id="tab-recipients-list" class="sub-nav-item active" data-sub="recipients-list" role="tab" aria-selected="true" aria-controls="recipients-list">' . h(t('List')) . '</button><button type="button" id="tab-recipients-messages" class="sub-nav-item" data-sub="recipients-messages" role="tab" aria-selected="false" aria-controls="recipients-messages">' . h(t('Messages')) . '</button><button type="button" id="tab-recipients-files" class="sub-nav-item" data-sub="recipients-files" role="tab" aria-selected="false" aria-controls="recipients-files">' . h(t('Files')) . '</button></div>';
     render_flash($flash, 'recipients');
     echo'<div id="recipients-list" class="sub-view" role="tabpanel"><div class="action-bar"><button type="button" class="btn-primary add-row" data-template="recipient-template" data-target="recipient-cards" data-insert="prepend" data-focus="input[name=&quot;recipient_name[]&quot;]">' . h(t('Add Recipient')) . '</button></div><div id="recipient-cards">';
     $recipientIndex = 0;
@@ -3263,7 +3255,7 @@ CSS;
 }
 function js(): string
 {
-    $uiText = json_encode(['continue' => t('Continue?'),'discardUnsavedChanges' => t('Unsaved changes will be discarded; last saved data will be reloaded.'),'howToFix' => t('How to fix:'),'invalidFilePath' => t('Invalid file path. Required: relative path below the download data root, without /, .., or backslashes.'),'fileAliasTooLong' => t('File aliases must be 64 characters or fewer.'),'deleteFileAlias' => t('This removes the alias. If the file exists, the referenced download file is removed as well.'),'noFileAliases' => t('No file aliases configured yet.'),'recipient' => t('Recipient'),'loadingOlderEntries' => t('Loading older entries...'),'noMessageTemplatesWarning' => t('No message templates are configured. This configuration stays non-runtime-ready until at least one message template exists and each recipient uses one. Save this state?'),'noRecipientsWarning' => t('No recipients are configured. This configuration cannot notify anyone until at least one recipient exists. Save this state?'),], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);$js = <<<'JS'
+    $uiText = json_encode(['continue' => t('Continue?'),'discardUnsavedChanges' => t('Unsaved changes will be discarded; last saved data will be reloaded.'),'howToFix' => t('How to fix:'),'invalidFilePath' => t('Invalid file path. Required: relative path below the download data root, without /, .., or backslashes.'),'fileAliasTooLong' => t('File aliases must be 64 characters or fewer.'),'deleteFileAlias' => t('This removes the alias. If the file exists, the referenced download file is removed as well.'),'noFileAliases' => t('No file aliases configured yet.'),'recipient' => t('Recipient'),'loadingOlderEntries' => t('Loading older entries...'),], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);$js = <<<'JS'
 (() => {
 'use strict';
 const animatePanel = target => {
@@ -3681,23 +3673,6 @@ return false;
 }
 return true;
 };
-const meaningfulMessagesCount = () => [...document.querySelectorAll('#message-cards .card')].filter(card => {
-const key = card.querySelector('input[name="message_key[]"]')?.value.trim() || '';
-const subject = card.querySelector('input[name="message_subject[]"]')?.value.trim() || '';
-const body = card.querySelector('textarea[name="message_body[]"]')?.value.trim() || '';
-return key !== '' || subject !== '' || body !== '';
-}).length;
-const meaningfulRecipientsCount = () => [...document.querySelectorAll('#recipient-cards [data-recipient-row]')].filter(card => {
-const name = card.querySelector('input[name="recipient_name[]"]')?.value.trim() || '';
-const address = card.querySelector('input[name="recipient_address[]"]')?.value.trim() || '';
-const message = card.querySelector('select[name="recipient_message_key[]"]')?.value.trim() || '';
-return name !== '' || address !== '' || message !== '';
-}).length;
-const fileAliasDraftCount = () => [...document.querySelectorAll('#file-registry-body [data-file-row]:not(.is-pending-delete)')].filter(row => {
-const alias = row.querySelector('input[name="file_alias[]"]')?.value.trim() || '';
-const path = row.querySelector('input[name="file_path[]"]')?.value.trim() || '';
-return alias !== '' && path !== '';
-}).length;
 const restoreScrollKey = 'totman_restore_scroll';
 const rememberHmacScroll = form => {
 if (!form || !['generate-hmac-form', 'rotate-hmac-form'].includes(form.id)) return;
@@ -3908,42 +3883,10 @@ localStorage.setItem('totman_mobile_status_open', mobileStatus.open ? '1' : '0')
 }
 if (preflight?.open) startPreflightPolling();
 document.addEventListener('submit', e => rememberHmacScroll(e.target));
-let recipientsConfirmPassed = false;
 document.getElementById('view-recipients')?.querySelector('form')?.addEventListener('submit', async e => {
 if (!validateRecipientFileInputs()) {
 e.preventDefault();
 return;
-}
-if (recipientsConfirmPassed) {
-recipientsConfirmPassed = false;
-return;
-}
-const warnings = [];
-const brokenFlag = document.getElementById('allow-broken-message-refs');
-const emptyFlag = document.getElementById('allow-no-recipients');
-const initialMessageCount = Number.parseInt(e.target.dataset.initialMessageCount || '0', 10) || 0;
-const initialRecipientCount = Number.parseInt(e.target.dataset.initialRecipientCount || '0', 10) || 0;
-const activeRecipientSub = document.querySelector('#view-recipients .sub-nav-item.active')?.dataset.sub || '';
-const fileAliasOnboardingOnly = activeRecipientSub === 'recipients-files'
-&& initialMessageCount === 0
-&& initialRecipientCount === 0
-&& meaningfulMessagesCount() === 0
-&& meaningfulRecipientsCount() === 0
-&& fileAliasDraftCount() > 0;
-if (fileAliasOnboardingOnly) {
-if (brokenFlag) brokenFlag.value = '1';
-if (emptyFlag) emptyFlag.value = '1';
-return;
-}
-if (meaningfulMessagesCount() === 0 && brokenFlag?.value !== '1') warnings.push(uiText.noMessageTemplatesWarning);
-if (meaningfulRecipientsCount() === 0 && emptyFlag?.value !== '1') warnings.push(uiText.noRecipientsWarning);
-if (warnings.length === 0) return;
-e.preventDefault();
-if (await showConfirmModal(warnings.join('\n\n'))) {
-if (brokenFlag && meaningfulMessagesCount() === 0) brokenFlag.value = '1';
-if (emptyFlag && meaningfulRecipientsCount() === 0) emptyFlag.value = '1';
-recipientsConfirmPassed = true;
-e.target.requestSubmit ? e.target.requestSubmit() : e.target.submit();
 }
 });
 document.querySelectorAll('.nav-item').forEach(btn => {

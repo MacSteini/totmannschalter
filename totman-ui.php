@@ -7,10285 +7,7 @@ declare(strict_types=1);
 // Docker and managed hosting may instead set TOTMAN_UI_SETUP_CODE in the server environment.
 // Build provenance is available through Totman\RuntimeUi\Bundle\BundleManifest::data().
 
-namespace Totman\RuntimeUi\Config;
-
-// Before first setup, replace the empty string with a one-time setup code.
-// Docker and managed hosting may instead set TOTMAN_UI_SETUP_CODE in the server environment.
-const TOTMAN_UI_SETUP_CODE = '';
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Security\SetupAccessResult;
-
-final class AdminAuthApplicationResult
-{
-    public function __construct(
-        private readonly SetupAccessResult $access,
-        private readonly AdminAuthViewModel $view,
-        private readonly string $notice = '',
-    ) {
-    }
-
-    public static function preview(AdminAuthViewModel $view): self
-    {
-        return new self(SetupAccessResult::allow(), $view);
-    }
-
-    public function access(): SetupAccessResult
-    {
-        return $this->access;
-    }
-
-    public function view(): AdminAuthViewModel
-    {
-        return $this->view;
-    }
-
-    public function notice(): string
-    {
-        return $this->notice;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\DiscoveryResult;
-use Totman\RuntimeUi\Http\FirstRunRequest;
-use Totman\RuntimeUi\Security\AdminAuthService;
-use Totman\RuntimeUi\Security\AdminSessionState;
-use Totman\RuntimeUi\Security\SetupAccessResult;
-use Totman\RuntimeUi\Security\SetupSessionState;
-use Totman\RuntimeUi\Security\UiPrivateConfig;
-use Totman\RuntimeUi\Security\UiPrivateConfigStore;
-
-final class AdminAuthApplicationService
-{
-    /**
-     * @param list<string> $privateConfigFallbackPaths
-     */
-    public function __construct(
-        private readonly AdminAuthService $authService = new AdminAuthService(),
-        private readonly AdminAuthViewModelBuilder $viewModelBuilder = new AdminAuthViewModelBuilder(),
-        private readonly array $privateConfigFallbackPaths = [],
-    ) {
-    }
-
-    public function preview(
-        string $stateDir,
-        DiscoveryResult $discovered,
-        AdminSessionState $adminSession,
-        string $expectedSetupCode = '',
-    ): AdminAuthApplicationResult {
-        $configResult = $this->store($stateDir)->loadResult();
-        if ($configResult->blocksAdmin()) {
-            return AdminAuthApplicationResult::preview(AdminAuthViewModel::privateConfigBlocked());
-        }
-
-        $view = $this->view($discovered, $configResult->config(), $adminSession);
-        if ($view->showAdministrationDisabled()) {
-            return AdminAuthApplicationResult::preview($view);
-        }
-
-        if (!$configResult->config()->hasAdminCredential() && $expectedSetupCode === '') {
-            return AdminAuthApplicationResult::preview(AdminAuthViewModel::setupLocked());
-        }
-
-        return AdminAuthApplicationResult::preview($view);
-    }
-
-    public function handle(
-        string $stateDir,
-        DiscoveryResult $discovered,
-        FirstRunRequest $request,
-        string $expectedSetupCode,
-        SetupSessionState $setupSession,
-        AdminSessionState $adminSession,
-    ): AdminAuthApplicationResult {
-        $store = $this->store($stateDir);
-        $configResult = $store->loadResult();
-        if ($configResult->blocksAdmin() && !$request->isLogout()) {
-            $access = SetupAccessResult::denied('private_ui_config_blocked', $configResult->message());
-            return new AdminAuthApplicationResult($access, AdminAuthViewModel::privateConfigBlocked());
-        }
-
-        $access = $this->handleRequest($store, $configResult->config(), $discovered, $request, $expectedSetupCode, $setupSession, $adminSession);
-        $updated = $store->loadResult();
-        $notice = $access->allowed() ? 'Admin access state updated.' : '';
-        if (!$updated->config()->hasAdminCredential() && $expectedSetupCode === '') {
-            return new AdminAuthApplicationResult($access, AdminAuthViewModel::setupLocked(), $notice);
-        }
-
-        return new AdminAuthApplicationResult(
-            $access,
-            $updated->blocksAdmin() ? AdminAuthViewModel::privateConfigBlocked() : $this->view($discovered, $updated->config(), $adminSession),
-            $notice
-        );
-    }
-
-    private function handleRequest(
-        UiPrivateConfigStore $store,
-        UiPrivateConfig $config,
-        DiscoveryResult $discovered,
-        FirstRunRequest $request,
-        string $expectedSetupCode,
-        SetupSessionState $setupSession,
-        AdminSessionState $adminSession,
-    ): SetupAccessResult {
-        if ($request->isLogout()) {
-            return $this->authService->logout($adminSession);
-        }
-
-        if ($discovered->mode() === 'blocked') {
-            return SetupAccessResult::denied('config_blocked', 'Configuration discovery is blocked by an unreadable or invalid runtime config.');
-        }
-
-        $webUiEnabled = $discovered->effectiveMainConfig()['web_ui_enabled'] ?? null;
-        if ($request->isCreateAdmin()) {
-            if ($this->browserAdministrationBlocked($discovered, $webUiEnabled)) {
-                return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
-            }
-
-            return $this->authService->createAdmin($store, $request->authInput(), $expectedSetupCode, $request->setupCode(), $setupSession, $adminSession);
-        }
-
-        if ($this->browserAdministrationBlocked($discovered, $webUiEnabled)) {
-            return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
-        }
-
-        if ($request->isLogin()) {
-            return $this->authService->login($config, $request->authInput(), $adminSession);
-        }
-
-        if ($request->isReauth()) {
-            return $this->authService->reauth($config, $request->authInput(), $adminSession);
-        }
-
-        return SetupAccessResult::denied('auth_action_unknown', 'The requested admin auth action is not available.');
-    }
-
-    private function view(DiscoveryResult $discovered, UiPrivateConfig $config, AdminSessionState $adminSession): AdminAuthViewModel
-    {
-        return $this->viewModelBuilder->build(
-            $discovered->mode(),
-            $discovered->effectiveMainConfig()['web_ui_enabled'] ?? null,
-            $config,
-            $adminSession
-        );
-    }
-
-    private function store(string $stateDir): UiPrivateConfigStore
-    {
-        return UiPrivateConfigStore::forStateDir($stateDir, $this->privateConfigFallbackPaths);
-    }
-
-    private function browserAdministrationBlocked(DiscoveryResult $discovered, mixed $webUiEnabled): bool
-    {
-        return $webUiEnabled === false
-            || ($webUiEnabled !== null && $webUiEnabled !== true)
-            || ($discovered->mode() === 'existing' && $webUiEnabled !== true);
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class AdminAuthViewModel
-{
-    public const ACCESS_MISSING = 'access_missing';
-    public const SIGN_IN_REQUIRED = 'sign_in_required';
-    public const SIGNED_IN = 'signed_in';
-    public const ADMINISTRATION_DISABLED = 'administration_disabled';
-    public const CONFIG_BLOCKED = 'config_blocked';
-    public const PRIVATE_CONFIG_BLOCKED = 'private_config_blocked';
-    public const SETUP_LOCKED = 'setup_locked';
-
-    public function __construct(
-        private readonly string $status,
-        private readonly string $username = '',
-    ) {
-    }
-
-    public static function accessMissing(): self
-    {
-        return new self(self::ACCESS_MISSING);
-    }
-
-    public static function signInRequired(): self
-    {
-        return new self(self::SIGN_IN_REQUIRED);
-    }
-
-    public static function signedIn(string $username): self
-    {
-        return new self(self::SIGNED_IN, $username);
-    }
-
-    public static function administrationDisabled(): self
-    {
-        return new self(self::ADMINISTRATION_DISABLED);
-    }
-
-    public static function configBlocked(): self
-    {
-        return new self(self::CONFIG_BLOCKED);
-    }
-
-    public static function privateConfigBlocked(): self
-    {
-        return new self(self::PRIVATE_CONFIG_BLOCKED);
-    }
-
-    public static function setupLocked(): self
-    {
-        return new self(self::SETUP_LOCKED);
-    }
-
-    public function status(): string
-    {
-        return $this->status;
-    }
-
-    public function username(): string
-    {
-        return $this->username;
-    }
-
-    public function showCreateAdmin(): bool
-    {
-        return $this->status === self::ACCESS_MISSING;
-    }
-
-    public function showLogin(): bool
-    {
-        return $this->status === self::SIGN_IN_REQUIRED;
-    }
-
-    public function showSignedIn(): bool
-    {
-        return $this->status === self::SIGNED_IN;
-    }
-
-    public function showAdministrationDisabled(): bool
-    {
-        return $this->status === self::ADMINISTRATION_DISABLED;
-    }
-
-    public function showConfigBlocked(): bool
-    {
-        return $this->status === self::CONFIG_BLOCKED;
-    }
-
-    public function showPrivateConfigBlocked(): bool
-    {
-        return $this->status === self::PRIVATE_CONFIG_BLOCKED;
-    }
-
-    public function showSetupLocked(): bool
-    {
-        return $this->status === self::SETUP_LOCKED;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Security\AdminSessionState;
-use Totman\RuntimeUi\Security\UiPrivateConfig;
-
-final class AdminAuthViewModelBuilder
-{
-    public function build(
-        string $discoveryMode,
-        mixed $webUiEnabled,
-        UiPrivateConfig $uiConfig,
-        AdminSessionState $adminSession,
-    ): AdminAuthViewModel {
-        if ($discoveryMode === 'blocked') {
-            return AdminAuthViewModel::configBlocked();
-        }
-
-        if (
-            $webUiEnabled === false
-            || ($webUiEnabled !== null && $webUiEnabled !== true)
-            || ($discoveryMode === 'existing' && $webUiEnabled !== true)
-        ) {
-            return AdminAuthViewModel::administrationDisabled();
-        }
-
-        if (!$uiConfig->hasAdminCredential()) {
-            return AdminAuthViewModel::accessMissing();
-        }
-
-        if ($adminSession->authenticated()) {
-            return AdminAuthViewModel::signedIn($adminSession->username());
-        }
-
-        return AdminAuthViewModel::signInRequired();
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class AdminCommand
-{
-    public const READ_ONLY = 'read-only';
-    public const WRITE = 'write';
-    public const DANGER = 'danger';
-
-    public function __construct(
-        private readonly string $key,
-        private readonly string $label,
-        private readonly string $classification,
-    ) {
-        if (!in_array($classification, [self::READ_ONLY, self::WRITE, self::DANGER], true)) {
-            throw new \InvalidArgumentException('Unsupported admin command classification.');
-        }
-    }
-
-    public function key(): string
-    {
-        return $this->key;
-    }
-
-    public function label(): string
-    {
-        return $this->label;
-    }
-
-    public function classification(): string
-    {
-        return $this->classification;
-    }
-
-    public function readOnly(): bool
-    {
-        return $this->classification === self::READ_ONLY;
-    }
-
-    public function danger(): bool
-    {
-        return $this->classification === self::DANGER;
-    }
-
-    public function requiresAdminSession(): bool
-    {
-        return true;
-    }
-
-    public function requiresCsrf(): bool
-    {
-        return $this->danger();
-    }
-
-    public function requiresRateLimit(): bool
-    {
-        return $this->danger();
-    }
-
-    public function requiresReauth(): bool
-    {
-        return $this->danger();
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Security\AdminReauthPolicy;
-use Totman\RuntimeUi\Security\AdminSessionState;
-use Totman\RuntimeUi\Security\SetupAccessResult;
-
-final class AdminCommandAccessPolicy
-{
-    public function __construct(
-        private readonly AdminCommandCatalog $catalog = new AdminCommandCatalog(),
-        private readonly AdminReauthPolicy $reauthPolicy = new AdminReauthPolicy(),
-    ) {
-    }
-
-    public function evaluate(string $commandKey, AdminSessionState $adminSession, int $now): SetupAccessResult
-    {
-        $command = $this->catalog->get($commandKey);
-        if (!$command instanceof AdminCommand) {
-            return SetupAccessResult::denied('admin_command_unknown', 'Unknown admin command.');
-        }
-
-        if ($command->requiresAdminSession() && !$adminSession->authenticated()) {
-            return SetupAccessResult::denied('admin_auth_required', 'An authenticated admin session is required.');
-        }
-
-        if ($command->requiresReauth()) {
-            return $this->reauthPolicy->evaluate($adminSession, $now);
-        }
-
-        return SetupAccessResult::allow();
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class AdminCommandCatalog
-{
-    public const READ_RUNTIME_SUMMARY = 'read_runtime_summary';
-    public const VIEW_LOGS = 'view_logs';
-    public const VIEW_FILE_ALIASES = 'view_file_aliases';
-    public const PREVIEW_HMAC_ROTATION = 'preview_hmac_rotation';
-    public const PREVIEW_RUNTIME_RESET = 'preview_runtime_reset';
-    public const PREVIEW_LOG_CLEAR = 'preview_log_clear';
-    public const PREVIEW_FILE_ALIAS_DELETION = 'preview_file_alias_deletion';
-
-    /** @var array<string, AdminCommand>|null */
-    private ?array $commands = null;
-
-    /**
-     * @return list<AdminCommand>
-     */
-    public function all(): array
-    {
-        return array_values($this->commands());
-    }
-
-    public function get(string $key): ?AdminCommand
-    {
-        return $this->commands()[$key] ?? null;
-    }
-
-    /**
-     * @return array<string, AdminCommand>
-     */
-    private function commands(): array
-    {
-        if ($this->commands !== null) {
-            return $this->commands;
-        }
-
-        $this->commands = [
-            self::READ_RUNTIME_SUMMARY => new AdminCommand(self::READ_RUNTIME_SUMMARY, 'System status', AdminCommand::READ_ONLY),
-            self::VIEW_LOGS => new AdminCommand(self::VIEW_LOGS, 'View logs', AdminCommand::READ_ONLY),
-            self::VIEW_FILE_ALIASES => new AdminCommand(self::VIEW_FILE_ALIASES, 'File aliases', AdminCommand::READ_ONLY),
-            self::PREVIEW_HMAC_ROTATION => new AdminCommand(self::PREVIEW_HMAC_ROTATION, 'Preview HMAC rotation', AdminCommand::DANGER),
-            self::PREVIEW_RUNTIME_RESET => new AdminCommand(self::PREVIEW_RUNTIME_RESET, 'Preview runtime reset', AdminCommand::DANGER),
-            self::PREVIEW_LOG_CLEAR => new AdminCommand(self::PREVIEW_LOG_CLEAR, 'Preview log clear', AdminCommand::DANGER),
-            self::PREVIEW_FILE_ALIAS_DELETION => new AdminCommand(self::PREVIEW_FILE_ALIAS_DELETION, 'Preview file alias deletion', AdminCommand::DANGER),
-        ];
-
-        return $this->commands;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class AdminInspectionViewModel
-{
-    public function __construct(
-        private readonly bool $available,
-        private readonly string $notice = '',
-        private readonly ?RuntimeSummary $summary = null,
-        private readonly ?RuntimeLogTail $logTail = null,
-        private readonly ?FileAliasInventory $fileAliases = null,
-        private readonly ?MaintenanceCommandResult $maintenanceCommand = null,
-    ) {
-    }
-
-    public static function unavailable(string $notice): self
-    {
-        return new self(false, $notice);
-    }
-
-    public static function fromReadModels(
-        RuntimeSummary $summary,
-        RuntimeLogTail $logTail,
-        FileAliasInventory $fileAliases,
-        ?MaintenanceCommandResult $maintenanceCommand = null,
-    ): self {
-        return new self(true, '', $summary, $logTail, $fileAliases, $maintenanceCommand);
-    }
-
-    public function available(): bool
-    {
-        return $this->available;
-    }
-
-    public function notice(): string
-    {
-        return $this->notice;
-    }
-
-    public function summary(): ?RuntimeSummary
-    {
-        return $this->summary;
-    }
-
-    public function logTail(): ?RuntimeLogTail
-    {
-        return $this->logTail;
-    }
-
-    public function fileAliases(): ?FileAliasInventory
-    {
-        return $this->fileAliases;
-    }
-
-    public function maintenanceCommand(): ?MaintenanceCommandResult
-    {
-        return $this->maintenanceCommand;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Security\AdminSessionState;
-
-final class DangerCommandDryRunService
-{
-    public function __construct(
-        private readonly AdminCommandCatalog $catalog = new AdminCommandCatalog(),
-        private readonly AdminCommandAccessPolicy $accessPolicy = new AdminCommandAccessPolicy(),
-    ) {
-    }
-
-    public function preview(
-        string $commandKey,
-        AdminSessionState $adminSession,
-        bool $csrfValid,
-        bool $rateLimitAllowed,
-        int $now,
-        ?string $targetAlias = null,
-    ): DangerCommandPreview {
-        $command = $this->catalog->get($commandKey);
-        if (!$command instanceof AdminCommand) {
-            return new DangerCommandPreview($commandKey, 'Unknown command', false, ['Unknown admin command.'], []);
-        }
-
-        if (!$command->danger()) {
-            return new DangerCommandPreview($commandKey, $command->label(), false, ['Command is not a danger command.'], []);
-        }
-
-        $blockers = [];
-        $access = $this->accessPolicy->evaluate($commandKey, $adminSession, $now);
-        if (!$access->allowed()) {
-            $blockers[] = $access->message();
-        }
-
-        if (!$csrfValid) {
-            $blockers[] = 'Valid CSRF token is required before previewing this action.';
-        }
-
-        if (!$rateLimitAllowed) {
-            $blockers[] = 'Danger-command rate limit is currently exceeded.';
-        }
-
-        return new DangerCommandPreview(
-            $command->key(),
-            $command->label(),
-            $blockers === [],
-            $blockers,
-            $this->plan($command->key(), $targetAlias)
-        );
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function plan(string $commandKey, ?string $targetAlias): array
-    {
-        return match ($commandKey) {
-            AdminCommandCatalog::PREVIEW_HMAC_ROTATION => [
-                'A new HMAC secret would be generated server-side.',
-                'Existing signed confirmation, ACK, and download links would stop validating.',
-                'No secret is generated during this dry-run preview.',
-            ],
-            AdminCommandCatalog::PREVIEW_RUNTIME_RESET => [
-                'Runtime state would be removed so scheduling can start from a clean state.',
-                'Configuration files and recipient definitions would remain untouched.',
-                'No state file is modified during this dry-run preview.',
-            ],
-            AdminCommandCatalog::PREVIEW_LOG_CLEAR => [
-                'The runtime log file would be truncated or removed.',
-                'Configuration files and runtime state would remain untouched.',
-                'No log file is modified during this dry-run preview.',
-            ],
-            AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION => [
-                'The selected file alias would be removed from recipient configuration.',
-                'Referenced download files would not be deleted automatically.',
-                'Dry-run target alias: ' . ($targetAlias !== null && $targetAlias !== '' ? $targetAlias : '[not selected]') . '.',
-            ],
-            default => [],
-        };
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class DangerCommandPreview
-{
-    /**
-     * @param list<string> $blockers
-     * @param list<string> $plan
-     */
-    public function __construct(
-        private readonly string $commandKey,
-        private readonly string $label,
-        private readonly bool $allowed,
-        private readonly array $blockers,
-        private readonly array $plan,
-    ) {
-    }
-
-    public function commandKey(): string
-    {
-        return $this->commandKey;
-    }
-
-    public function label(): string
-    {
-        return $this->label;
-    }
-
-    public function allowed(): bool
-    {
-        return $this->allowed;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function blockers(): array
-    {
-        return $this->blockers;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function plan(): array
-    {
-        return $this->plan;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FileAliasInventory
-{
-    /**
-     * @param list<FileAliasInventoryItem> $items
-     * @param list<string> $issues
-     */
-    public function __construct(
-        private readonly string $downloadBaseDir,
-        private readonly array $items,
-        private readonly array $issues,
-    ) {
-    }
-
-    public function downloadBaseDir(): string
-    {
-        return $this->downloadBaseDir;
-    }
-
-    /**
-     * @return list<FileAliasInventoryItem>
-     */
-    public function items(): array
-    {
-        return $this->items;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function issues(): array
-    {
-        return $this->issues;
-    }
-
-    public function item(string $alias): ?FileAliasInventoryItem
-    {
-        foreach ($this->items as $item) {
-            if ($item->alias() === $alias) {
-                return $item;
-            }
-        }
-
-        return null;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FileAliasInventoryItem
-{
-    /**
-     * @param list<string> $issues
-     */
-    public function __construct(
-        private readonly string $alias,
-        private readonly string $relativePath,
-        private readonly bool $fileExists,
-        private readonly int $normalReferences,
-        private readonly int $singleUseReferences,
-        private readonly array $issues = [],
-    ) {
-    }
-
-    public function alias(): string
-    {
-        return $this->alias;
-    }
-
-    public function relativePath(): string
-    {
-        return $this->relativePath;
-    }
-
-    public function fileExists(): bool
-    {
-        return $this->fileExists;
-    }
-
-    public function normalReferences(): int
-    {
-        return $this->normalReferences;
-    }
-
-    public function singleUseReferences(): int
-    {
-        return $this->singleUseReferences;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function issues(): array
-    {
-        return $this->issues;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\ConfigDiscovery;
-use Totman\RuntimeUi\Config\RecipientConfigImporter;
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-
-final class FileAliasInventoryReader
-{
-    public function __construct(
-        private readonly ConfigDiscovery $discovery = new ConfigDiscovery(),
-        private readonly RecipientConfigImporter $recipientImporter = new RecipientConfigImporter(),
-        private readonly RuntimeSummaryReader $summaryReader = new RuntimeSummaryReader(),
-    ) {
-    }
-
-    public function read(string $stateDir, DeploymentContext $context): FileAliasInventory
-    {
-        $discovered = $this->discovery->discover($stateDir);
-        $recipients = $this->recipientImporter->import($discovered);
-        $summary = $this->summaryReader->read($stateDir, $context);
-        $downloadBaseDir = $summary->paths()['download_base_dir'] ?? rtrim($stateDir, '/') . '/downloads';
-        $referenceCounts = $this->referenceCounts($recipients->recipients());
-        $issues = $recipients->issues();
-        $items = [];
-
-        foreach ($recipients->files() as $alias => $relativePath) {
-            $itemIssues = [];
-            if (preg_match('/^[a-z0-9_-]+$/', $alias) !== 1) {
-                $itemIssues[] = 'Alias key is invalid.';
-            }
-
-            if (!is_string($relativePath) || trim($relativePath) === '' || str_starts_with($relativePath, '/')) {
-                $itemIssues[] = 'Alias path must be a non-empty relative path.';
-                $relativePath = is_string($relativePath) ? $relativePath : '';
-            }
-
-            $items[] = new FileAliasInventoryItem(
-                (string)$alias,
-                $relativePath,
-                $relativePath !== '' && is_file(rtrim($downloadBaseDir, '/') . '/' . ltrim($relativePath, '/')),
-                $referenceCounts[$alias]['normal'] ?? 0,
-                $referenceCounts[$alias]['single_use'] ?? 0,
-                $itemIssues
-            );
-        }
-
-        foreach ($referenceCounts as $alias => $counts) {
-            if (!array_key_exists($alias, $recipients->files())) {
-                $issues[] = "recipient references unknown file alias {$alias}";
-            }
-        }
-
-        return new FileAliasInventory($downloadBaseDir, $items, array_values(array_unique($issues)));
-    }
-
-    /**
-     * @param array<int, mixed> $recipients
-     * @return array<string, array{normal: int, single_use: int}>
-     */
-    private function referenceCounts(array $recipients): array
-    {
-        $counts = [];
-        foreach ($recipients as $row) {
-            if (!is_array($row)) {
-                continue;
-            }
-
-            foreach ([3 => 'normal', 4 => 'single_use'] as $field => $kind) {
-                if (!isset($row[$field]) || !is_array($row[$field])) {
-                    continue;
-                }
-
-                foreach ($row[$field] as $alias) {
-                    if (!is_string($alias)) {
-                        continue;
-                    }
-
-                    $counts[$alias] ??= ['normal' => 0, 'single_use' => 0];
-                    $counts[$alias][$kind]++;
-                }
-            }
-        }
-
-        return $counts;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FirstRunAction
-{
-    public function __construct(
-        private readonly string $key,
-        private readonly string $label,
-        private readonly bool $visible = true,
-        private readonly bool $disabled = false,
-    ) {
-    }
-
-    public function key(): string
-    {
-        return $this->key;
-    }
-
-    public function label(): string
-    {
-        return $this->label;
-    }
-
-    public function visible(): bool
-    {
-        return $this->visible;
-    }
-
-    public function disabled(): bool
-    {
-        return $this->disabled;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FirstRunDraftLoadResult
-{
-    public const LOADED = 'loaded';
-    public const MISSING = 'missing';
-    public const CORRUPT = 'corrupt';
-
-    public function __construct(
-        private readonly string $status,
-        private readonly FirstRunDraftState $state,
-        private readonly string $message = '',
-    ) {
-    }
-
-    public static function loaded(FirstRunDraftState $state): self
-    {
-        return new self(self::LOADED, $state);
-    }
-
-    public static function missing(): self
-    {
-        return new self(self::MISSING, new FirstRunDraftState());
-    }
-
-    public static function corrupt(string $message): self
-    {
-        return new self(self::CORRUPT, new FirstRunDraftState(), $message);
-    }
-
-    public function status(): string
-    {
-        return $this->status;
-    }
-
-    public function state(): FirstRunDraftState
-    {
-        return $this->state;
-    }
-
-    public function message(): string
-    {
-        return $this->message;
-    }
-
-    public function notice(): string
-    {
-        if ($this->status !== self::CORRUPT || $this->message === '') {
-            return '';
-        }
-
-        return $this->message;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\DiscoveryResult;
-use Totman\RuntimeUi\Config\MainConfigImporter;
-use Totman\RuntimeUi\Config\RecipientConfigImporter;
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-use Totman\RuntimeUi\Preflight\FirstRunPreflight;
-
-final class FirstRunDraftPreflightGate
-{
-    public function __construct(
-        private readonly MainConfigDraftBuilder $mainConfigDraftBuilder = new MainConfigDraftBuilder(),
-        private readonly RecipientConfigDraftBuilder $recipientConfigDraftBuilder = new RecipientConfigDraftBuilder(),
-        private readonly MainConfigImporter $mainImporter = new MainConfigImporter(),
-        private readonly RecipientConfigImporter $recipientImporter = new RecipientConfigImporter(),
-        private readonly FirstRunPreflight $preflight = new FirstRunPreflight(),
-    ) {
-    }
-
-    public function evaluate(
-        string $stateDir,
-        DeploymentContext $context,
-        DiscoveryResult $discovered,
-        FirstRunDraftState $draft
-    ): FirstRunDraftPreflightResult {
-        $input = $draft->toInput();
-        $mainConfig = $this->mainConfigDraftBuilder->build($stateDir, $context, $input, $discovered);
-        $recipientConfig = $this->recipientConfigDraftBuilder->build($input, $discovered);
-        $main = $this->mainImporter->importConfig($mainConfig, $context);
-        $recipients = $this->recipientImporter->importConfig(
-            $recipientConfig->files(),
-            $recipientConfig->messages(),
-            $recipientConfig->recipients()
-        );
-
-        return new FirstRunDraftPreflightResult(
-            $mainConfig,
-            $recipientConfig,
-            $this->preflight->check($main, $recipients, $context)
-        );
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Preflight\PreflightResult;
-
-final class FirstRunDraftPreflightResult
-{
-    /**
-     * @param array<string, mixed> $mainConfig
-     */
-    public function __construct(
-        private readonly array $mainConfig,
-        private readonly RecipientConfigDraft $recipientConfig,
-        private readonly PreflightResult $preflight,
-    ) {
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function mainConfig(): array
-    {
-        return $this->mainConfig;
-    }
-
-    public function recipientConfig(): RecipientConfigDraft
-    {
-        return $this->recipientConfig;
-    }
-
-    public function preflight(): PreflightResult
-    {
-        return $this->preflight;
-    }
-
-    public function canWriteRuntime(): bool
-    {
-        return $this->preflight->status() !== 'FAIL';
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Setup\FirstRunStepCatalog;
-
-final class FirstRunDraftState
-{
-    /**
-     * @param array<string, string|bool|null> $values
-     */
-    public function __construct(
-        private readonly array $values = [],
-        private readonly string $activeStep = FirstRunStepCatalog::PUBLIC_URL,
-        private readonly int $updatedAt = 0,
-        private readonly bool $dirty = false,
-    ) {
-    }
-
-    public static function fromInput(
-        FirstRunInput $input,
-        string $activeStep = FirstRunStepCatalog::PUBLIC_URL,
-        ?int $updatedAt = null
-    ): self {
-        $values = [];
-        self::addString($values, 'base_url', $input->publicUrl());
-        self::addString($values, 'mail_from', $input->mailFrom());
-        self::addString($values, 'to_self', $input->operatorMailbox());
-        self::addString($values, 'sendmail_path', $input->sendmailPath());
-        self::addString($values, 'recipient_name', $input->recipientName());
-        self::addString($values, 'recipient_mailbox', $input->recipientMailbox());
-        self::addString($values, 'message_subject', $input->messageSubject());
-        self::addString($values, 'message_body', $input->messageBody());
-        if ($input->webUiEnabled() !== null) {
-            $values['web_ui_enabled'] = $input->webUiEnabled();
-        }
-        self::addString($values, 'download_alias', $input->downloadAlias());
-        self::addString($values, 'download_path', $input->downloadPath());
-        if ($input->downloadSingleUse() || $input->downloadAlias() !== '' || $input->downloadPath() !== '') {
-            $values['download_single_use'] = $input->downloadSingleUse();
-        }
-
-        return new self($values, $activeStep, $updatedAt ?? time(), true);
-    }
-
-    public function toInput(): FirstRunInput
-    {
-        return new FirstRunInput(
-            $this->string('base_url'),
-            $this->string('mail_from'),
-            $this->string('to_self'),
-            $this->string('sendmail_path'),
-            $this->string('recipient_name'),
-            $this->string('recipient_mailbox'),
-            $this->string('message_subject'),
-            $this->string('message_body'),
-            $this->nullableBool('web_ui_enabled'),
-            $this->string('download_alias'),
-            $this->string('download_path'),
-            $this->bool('download_single_use')
-        );
-    }
-
-    public function has(string $key): bool
-    {
-        return array_key_exists($key, $this->values) && $this->values[$key] !== null;
-    }
-
-    public function string(string $key): string
-    {
-        $value = $this->values[$key] ?? '';
-        return is_string($value) ? $value : '';
-    }
-
-    public function bool(string $key): bool
-    {
-        return ($this->values[$key] ?? false) === true;
-    }
-
-    public function nullableBool(string $key): ?bool
-    {
-        $value = $this->values[$key] ?? null;
-        return is_bool($value) ? $value : null;
-    }
-
-    /**
-     * @return array<string, string|bool|null>
-     */
-    public function values(): array
-    {
-        return $this->values;
-    }
-
-    public function activeStep(): string
-    {
-        return $this->activeStep;
-    }
-
-    public function updatedAt(): int
-    {
-        return $this->updatedAt;
-    }
-
-    public function dirty(): bool
-    {
-        return $this->dirty;
-    }
-
-    public function withActiveStep(string $activeStep, ?int $updatedAt = null): self
-    {
-        return new self($this->values, $activeStep, $updatedAt ?? time(), $this->dirty);
-    }
-
-    /**
-     * @param array<string, string|bool|null> $values
-     */
-    private static function addString(array &$values, string $key, string $value): void
-    {
-        if ($value !== '') {
-            $values[$key] = $value;
-        }
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FirstRunDraftStore
-{
-    private const SESSION_KEY = 'totman_ui_first_run_draft';
-
-    private FirstRunDraftState $fallbackState;
-    private bool $fallbackLoaded;
-
-    /**
-     * @param array<string, string|bool|null>|null $fallbackValues
-     */
-    public function __construct(?array $fallbackValues = null)
-    {
-        $this->fallbackState = new FirstRunDraftState($fallbackValues ?? []);
-        $this->fallbackLoaded = $fallbackValues !== null;
-    }
-
-    public function load(): FirstRunDraftState
-    {
-        return $this->loadResult()->state();
-    }
-
-    public function loadResult(): FirstRunDraftLoadResult
-    {
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            if (!array_key_exists(self::SESSION_KEY, $_SESSION)) {
-                return FirstRunDraftLoadResult::missing();
-            }
-
-            $values = $_SESSION[self::SESSION_KEY];
-            if (!is_array($values)) {
-                return FirstRunDraftLoadResult::corrupt('Saved setup draft was unreadable and has been ignored.');
-            }
-
-            return $this->fromStoredValues($values);
-        }
-
-        return $this->fallbackLoaded
-            ? FirstRunDraftLoadResult::loaded($this->fallbackState)
-            : FirstRunDraftLoadResult::missing();
-    }
-
-    public function save(FirstRunDraftState $state): void
-    {
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            $_SESSION[self::SESSION_KEY] = $this->toStoredValues($state);
-            return;
-        }
-
-        $this->fallbackState = $state;
-        $this->fallbackLoaded = true;
-    }
-
-    public function clear(): void
-    {
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            unset($_SESSION[self::SESSION_KEY]);
-            return;
-        }
-
-        $this->fallbackState = new FirstRunDraftState();
-        $this->fallbackLoaded = false;
-    }
-
-    /**
-     * @param array<mixed> $values
-     * @return array<string, string|bool|null>
-     */
-    private function normalise(array $values): array
-    {
-        $normalised = [];
-        foreach ($values as $key => $value) {
-            if (!is_string($key) || (!is_string($value) && !is_bool($value) && $value !== null)) {
-                continue;
-            }
-
-            $normalised[$key] = $value;
-        }
-
-        return $normalised;
-    }
-
-    /**
-     * @param array<mixed> $stored
-     */
-    private function fromStoredValues(array $stored): FirstRunDraftLoadResult
-    {
-        if (isset($stored['values']) && is_array($stored['values'])) {
-            return FirstRunDraftLoadResult::loaded(new FirstRunDraftState(
-                $this->normalise($stored['values']),
-                is_string($stored['active_step'] ?? null) ? $stored['active_step'] : 'public-url',
-                is_int($stored['updated_at'] ?? null) ? $stored['updated_at'] : 0,
-                ($stored['dirty'] ?? false) === true
-            ));
-        }
-
-        if (array_key_exists('values', $stored) && !is_array($stored['values'])) {
-            return FirstRunDraftLoadResult::corrupt('Saved setup draft values were invalid and have been ignored.');
-        }
-
-        return FirstRunDraftLoadResult::loaded(new FirstRunDraftState($this->normalise($stored)));
-    }
-
-    /**
-     * @return array{values: array<string, string|bool|null>, active_step: string, updated_at: int, dirty: bool}
-     */
-    private function toStoredValues(FirstRunDraftState $state): array
-    {
-        return [
-            'values' => $state->values(),
-            'active_step' => $state->activeStep(),
-            'updated_at' => $state->updatedAt(),
-            'dirty' => $state->dirty(),
-        ];
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FirstRunField
-{
-    /**
-     * @param list<string> $errors
-     */
-    public function __construct(
-        private readonly string $key,
-        private readonly string $label,
-        private readonly string $step,
-        private readonly string $value,
-        private readonly bool $required,
-        private readonly bool $readOnly,
-        private readonly string $source,
-        private readonly array $errors = [],
-        private readonly string $control = 'text',
-        private readonly string $hint = '',
-    ) {
-    }
-
-    public function key(): string
-    {
-        return $this->key;
-    }
-
-    public function label(): string
-    {
-        return $this->label;
-    }
-
-    public function step(): string
-    {
-        return $this->step;
-    }
-
-    public function value(): string
-    {
-        return $this->value;
-    }
-
-    public function required(): bool
-    {
-        return $this->required;
-    }
-
-    public function readOnly(): bool
-    {
-        return $this->readOnly;
-    }
-
-    public function source(): string
-    {
-        return $this->source;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function errors(): array
-    {
-        return $this->errors;
-    }
-
-    public function control(): string
-    {
-        return $this->control;
-    }
-
-    public function hint(): string
-    {
-        return $this->hint;
-    }
-
-    public function domId(): string
-    {
-        return 'wizard-field-' . str_replace('_', '-', $this->key);
-    }
-
-    public function hintId(): string
-    {
-        return $this->domId() . '-hint';
-    }
-
-    public function errorId(): string
-    {
-        return $this->domId() . '-error';
-    }
-
-    public function describedBy(): string
-    {
-        $ids = [];
-        if ($this->hint !== '') {
-            $ids[] = $this->hintId();
-        }
-
-        if ($this->errors !== []) {
-            $ids[] = $this->errorId();
-        }
-
-        return implode(' ', $ids);
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FirstRunFieldFormatValidator
-{
-    /**
-     * @return list<string>
-     */
-    public function validate(FirstRunInput $input): array
-    {
-        $errors = [];
-
-        if ($input->publicUrl() !== '' && !$this->isHttpsUrl($input->publicUrl())) {
-            $errors[] = 'base_url: Enter a valid HTTPS address, for example https://example.com/totman.';
-        }
-
-        if ($input->mailFrom() !== '' && !$this->isMailbox($input->mailFrom())) {
-            $errors[] = 'mail_from: Enter one valid sender mailbox, for example totman <totman@example.com>.';
-        }
-
-        if ($input->operatorMailbox() !== '' && !$this->isMailbox($input->operatorMailbox())) {
-            $errors[] = 'to_self: Enter one valid operator mailbox, for example Operator <operator@example.com>.';
-        }
-
-        if ($input->recipientMailbox() !== '' && !$this->isMailbox($input->recipientMailbox())) {
-            $errors[] = 'recipient_mailbox: Enter one valid recipient mailbox, for example Ada <ada@example.com>.';
-        }
-
-        if ($input->downloadPath() !== '' && !$this->isSafeRelativePath($input->downloadPath())) {
-            $errors[] = 'download_path: Enter a relative file path inside the download directory.';
-        }
-
-        return $errors;
-    }
-
-    /**
-     * @param list<string> $keys
-     * @return list<string>
-     */
-    public function validateOnly(FirstRunInput $input, array $keys): array
-    {
-        $wanted = array_fill_keys($keys, true);
-        $errors = [];
-        foreach ($this->validate($input) as $error) {
-            $key = strstr($error, ':', true);
-            if (is_string($key) && isset($wanted[$key])) {
-                $errors[] = $error;
-            }
-        }
-
-        return $errors;
-    }
-
-    private function isHttpsUrl(string $value): bool
-    {
-        if (filter_var($value, FILTER_VALIDATE_URL) === false) {
-            return false;
-        }
-
-        $parts = parse_url($value);
-        if (!is_array($parts)) {
-            return false;
-        }
-
-        return ($parts['scheme'] ?? '') === 'https'
-            && isset($parts['host'])
-            && $parts['host'] !== ''
-            && !isset($parts['user'])
-            && !isset($parts['pass']);
-    }
-
-    private function isMailbox(string $value): bool
-    {
-        $value = trim($value);
-        if ($value === '' || preg_match('/[\r\n]/', $value) === 1 || str_contains($value, ',') || str_contains($value, ';')) {
-            return false;
-        }
-
-        if (preg_match('/^<([^<>\s]+@[^<>\s]+)>$/', $value, $matches) === 1) {
-            return $this->isMailboxAddress($matches[1]);
-        }
-
-        if (preg_match('/^(?:"[^"\r\n<>]+"|[^"<>,;]+)\s+<([^<>\s]+@[^<>\s]+)>$/', $value, $matches) === 1) {
-            return $this->isMailboxAddress($matches[1]);
-        }
-
-        return $this->isMailboxAddress($value);
-    }
-
-    private function isMailboxAddress(string $address): bool
-    {
-        if (filter_var($address, FILTER_VALIDATE_EMAIL) !== false) {
-            return true;
-        }
-
-        return str_contains($address, '@')
-            && preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $address) === 1;
-    }
-
-    private function isSafeRelativePath(string $value): bool
-    {
-        if (str_starts_with($value, '/') || str_contains($value, "\0")) {
-            return false;
-        }
-
-        $parts = preg_split('#[\\\\/]+#', $value);
-        if (!is_array($parts)) {
-            return false;
-        }
-
-        foreach ($parts as $part) {
-            if ($part === '..') {
-                return false;
-            }
-        }
-
-        return trim($value) !== '';
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FirstRunHiddenFieldPolicy
-{
-    private const DENIED_KEYS = [
-        'setup_code',
-        'csrf_token',
-        'admin_username',
-        'admin_password',
-        'admin_password_confirm',
-        'login_username',
-        'login_password',
-        'reauth_password',
-        'hmac_secret_hex',
-    ];
-
-    /**
-     * @return list<FirstRunField>
-     */
-    public function fieldsToPreserve(FirstRunViewModel $view): array
-    {
-        $current = [];
-        foreach ($view->currentStepFields() as $field) {
-            $current[$field->key()] = true;
-        }
-
-        $hidden = [];
-        foreach ($view->fieldModels() as $field) {
-            if (isset($current[$field->key()]) || in_array($field->key(), self::DENIED_KEYS, true)) {
-                continue;
-            }
-
-            $hidden[] = $field;
-        }
-
-        return $hidden;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FirstRunInput
-{
-    public function __construct(
-        private readonly string $publicUrl = '',
-        private readonly string $mailFrom = '',
-        private readonly string $operatorMailbox = '',
-        private readonly string $sendmailPath = '',
-        private readonly string $recipientName = '',
-        private readonly string $recipientMailbox = '',
-        private readonly string $messageSubject = '',
-        private readonly string $messageBody = '',
-        private readonly ?bool $webUiEnabled = null,
-        private readonly string $downloadAlias = '',
-        private readonly string $downloadPath = '',
-        private readonly bool $downloadSingleUse = false,
-    ) {
-    }
-
-    /**
-     * @param array<string, string> $post
-     */
-    public static function fromPost(array $post): self
-    {
-        return new self(
-            self::clean($post['base_url'] ?? ''),
-            self::clean($post['mail_from'] ?? ''),
-            self::clean($post['to_self'] ?? ''),
-            self::clean($post['sendmail_path'] ?? ''),
-            self::clean($post['recipient_name'] ?? ''),
-            self::clean($post['recipient_mailbox'] ?? ''),
-            self::clean($post['message_subject'] ?? ''),
-            self::clean($post['message_body'] ?? ''),
-            array_key_exists('web_ui_enabled', $post) ? self::truthy($post['web_ui_enabled']) : null,
-            self::clean($post['download_alias'] ?? ''),
-            self::clean($post['download_path'] ?? ''),
-            self::truthy($post['download_single_use'] ?? ''),
-        );
-    }
-
-    public function publicUrl(): string
-    {
-        return $this->publicUrl;
-    }
-
-    public function mailFrom(): string
-    {
-        return $this->mailFrom;
-    }
-
-    public function operatorMailbox(): string
-    {
-        return $this->operatorMailbox;
-    }
-
-    public function sendmailPath(): string
-    {
-        return $this->sendmailPath;
-    }
-
-    public function recipientName(): string
-    {
-        return $this->recipientName;
-    }
-
-    public function recipientMailbox(): string
-    {
-        return $this->recipientMailbox;
-    }
-
-    public function messageSubject(): string
-    {
-        return $this->messageSubject;
-    }
-
-    public function messageBody(): string
-    {
-        return $this->messageBody;
-    }
-
-    public function webUiEnabled(): ?bool
-    {
-        return $this->webUiEnabled;
-    }
-
-    public function downloadAlias(): string
-    {
-        return $this->downloadAlias;
-    }
-
-    public function downloadPath(): string
-    {
-        return $this->downloadPath;
-    }
-
-    public function downloadSingleUse(): bool
-    {
-        return $this->downloadSingleUse;
-    }
-
-    private static function clean(string $value): string
-    {
-        return trim(str_replace(["\r", "\0"], '', $value));
-    }
-
-    private static function truthy(string $value): bool
-    {
-        return in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'on'], true);
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\DiscoveryResult;
-
-final class FirstRunInputValidator
-{
-    public function __construct(
-        private readonly FirstRunFieldFormatValidator $formatValidator = new FirstRunFieldFormatValidator(),
-    ) {
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function validate(DiscoveryResult $discovered, FirstRunInput $input): array
-    {
-        $errors = [];
-
-        if ($discovered->mode() === 'fresh') {
-            $errors = array_merge($errors, $this->requireFields([
-                'base_url' => $input->publicUrl(),
-                'mail_from' => $input->mailFrom(),
-                'to_self' => $input->operatorMailbox(),
-                'sendmail_path' => $input->sendmailPath(),
-                'recipient_name' => $input->recipientName(),
-                'recipient_mailbox' => $input->recipientMailbox(),
-                'message_subject' => $input->messageSubject(),
-                'message_body' => $input->messageBody(),
-            ], ' is required for fresh setup.'));
-        } elseif ($input->recipientName() !== '' || $input->recipientMailbox() !== '') {
-            $errors = array_merge($errors, $this->requireFields([
-                'recipient_name' => $input->recipientName(),
-                'recipient_mailbox' => $input->recipientMailbox(),
-                'message_subject' => $input->messageSubject(),
-                'message_body' => $input->messageBody(),
-            ], ' is required for recipient replacement.'));
-        }
-
-        if (($input->downloadAlias() === '') !== ($input->downloadPath() === '')) {
-            $errors[] = 'download_alias and download_path must be supplied together.';
-        }
-
-        return array_merge($errors, $this->formatValidator->validate($input));
-    }
-
-    /**
-     * @param array<string, string> $fields
-     * @return list<string>
-     */
-    private function requireFields(array $fields, string $suffix): array
-    {
-        $errors = [];
-        foreach ($fields as $key => $value) {
-            if ($value === '') {
-                $errors[] = $key . $suffix;
-            }
-        }
-
-        return $errors;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FirstRunSaveResult
-{
-    /**
-     * @param list<string> $writtenFiles
-     * @param list<string> $errors
-     */
-    public function __construct(
-        private readonly bool $saved,
-        private readonly array $writtenFiles,
-        private readonly array $errors,
-        private readonly FirstRunViewModel $view,
-    ) {
-    }
-
-    public function saved(): bool
-    {
-        return $this->saved;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function writtenFiles(): array
-    {
-        return $this->writtenFiles;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function errors(): array
-    {
-        return $this->errors;
-    }
-
-    public function view(): FirstRunViewModel
-    {
-        return $this->view;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\ConfigDiscovery;
-use Totman\RuntimeUi\Config\DiscoveryResult;
-use Totman\RuntimeUi\Config\MainConfigImporter;
-use Totman\RuntimeUi\Config\MainConfigImport;
-use Totman\RuntimeUi\Config\MainConfigWriter;
-use Totman\RuntimeUi\Config\RecipientConfigImport;
-use Totman\RuntimeUi\Config\RecipientConfigImporter;
-use Totman\RuntimeUi\Config\RecipientConfigWriter;
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-use Totman\RuntimeUi\Preflight\FirstRunPreflight;
-use Totman\RuntimeUi\Setup\FirstRunFlow;
-use Totman\RuntimeUi\Setup\FirstRunOrchestrator;
-
-final class FirstRunSetupService
-{
-    public function __construct(
-        private readonly ConfigDiscovery $discovery = new ConfigDiscovery(),
-        private readonly MainConfigImporter $mainImporter = new MainConfigImporter(),
-        private readonly RecipientConfigImporter $recipientImporter = new RecipientConfigImporter(),
-        private readonly FirstRunPreflight $preflight = new FirstRunPreflight(),
-        private readonly FirstRunOrchestrator $orchestrator = new FirstRunOrchestrator(),
-        private readonly FirstRunViewModelBuilder $viewModelBuilder = new FirstRunViewModelBuilder(),
-        private readonly FirstRunInputValidator $inputValidator = new FirstRunInputValidator(),
-        private readonly MainConfigDraftBuilder $mainConfigDraftBuilder = new MainConfigDraftBuilder(),
-        private readonly RecipientConfigDraftBuilder $recipientConfigDraftBuilder = new RecipientConfigDraftBuilder(),
-        private readonly FirstRunDraftPreflightGate $draftPreflightGate = new FirstRunDraftPreflightGate(),
-        private readonly MainConfigWriter $mainWriter = new MainConfigWriter(),
-        private readonly RecipientConfigWriter $recipientWriter = new RecipientConfigWriter(),
-        private readonly RuntimeUiTextCatalog $text = new RuntimeUiTextCatalog(),
-    ) {
-    }
-
-    public function preview(
-        string $stateDir,
-        DeploymentContext $context,
-        string $notice = '',
-        array $errors = [],
-        ?FirstRunDraftState $draft = null
-    ): FirstRunViewModel {
-        $discovered = $this->discovery->discover($stateDir);
-        [$sourceMain] = $this->imports($stateDir, $context, $discovered, null);
-        [$effectiveMain, $effectiveRecipients] = $this->imports($stateDir, $context, $discovered, $draft);
-        $preflight = $this->preflight->check($effectiveMain, $effectiveRecipients, $context);
-        $flow = $this->orchestrator->evaluate($discovered, $effectiveMain, $effectiveRecipients, $preflight);
-
-        return $this->viewModelBuilder->build(
-            $stateDir,
-            $context,
-            $discovered,
-            $sourceMain,
-            $preflight,
-            $flow,
-            $notice,
-            $errors,
-            $draft
-        );
-    }
-
-    public function save(string $stateDir, DeploymentContext $context, FirstRunInput $input): FirstRunSaveResult
-    {
-        return $this->saveRuntime($stateDir, $context, FirstRunDraftState::fromInput($input));
-    }
-
-    public function discover(string $stateDir): DiscoveryResult
-    {
-        return $this->discovery->discover($stateDir);
-    }
-
-    public function flow(string $stateDir, DeploymentContext $context, ?FirstRunDraftState $draft = null): FirstRunFlow
-    {
-        $discovered = $this->discovery->discover($stateDir);
-        [$main, $recipients] = $this->imports($stateDir, $context, $discovered, $draft);
-        $preflight = $this->preflight->check($main, $recipients, $context);
-
-        return $this->orchestrator->evaluate($discovered, $main, $recipients, $preflight);
-    }
-
-    public function saveRuntime(string $stateDir, DeploymentContext $context, FirstRunDraftState $draft): FirstRunSaveResult
-    {
-        $discovered = $this->discovery->discover($stateDir);
-        $input = $draft->toInput();
-        $errors = $this->inputValidator->validate($discovered, $input);
-        if ($errors !== []) {
-            return new FirstRunSaveResult(false, [], $errors, $this->preview($stateDir, $context, '', $errors, $draft));
-        }
-
-        $draftPreflight = $this->draftPreflightGate->evaluate($stateDir, $context, $discovered, $draft);
-        if (!$draftPreflight->canWriteRuntime()) {
-            $errors = ['Draft preflight must be resolved before writing runtime files.'];
-            return new FirstRunSaveResult(false, [], $errors, $this->preview($stateDir, $context, '', $errors, $draft));
-        }
-
-        if (!is_dir($stateDir . '/downloads')) {
-            mkdir($stateDir . '/downloads', 0700, true);
-        }
-
-        $written = [];
-        $mainConfig = $draftPreflight->mainConfig();
-        $recipientConfig = $draftPreflight->recipientConfig();
-        $written[] = $this->mainWriter->write($stateDir, $mainConfig);
-        $written[] = $this->recipientWriter->write(
-            $stateDir,
-            $recipientConfig->files(),
-            $recipientConfig->messages(),
-            $recipientConfig->recipients(),
-            (string)$mainConfig['recipients_file']
-        );
-
-        return new FirstRunSaveResult(true, $written, [], $this->preview($stateDir, $context, $this->text->get('notice.config_saved')));
-    }
-
-    /**
-     * @return array{0: MainConfigImport, 1: RecipientConfigImport}
-     */
-    private function imports(
-        string $stateDir,
-        DeploymentContext $context,
-        DiscoveryResult $discovered,
-        ?FirstRunDraftState $draft
-    ): array {
-        if ($draft === null) {
-            return [
-                $this->mainImporter->import($discovered, $context),
-                $this->recipientImporter->import($discovered),
-            ];
-        }
-
-        $input = $draft->toInput();
-        $mainConfig = $this->mainConfigDraftBuilder->build($stateDir, $context, $input, $discovered);
-        $recipientConfig = $this->recipientConfigDraftBuilder->build($input, $discovered);
-
-        return [
-            $this->mainImporter->importConfig($mainConfig, $context),
-            $this->recipientImporter->importConfig(
-                $recipientConfig->files(),
-                $recipientConfig->messages(),
-                $recipientConfig->recipients()
-            ),
-        ];
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FirstRunStep
-{
-    public function __construct(
-        private readonly string $key,
-        private readonly string $title,
-        private readonly string $status,
-        private readonly bool $current,
-        private readonly bool $complete,
-        private readonly bool $blocked,
-        private readonly string $description = '',
-    ) {
-    }
-
-    public function key(): string
-    {
-        return $this->key;
-    }
-
-    public function title(): string
-    {
-        return $this->title;
-    }
-
-    public function status(): string
-    {
-        return $this->status;
-    }
-
-    public function current(): bool
-    {
-        return $this->current;
-    }
-
-    public function complete(): bool
-    {
-        return $this->complete;
-    }
-
-    public function blocked(): bool
-    {
-        return $this->blocked;
-    }
-
-    public function description(): string
-    {
-        return $this->description;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\DiscoveryResult;
-use Totman\RuntimeUi\Setup\FirstRunStepCatalog;
-
-final class FirstRunStepValidator
-{
-    public function __construct(
-        private readonly FirstRunFieldFormatValidator $formatValidator = new FirstRunFieldFormatValidator(),
-    ) {
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function validate(DiscoveryResult $discovered, FirstRunDraftState $draft, string $step): array
-    {
-        $input = $draft->toInput();
-
-        return match ($step) {
-            FirstRunStepCatalog::PUBLIC_URL => array_merge($this->requiredWhenFresh($discovered, [
-                'base_url' => $input->publicUrl(),
-            ]), $this->formatValidator->validateOnly($input, ['base_url'])),
-            FirstRunStepCatalog::MAIL_DELIVERY => array_merge($this->requiredWhenFresh($discovered, [
-                'mail_from' => $input->mailFrom(),
-                'sendmail_path' => $input->sendmailPath(),
-            ]), $this->formatValidator->validateOnly($input, ['mail_from'])),
-            FirstRunStepCatalog::OPERATOR_MAILBOX => array_merge($this->requiredWhenFresh($discovered, [
-                'to_self' => $input->operatorMailbox(),
-            ]), $this->formatValidator->validateOnly($input, ['to_self'])),
-            FirstRunStepCatalog::FIRST_RECIPIENT => $this->recipientErrors($discovered, $input),
-            FirstRunStepCatalog::FIRST_MESSAGE => $this->messageErrors($discovered, $input),
-            FirstRunStepCatalog::OPTIONAL_DOWNLOAD => $this->downloadErrors($input),
-            FirstRunStepCatalog::REVIEW, FirstRunStepCatalog::PREFLIGHT, FirstRunStepCatalog::SAVE => $this->reviewErrors($discovered, $input),
-            default => [],
-        };
-    }
-
-    /**
-     * @param array<string, string> $fields
-     * @return list<string>
-     */
-    private function requiredWhenFresh(DiscoveryResult $discovered, array $fields): array
-    {
-        if ($discovered->mode() !== 'fresh') {
-            return [];
-        }
-
-        return $this->requireFields($fields, ' is required before this setup step can continue.');
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function recipientErrors(DiscoveryResult $discovered, FirstRunInput $input): array
-    {
-        if ($discovered->mode() === 'fresh' || $input->recipientName() !== '' || $input->recipientMailbox() !== '') {
-            return array_merge($this->requireFields([
-                'recipient_name' => $input->recipientName(),
-                'recipient_mailbox' => $input->recipientMailbox(),
-            ], ' is required before the recipient step can continue.'), $this->formatValidator->validateOnly($input, ['recipient_mailbox']));
-        }
-
-        return $this->formatValidator->validateOnly($input, ['recipient_mailbox']);
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function messageErrors(DiscoveryResult $discovered, FirstRunInput $input): array
-    {
-        if ($discovered->mode() === 'fresh' || $input->messageSubject() !== '' || $input->messageBody() !== '') {
-            return $this->requireFields([
-                'message_subject' => $input->messageSubject(),
-                'message_body' => $input->messageBody(),
-            ], ' is required before the message step can continue.');
-        }
-
-        return [];
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function downloadErrors(FirstRunInput $input): array
-    {
-        if (($input->downloadAlias() === '') !== ($input->downloadPath() === '')) {
-            return array_merge(
-                ['download_alias and download_path must be supplied together before the download step can continue.'],
-                $this->formatValidator->validateOnly($input, ['download_path'])
-            );
-        }
-
-        return $this->formatValidator->validateOnly($input, ['download_path']);
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function reviewErrors(DiscoveryResult $discovered, FirstRunInput $input): array
-    {
-        $errors = [];
-        if ($discovered->mode() === 'fresh') {
-            $errors = array_merge($errors, $this->requireFields([
-                'base_url' => $input->publicUrl(),
-                'mail_from' => $input->mailFrom(),
-                'to_self' => $input->operatorMailbox(),
-                'sendmail_path' => $input->sendmailPath(),
-                'recipient_name' => $input->recipientName(),
-                'recipient_mailbox' => $input->recipientMailbox(),
-                'message_subject' => $input->messageSubject(),
-                'message_body' => $input->messageBody(),
-            ], ' is required before runtime files can be written.'));
-        }
-
-        return array_merge($errors, $this->formatValidator->validate($input), $this->downloadErrors($input));
-    }
-
-    /**
-     * @param array<string, string> $fields
-     * @return list<string>
-     */
-    private function requireFields(array $fields, string $suffix): array
-    {
-        $errors = [];
-        foreach ($fields as $key => $value) {
-            if ($value === '') {
-                $errors[] = $key . $suffix;
-            }
-        }
-
-        return $errors;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Preflight\PreflightCheck;
-
-final class FirstRunViewModel
-{
-    /**
-     * @param array<string, string> $fields
-     * @param array<string, bool> $fieldReadOnly
-     * @param list<FirstRunField> $fieldModels
-     * @param list<FirstRunStep> $steps
-     * @param list<FirstRunAction> $actions
-     * @param list<FirstRunField> $currentStepFields
-     * @param list<FirstRunField> $reviewFields
-     * @param list<PreflightCheck> $preflightChecks
-     * @param list<string> $errors
-     */
-    public function __construct(
-        private readonly string $stateDir,
-        private readonly string $mode,
-        private readonly string $currentStep,
-        private readonly string $preflightStatus,
-        private readonly bool $pathFieldsReadOnly,
-        private readonly string $notice,
-        private readonly array $fields,
-        private readonly array $fieldReadOnly,
-        private readonly array $fieldModels,
-        private readonly array $steps,
-        private readonly array $actions,
-        private readonly array $currentStepFields,
-        private readonly array $reviewFields,
-        private readonly array $preflightChecks,
-        private readonly bool $runtimeFilesExist,
-        private readonly array $errors = [],
-    ) {
-    }
-
-    public function stateDir(): string
-    {
-        return $this->stateDir;
-    }
-
-    public function mode(): string
-    {
-        return $this->mode;
-    }
-
-    public function currentStep(): string
-    {
-        return $this->currentStep;
-    }
-
-    public function preflightStatus(): string
-    {
-        return $this->preflightStatus;
-    }
-
-    public function pathFieldsReadOnly(): bool
-    {
-        return $this->pathFieldsReadOnly;
-    }
-
-    public function notice(): string
-    {
-        return $this->notice;
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function fields(): array
-    {
-        return $this->fields;
-    }
-
-    public function field(string $key): string
-    {
-        return $this->fields[$key] ?? '';
-    }
-
-    public function fieldReadOnly(string $key): bool
-    {
-        return $this->fieldReadOnly[$key] ?? false;
-    }
-
-    /**
-     * @return list<FirstRunField>
-     */
-    public function fieldModels(): array
-    {
-        return $this->fieldModels;
-    }
-
-    /**
-     * @return list<FirstRunStep>
-     */
-    public function steps(): array
-    {
-        return $this->steps;
-    }
-
-    /**
-     * @return list<FirstRunAction>
-     */
-    public function actions(): array
-    {
-        return $this->actions;
-    }
-
-    /**
-     * @return list<FirstRunField>
-     */
-    public function currentStepFields(): array
-    {
-        return $this->currentStepFields;
-    }
-
-    /**
-     * @return list<FirstRunField>
-     */
-    public function reviewFields(): array
-    {
-        return $this->reviewFields;
-    }
-
-    /**
-     * @return list<PreflightCheck>
-     */
-    public function preflightChecks(): array
-    {
-        return $this->preflightChecks;
-    }
-
-    public function runtimeFilesExist(): bool
-    {
-        return $this->runtimeFilesExist;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function errors(): array
-    {
-        return $this->errors;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\DiscoveryResult;
-use Totman\RuntimeUi\Config\MainConfigImport;
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-use Totman\RuntimeUi\Preflight\PreflightResult;
-use Totman\RuntimeUi\Setup\FirstRunFlow;
-use Totman\RuntimeUi\Setup\FirstRunStepCatalog;
-
-final class FirstRunViewModelBuilder
-{
-    public function __construct(
-        private readonly FirstRunStepCatalog $stepCatalog = new FirstRunStepCatalog(),
-        private readonly RuntimeUiTextCatalog $text = new RuntimeUiTextCatalog(),
-    ) {
-    }
-
-    /**
-     * @param list<string> $errors
-     */
-    public function build(
-        string $stateDir,
-        DeploymentContext $context,
-        DiscoveryResult $discovered,
-        MainConfigImport $main,
-        PreflightResult $preflight,
-        FirstRunFlow $flow,
-        string $notice = '',
-        array $errors = [],
-        ?FirstRunDraftState $draft = null,
-    ): FirstRunViewModel {
-        $fields = [
-            'base_url' => $this->draftString($draft, 'base_url', (string)($main->field('base_url')->value() ?? '')),
-            'mail_from' => $this->draftString($draft, 'mail_from', (string)($main->field('mail_from')->value() ?? '')),
-            'to_self' => $this->draftString($draft, 'to_self', $this->firstStringValue($main->field('to_self')->value())),
-            'sendmail_path' => $this->draftString($draft, 'sendmail_path', (string)($main->field('sendmail_path')->value() ?? '')),
-            'recipient_name' => $this->draftString($draft, 'recipient_name', $this->firstRecipientValue($discovered, 0)),
-            'recipient_mailbox' => $this->draftString($draft, 'recipient_mailbox', $this->firstRecipientValue($discovered, 1)),
-            'message_subject' => $this->draftString($draft, 'message_subject', $this->firstMessageValue($discovered, 'subject', '[totman] Message')),
-            'message_body' => $this->draftString($draft, 'message_body', $this->firstMessageValue($discovered, 'body', 'Hello {RECIPIENT_NAME}')),
-            'web_ui_enabled' => $this->draftBool($draft, 'web_ui_enabled', $main->field('web_ui_enabled')->value() === true) ? '1' : '',
-            'download_alias' => $this->draftString($draft, 'download_alias', ''),
-            'download_path' => $this->draftString($draft, 'download_path', ''),
-            'download_single_use' => $this->draftBool($draft, 'download_single_use', false) ? '1' : '',
-        ];
-        $readOnly = [
-            'state_dir' => $context->pathFieldsAreReadOnly(),
-            'download_base_dir' => $context->pathFieldsAreReadOnly(),
-        ];
-        $currentStep = $this->currentStep($flow, $draft);
-        $fieldModels = $this->fieldModels($fields, $readOnly, $main, $draft, $errors, $discovered);
-        $reviewFields = $fieldModels;
-
-        return new FirstRunViewModel(
-            $stateDir,
-            $flow->mode(),
-            $currentStep,
-            $flow->preflightStatus(),
-            $context->pathFieldsAreReadOnly(),
-            $notice,
-            $fields,
-            $readOnly,
-            $fieldModels,
-            $this->steps($flow, $currentStep),
-            $this->actions($currentStep, $flow->preflightStatus()),
-            $this->currentStepFields($fieldModels, $currentStep, $reviewFields),
-            $reviewFields,
-            $preflight->checks(),
-            $discovered->mainLiveStatus()->loaded() && $discovered->recipientLiveStatus()->loaded(),
-            $this->displayErrors($errors)
-        );
-    }
-
-    /**
-     * @param array<string, string> $fields
-     * @param array<string, bool> $readOnly
-     * @param list<string> $errors
-     * @return list<FirstRunField>
-     */
-    private function fieldModels(
-        array $fields,
-        array $readOnly,
-        MainConfigImport $main,
-        ?FirstRunDraftState $draft,
-        array $errors,
-        DiscoveryResult $discovered
-    ): array {
-        return [
-            $this->field('base_url', 'public-url', $fields, true, false, $this->source($main, $draft, 'base_url'), $errors),
-            $this->field('mail_from', 'mail-delivery', $fields, true, false, $this->source($main, $draft, 'mail_from'), $errors),
-            $this->field('sendmail_path', 'mail-delivery', $fields, true, false, $this->source($main, $draft, 'sendmail_path'), $errors),
-            $this->field('to_self', 'operator-mailbox', $fields, true, false, $this->source($main, $draft, 'to_self'), $errors),
-            $this->field('recipient_name', 'first-recipient', $fields, true, false, $this->recipientSource($discovered, $draft, 'recipient_name'), $errors),
-            $this->field('recipient_mailbox', 'first-recipient', $fields, true, false, $this->recipientSource($discovered, $draft, 'recipient_mailbox'), $errors),
-            $this->field('message_subject', 'first-message', $fields, true, false, $this->recipientSource($discovered, $draft, 'message_subject'), $errors),
-            $this->field('message_body', 'first-message', $fields, true, false, $this->recipientSource($discovered, $draft, 'message_body'), $errors, 'textarea'),
-            $this->field('web_ui_enabled', 'review', $fields, false, false, $this->source($main, $draft, 'web_ui_enabled'), $errors, 'checkbox'),
-            $this->field('download_alias', 'optional-download', $fields, false, false, $this->recipientSource($discovered, $draft, 'download_alias'), $errors),
-            $this->field('download_path', 'optional-download', $fields, false, (bool)($readOnly['download_base_dir'] ?? false), $this->recipientSource($discovered, $draft, 'download_path'), $errors),
-            $this->field('download_single_use', 'optional-download', $fields, false, false, $this->recipientSource($discovered, $draft, 'download_single_use'), $errors, 'checkbox'),
-        ];
-    }
-
-    /**
-     * @param array<string, string> $fields
-     * @param list<string> $errors
-     */
-    private function field(string $key, string $step, array $fields, bool $required, bool $readOnly, string $source, array $errors, string $control = 'text'): FirstRunField
-    {
-        return new FirstRunField(
-            $key,
-            $this->text->get('field.' . $key . '.label'),
-            $step,
-            $fields[$key] ?? '',
-            $required,
-            $readOnly,
-            $source,
-            $this->fieldErrors($key, $errors),
-            $control,
-            $this->text->get('field.' . $key . '.hint')
-        );
-    }
-
-    /**
-     * @param list<string> $errors
-     * @return list<string>
-     */
-    private function fieldErrors(string $key, array $errors): array
-    {
-        $matched = [];
-        foreach ($errors as $error) {
-            if (str_starts_with($error, $key . ': ')) {
-                $matched[] = substr($error, strlen($key . ': '));
-            } elseif (str_starts_with($error, $key . ' ') || str_starts_with($error, $key . '_')) {
-                $matched[] = $this->displayError($error);
-            }
-        }
-
-        return $matched;
-    }
-
-    /**
-     * @param list<string> $errors
-     * @return list<string>
-     */
-    private function displayErrors(array $errors): array
-    {
-        return array_map(fn (string $error): string => $this->displayError($error), $errors);
-    }
-
-    private function displayError(string $error): string
-    {
-        foreach ($this->fieldLabels() as $key => $label) {
-            if (str_starts_with($error, $key . ': ')) {
-                return substr($error, strlen($key . ': '));
-            }
-
-            if (str_starts_with($error, $key . ' ')) {
-                return $label . substr($error, strlen($key));
-            }
-
-            if (str_starts_with($error, $key . '_')) {
-                return ucfirst(str_replace('_', ' ', $error));
-            }
-        }
-
-        if (str_starts_with($error, 'download_alias and download_path ')) {
-            return 'Download alias and download path ' . substr($error, strlen('download_alias and download_path '));
-        }
-
-        return $error;
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function fieldLabels(): array
-    {
-        return [
-            'base_url' => $this->text->get('field.base_url.label'),
-            'mail_from' => $this->text->get('field.mail_from.label'),
-            'to_self' => $this->text->get('field.to_self.label'),
-            'sendmail_path' => $this->text->get('field.sendmail_path.label'),
-            'recipient_name' => $this->text->get('field.recipient_name.label'),
-            'recipient_mailbox' => $this->text->get('field.recipient_mailbox.label'),
-            'message_subject' => $this->text->get('field.message_subject.label'),
-            'message_body' => $this->text->get('field.message_body.label'),
-            'download_alias' => $this->text->get('field.download_alias.label'),
-            'download_path' => $this->text->get('field.download_path.label'),
-        ];
-    }
-
-    /**
-     * @return list<FirstRunStep>
-     */
-    private function steps(FirstRunFlow $flow, string $currentStep): array
-    {
-        $steps = [];
-        $currentIndex = array_search($currentStep, $flow->steps(), true);
-        $currentIndex = is_int($currentIndex) ? $currentIndex : 0;
-
-        foreach ($flow->steps() as $index => $key) {
-            $current = $key === $currentStep;
-            $blocked = !$flow->canSave() && $key === 'save';
-            $complete = $index < $currentIndex;
-            $status = $blocked ? 'blocked' : ($current ? 'current' : ($complete ? 'complete' : 'pending'));
-            $steps[] = new FirstRunStep($key, $this->stepTitle($key), $status, $current, $complete, $blocked, $this->stepDescription($key));
-        }
-
-        return $steps;
-    }
-
-    private function currentStep(FirstRunFlow $flow, ?FirstRunDraftState $draft): string
-    {
-        if ($draft !== null && $draft->dirty() && in_array($draft->activeStep(), $flow->steps(), true)) {
-            return $draft->activeStep();
-        }
-
-        return $flow->currentStep();
-    }
-
-    /**
-     * @return list<FirstRunAction>
-     */
-    private function actions(string $currentStep, string $preflightStatus): array
-    {
-        return [
-            new FirstRunAction('update_draft', $this->text->get('action.update_draft'), $currentStep !== FirstRunStepCatalog::COMPLETE),
-            new FirstRunAction('discard_draft', $this->text->get('action.discard_draft'), $currentStep !== FirstRunStepCatalog::COMPLETE),
-            new FirstRunAction('next_step', $this->text->get('action.next_step'), !in_array($currentStep, [FirstRunStepCatalog::SAVE, FirstRunStepCatalog::COMPLETE], true)),
-            new FirstRunAction('previous_step', $this->text->get('action.previous_step'), !in_array($currentStep, [FirstRunStepCatalog::PUBLIC_URL, FirstRunStepCatalog::REPAIR_BLOCKING_PROBLEM, FirstRunStepCatalog::COMPLETE], true)),
-            new FirstRunAction('save_runtime', $this->text->get('action.save_runtime'), $currentStep === FirstRunStepCatalog::SAVE, $preflightStatus === 'FAIL'),
-        ];
-    }
-
-    /**
-     * @param list<FirstRunField> $fieldModels
-     * @param list<FirstRunField> $reviewFields
-     * @return list<FirstRunField>
-     */
-    private function currentStepFields(array $fieldModels, string $currentStep, array $reviewFields): array
-    {
-        if ($currentStep === FirstRunStepCatalog::REVIEW) {
-            return $reviewFields;
-        }
-
-        if (in_array($currentStep, [FirstRunStepCatalog::PREFLIGHT, FirstRunStepCatalog::SAVE, FirstRunStepCatalog::COMPLETE], true)) {
-            return [];
-        }
-
-        $fields = [];
-        foreach ($fieldModels as $field) {
-            if ($field->step() === $currentStep) {
-                $fields[] = $field;
-            }
-        }
-
-        return $fields;
-    }
-
-    private function stepTitle(string $key): string
-    {
-        return $this->stepCatalog->title($key);
-    }
-
-    private function stepDescription(string $key): string
-    {
-        return $this->text->get('step.' . $key . '.description');
-    }
-
-    private function source(MainConfigImport $main, ?FirstRunDraftState $draft, string $key): string
-    {
-        if ($draft !== null && $draft->has($key)) {
-            return 'draft';
-        }
-
-        return $main->field($key)->source();
-    }
-
-    private function recipientSource(DiscoveryResult $discovered, ?FirstRunDraftState $draft, string $key): string
-    {
-        if ($draft !== null && $draft->has($key)) {
-            return 'draft';
-        }
-
-        if ($discovered->liveRecipientConfig() !== []) {
-            return 'live';
-        }
-
-        if ($discovered->distRecipientConfig() !== []) {
-            return 'dist';
-        }
-
-        return 'generated';
-    }
-
-    private function draftString(?FirstRunDraftState $draft, string $key, string $fallback): string
-    {
-        if ($draft !== null && $draft->has($key)) {
-            return $draft->string($key);
-        }
-
-        return $fallback;
-    }
-
-    private function draftBool(?FirstRunDraftState $draft, string $key, bool $fallback): bool
-    {
-        if ($draft !== null && $draft->has($key)) {
-            return $draft->bool($key);
-        }
-
-        return $fallback;
-    }
-
-    private function firstStringValue(mixed $value): string
-    {
-        if (is_string($value)) {
-            return $value;
-        }
-
-        if (is_array($value)) {
-            foreach ($value as $item) {
-                if (is_string($item)) {
-                    return $item;
-                }
-            }
-        }
-
-        return '';
-    }
-
-    private function firstRecipientValue(DiscoveryResult $discovered, int $index): string
-    {
-        $rows = $discovered->liveRecipientConfig()['recipients'] ?? $discovered->distRecipientConfig()['recipients'] ?? [];
-        if (!is_array($rows) || !isset($rows[0]) || !is_array($rows[0]) || !isset($rows[0][$index]) || !is_string($rows[0][$index])) {
-            return '';
-        }
-
-        return $rows[0][$index];
-    }
-
-    private function firstMessageValue(DiscoveryResult $discovered, string $key, string $default): string
-    {
-        $messages = $discovered->liveRecipientConfig()['messages'] ?? $discovered->distRecipientConfig()['messages'] ?? [];
-        if (!is_array($messages)) {
-            return $default;
-        }
-
-        $first = reset($messages);
-        if (!is_array($first) || !isset($first[$key]) || !is_string($first[$key])) {
-            return $default;
-        }
-
-        return $first[$key];
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-use Totman\RuntimeUi\Setup\FirstRunStepCatalog;
-
-final class FirstRunWizardApplicationService
-{
-    public function __construct(
-        private readonly FirstRunSetupService $setupService = new FirstRunSetupService(),
-        private readonly FirstRunStepValidator $stepValidator = new FirstRunStepValidator(),
-        private readonly FirstRunWizardNavigator $navigator = new FirstRunWizardNavigator(),
-        private readonly RuntimeUiTextCatalog $text = new RuntimeUiTextCatalog(),
-    ) {
-    }
-
-    public function handle(
-        string $stateDir,
-        DeploymentContext $context,
-        FirstRunWizardCommand $command,
-        FirstRunDraftState $draft
-    ): FirstRunWizardResult {
-        if ($command->updatesDraft()) {
-            $updatedDraft = FirstRunDraftState::fromInput($command->input(), $draft->activeStep());
-            $errors = $this->stepValidator->validate(
-                $this->setupService->discover($stateDir),
-                $updatedDraft,
-                $updatedDraft->activeStep()
-            );
-
-            return new FirstRunWizardResult(
-                $this->setupService->preview($stateDir, $context, $this->text->get('notice.draft_saved'), $errors, $updatedDraft),
-                $updatedDraft,
-                draftChanged: true
-            );
-        }
-
-        if ($command->movesNext()) {
-            $updatedDraft = FirstRunDraftState::fromInput($command->input(), $draft->activeStep());
-            $discovered = $this->setupService->discover($stateDir);
-            $navigation = $this->navigator->next($discovered, $this->setupService->flow($stateDir, $context, $updatedDraft), $updatedDraft);
-
-            return new FirstRunWizardResult(
-                $this->setupService->preview($stateDir, $context, '', $navigation->errors(), $navigation->draft()),
-                $navigation->draft(),
-                draftChanged: true
-            );
-        }
-
-        if ($command->movesPrevious()) {
-            $updatedDraft = FirstRunDraftState::fromInput($command->input(), $draft->activeStep());
-            $navigation = $this->navigator->previous($this->setupService->flow($stateDir, $context, $updatedDraft), $updatedDraft);
-
-            return new FirstRunWizardResult(
-                $this->setupService->preview($stateDir, $context, '', draft: $navigation->draft()),
-                $navigation->draft(),
-                draftChanged: true
-            );
-        }
-
-        if ($command->savesRuntime()) {
-            $flow = $this->setupService->flow($stateDir, $context, $draft);
-            $activeDraft = $this->navigator->normalise($draft, $flow);
-            if ($activeDraft->activeStep() !== FirstRunStepCatalog::SAVE) {
-                $errors = ['Runtime files can only be written from the save step.'];
-                return new FirstRunWizardResult(
-                    $this->setupService->preview($stateDir, $context, '', $errors, $activeDraft),
-                    $activeDraft,
-                    runtimeSaveAttempted: true
-                );
-            }
-
-            $save = $this->setupService->saveRuntime($stateDir, $context, $draft);
-            if (!$save->saved() && in_array('Draft preflight must be resolved before writing runtime files.', $save->errors(), true)) {
-                $preflightDraft = $activeDraft->withActiveStep(FirstRunStepCatalog::PREFLIGHT);
-
-                return new FirstRunWizardResult(
-                    $this->setupService->preview($stateDir, $context, '', $save->errors(), $preflightDraft),
-                    $preflightDraft,
-                    draftChanged: true,
-                    runtimeSaveAttempted: true
-                );
-            }
-
-            $completeDraft = $save->saved() ? $activeDraft->withActiveStep(FirstRunStepCatalog::COMPLETE) : $activeDraft;
-
-            return new FirstRunWizardResult(
-                $save->saved()
-                    ? $this->setupService->preview($stateDir, $context, $this->text->get('notice.config_saved'), draft: $completeDraft)
-                    : $save->view(),
-                $completeDraft,
-                draftChanged: $save->saved(),
-                runtimeSaveAttempted: true,
-                runtimeSaved: $save->saved()
-            );
-        }
-
-        return new FirstRunWizardResult(
-            $this->setupService->preview($stateDir, $context, draft: $draft),
-            $draft
-        );
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FirstRunWizardCommand
-{
-    public const PREVIEW = 'preview';
-    public const UPDATE_DRAFT = 'update_draft';
-    public const NEXT_STEP = 'next_step';
-    public const PREVIOUS_STEP = 'previous_step';
-    public const SAVE_RUNTIME = 'save_runtime';
-
-    private function __construct(
-        private readonly string $intent,
-        private readonly FirstRunInput $input,
-    ) {
-    }
-
-    public static function preview(): self
-    {
-        return new self(self::PREVIEW, new FirstRunInput());
-    }
-
-    public static function updateDraft(FirstRunInput $input): self
-    {
-        return new self(self::UPDATE_DRAFT, $input);
-    }
-
-    public static function nextStep(FirstRunInput $input): self
-    {
-        return new self(self::NEXT_STEP, $input);
-    }
-
-    public static function previousStep(FirstRunInput $input): self
-    {
-        return new self(self::PREVIOUS_STEP, $input);
-    }
-
-    public static function saveRuntime(): self
-    {
-        return new self(self::SAVE_RUNTIME, new FirstRunInput());
-    }
-
-    public function intent(): string
-    {
-        return $this->intent;
-    }
-
-    public function input(): FirstRunInput
-    {
-        return $this->input;
-    }
-
-    public function updatesDraft(): bool
-    {
-        return $this->intent === self::UPDATE_DRAFT;
-    }
-
-    public function movesNext(): bool
-    {
-        return $this->intent === self::NEXT_STEP;
-    }
-
-    public function movesPrevious(): bool
-    {
-        return $this->intent === self::PREVIOUS_STEP;
-    }
-
-    public function savesRuntime(): bool
-    {
-        return $this->intent === self::SAVE_RUNTIME;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FirstRunWizardNavigationResult
-{
-    /**
-     * @param list<string> $errors
-     */
-    public function __construct(
-        private readonly FirstRunDraftState $draft,
-        private readonly array $errors = [],
-    ) {
-    }
-
-    public function draft(): FirstRunDraftState
-    {
-        return $this->draft;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function errors(): array
-    {
-        return $this->errors;
-    }
-
-    public function moved(): bool
-    {
-        return $this->errors === [];
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\DiscoveryResult;
-use Totman\RuntimeUi\Setup\FirstRunFlow;
-
-final class FirstRunWizardNavigator
-{
-    public function __construct(private readonly FirstRunStepValidator $stepValidator = new FirstRunStepValidator())
-    {
-    }
-
-    public function normalise(FirstRunDraftState $draft, FirstRunFlow $flow): FirstRunDraftState
-    {
-        return $draft->withActiveStep($this->currentStep($draft, $flow), $draft->updatedAt());
-    }
-
-    public function next(DiscoveryResult $discovered, FirstRunFlow $flow, FirstRunDraftState $draft): FirstRunWizardNavigationResult
-    {
-        $current = $this->currentStep($draft, $flow);
-        $normalised = $draft->withActiveStep($current, $draft->updatedAt());
-        $errors = $this->stepValidator->validate($discovered, $normalised, $current);
-        if ($errors !== []) {
-            return new FirstRunWizardNavigationResult($normalised, $errors);
-        }
-
-        return new FirstRunWizardNavigationResult($normalised->withActiveStep($this->offsetStep($flow, $current, 1)));
-    }
-
-    public function previous(FirstRunFlow $flow, FirstRunDraftState $draft): FirstRunWizardNavigationResult
-    {
-        $current = $this->currentStep($draft, $flow);
-        $normalised = $draft->withActiveStep($current, $draft->updatedAt());
-
-        return new FirstRunWizardNavigationResult($normalised->withActiveStep($this->offsetStep($flow, $current, -1)));
-    }
-
-    private function currentStep(FirstRunDraftState $draft, FirstRunFlow $flow): string
-    {
-        if ($draft->dirty() && in_array($draft->activeStep(), $flow->steps(), true)) {
-            return $draft->activeStep();
-        }
-
-        return $flow->currentStep();
-    }
-
-    private function offsetStep(FirstRunFlow $flow, string $current, int $offset): string
-    {
-        $steps = $flow->steps();
-        $index = array_search($current, $steps, true);
-        $index = is_int($index) ? $index : 0;
-        $nextIndex = max(0, min(count($steps) - 1, $index + $offset));
-
-        return $steps[$nextIndex];
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class FirstRunWizardResult
-{
-    public function __construct(
-        private readonly FirstRunViewModel $view,
-        private readonly FirstRunDraftState $draft,
-        private readonly bool $draftChanged = false,
-        private readonly bool $runtimeSaveAttempted = false,
-        private readonly bool $runtimeSaved = false,
-    ) {
-    }
-
-    public function view(): FirstRunViewModel
-    {
-        return $this->view;
-    }
-
-    public function draft(): FirstRunDraftState
-    {
-        return $this->draft;
-    }
-
-    public function draftChanged(): bool
-    {
-        return $this->draftChanged;
-    }
-
-    public function runtimeSaveAttempted(): bool
-    {
-        return $this->runtimeSaveAttempted;
-    }
-
-    public function runtimeSaved(): bool
-    {
-        return $this->runtimeSaved;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\DiscoveryResult;
-use Totman\RuntimeUi\Config\MainConfigImporter;
-use Totman\RuntimeUi\Contracts\RuntimeFileNames;
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-use Totman\RuntimeUi\Security\HmacSecretGenerator;
-
-final class MainConfigDraftBuilder
-{
-    public function __construct(
-        private readonly MainConfigImporter $mainImporter = new MainConfigImporter(),
-        private readonly HmacSecretGenerator $hmacSecretGenerator = new HmacSecretGenerator(),
-    ) {
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function build(string $stateDir, DeploymentContext $context, FirstRunInput $input, DiscoveryResult $discovered): array
-    {
-        $current = $discovered->effectiveMainConfig();
-        $mainImport = $this->mainImporter->import($discovered, $context);
-        $hmac = $mainImport->field('hmac_secret_hex');
-
-        return [
-            'state_dir' => $this->value('', $current, 'state_dir', $context->fixedStateDir() ?? $stateDir),
-            'lib_file' => $this->value('', $current, 'lib_file', 'totman-lib.php'),
-            'l18n_dir_name' => $this->value('', $current, 'l18n_dir_name', 'l18n'),
-            'lock_file' => $this->value('', $current, 'lock_file', 'totman.lock'),
-            'log_file_name' => $this->value('', $current, 'log_file_name', 'totman.log'),
-            'recipients_file' => $this->value('', $current, 'recipients_file', RuntimeFileNames::RECIPIENTS_LIVE),
-            'state_file' => $this->value('', $current, 'state_file', 'totman.json'),
-            'web_file' => $this->value('', $current, 'web_file', 'totman.php'),
-            'web_css_file' => $this->value('', $current, 'web_css_file', 'totman.css'),
-            'download_base_dir' => $this->value('', $current, 'download_base_dir', $context->fixedDownloadDir() ?? $stateDir . '/downloads'),
-            'download_valid_days' => $this->value('', $current, 'download_valid_days', 180),
-            'download_rate_limit_enabled' => $this->value('', $current, 'download_rate_limit_enabled', true),
-            'download_rate_limit_max_requests' => $this->value('', $current, 'download_rate_limit_max_requests', 20),
-            'download_rate_limit_window_seconds' => $this->value('', $current, 'download_rate_limit_window_seconds', 60),
-            'download_lease_seconds' => $this->value('', $current, 'download_lease_seconds', 300),
-            'base_url' => $this->value($input->publicUrl(), $current, 'base_url', ''),
-            'hmac_secret_hex' => (!$hmac->invalid() && !$hmac->placeholder() && is_string($hmac->value())) ? $hmac->value() : $this->hmacSecretGenerator->generateHex(),
-            'web_ui_enabled' => $input->webUiEnabled() ?? (array_key_exists('web_ui_enabled', $current) && is_bool($current['web_ui_enabled']) ? $current['web_ui_enabled'] : true),
-            'check_interval_seconds' => $this->value('', $current, 'check_interval_seconds', 86400),
-            'confirm_window_seconds' => $this->value('', $current, 'confirm_window_seconds', 7200),
-            'remind_every_seconds' => $this->value('', $current, 'remind_every_seconds', 1800),
-            'escalate_grace_seconds' => $this->value('', $current, 'escalate_grace_seconds', 300),
-            'missed_cycles_before_fire' => $this->value('', $current, 'missed_cycles_before_fire', 1),
-            'escalate_ack_enabled' => $this->value('', $current, 'escalate_ack_enabled', true),
-            'escalate_ack_remind_every_seconds' => $this->value('', $current, 'escalate_ack_remind_every_seconds', 3600),
-            'escalate_ack_max_reminds' => $this->value('', $current, 'escalate_ack_max_reminds', 3),
-            'stealth_neutral_for_invalid' => $this->value('', $current, 'stealth_neutral_for_invalid', true),
-            'stealth_level_2_neutral_on_stale' => $this->value('', $current, 'stealth_level_2_neutral_on_stale', true),
-            'show_success_details' => $this->value('', $current, 'show_success_details', true),
-            'rate_limit_enabled' => $this->value('', $current, 'rate_limit_enabled', true),
-            'rate_limit_dir' => $this->value('', $current, 'rate_limit_dir', null),
-            'rate_limit_max_requests' => $this->value('', $current, 'rate_limit_max_requests', 30),
-            'rate_limit_window_seconds' => $this->value('', $current, 'rate_limit_window_seconds', 60),
-            'ip_mode' => $this->value('', $current, 'ip_mode', 'remote_addr'),
-            'trusted_proxies' => $this->value('', $current, 'trusted_proxies', ['127.0.0.1', '::1']),
-            'trusted_proxy_header' => $this->value('', $current, 'trusted_proxy_header', 'X-Forwarded-For'),
-            'sendmail_path' => $this->value($input->sendmailPath(), $current, 'sendmail_path', ''),
-            'to_self' => $this->mailboxListValue($input->operatorMailbox(), $current, 'to_self'),
-            'operator_alert_interval_hours' => $this->value('', $current, 'operator_alert_interval_hours', 2),
-            'mail_from' => $this->value($input->mailFrom(), $current, 'mail_from', ''),
-            'reply_to' => $this->value('', $current, 'reply_to', ''),
-            'subject_reminder' => $this->value('', $current, 'subject_reminder', '[totman] Please confirm you are safe'),
-            'mail_timezone' => $this->value('', $current, 'mail_timezone', 'Europe/London'),
-            'mail_date_format' => $this->value('', $current, 'mail_date_format', 'j F Y'),
-            'mail_time_format' => $this->value('', $current, 'mail_time_format', 'H:i:s'),
-            'mail_datetime_format' => $this->value('', $current, 'mail_datetime_format', 'l, j F Y, H:i:s e'),
-            'body_reminder' => $this->value('', $current, 'body_reminder', "Hello,\n\nThis is a reminder to confirm that you are safe and able to respond.\n\nPlease click this link to confirm:\n{CONFIRM_URL}\n\nYou must click the confirmation link no later than this deadline.\nConfirmation deadline: {DEADLINE_ISO}\n"),
-            'log_mode' => $this->value('', $current, 'log_mode', 'both'),
-            'log_file' => $this->value('', $current, 'log_file', null),
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $current
-     */
-    private function value(string $inputValue, array $current, string $key, mixed $default): mixed
-    {
-        if ($inputValue !== '') {
-            return $inputValue;
-        }
-
-        if (!array_key_exists($key, $current)) {
-            return $default;
-        }
-
-        $value = $current[$key];
-        if (is_array($value)) {
-            return $this->firstStringValue($value) !== '' ? $value : $default;
-        }
-
-        return $value === '' ? $default : $value;
-    }
-
-    /**
-     * @param array<string, mixed> $current
-     * @return list<string>
-     */
-    private function mailboxListValue(string $inputValue, array $current, string $key): array
-    {
-        if ($inputValue !== '') {
-            return [$inputValue];
-        }
-
-        $value = $current[$key] ?? [];
-        if (is_string($value) && $value !== '') {
-            return [$value];
-        }
-
-        if (!is_array($value)) {
-            return [];
-        }
-
-        $mailboxes = [];
-        foreach ($value as $item) {
-            if (is_string($item) && $item !== '') {
-                $mailboxes[] = $item;
-            }
-        }
-
-        return $mailboxes;
-    }
-
-    private function firstStringValue(mixed $value): string
-    {
-        if (is_string($value)) {
-            return $value;
-        }
-
-        if (is_array($value)) {
-            foreach ($value as $item) {
-                if (is_string($item)) {
-                    return $item;
-                }
-            }
-        }
-
-        return '';
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class MaintenanceCommandResult
-{
-    public const PREVIEW = 'preview';
-    public const EXECUTE = 'execute';
-    public const BLOCKED = 'blocked';
-    public const PREVIEWED = 'previewed';
-    public const EXECUTED = 'executed';
-    public const ROLLED_BACK = 'rolled_back';
-    public const FAILED = 'failed';
-
-    /**
-     * @param list<string> $blockers
-     * @param list<string> $plan
-     * @param list<string> $effects
-     */
-    public function __construct(
-        private readonly string $commandKey,
-        private readonly string $label,
-        private readonly string $phase,
-        private readonly string $status,
-        private readonly array $blockers,
-        private readonly array $plan,
-        private readonly array $effects = [],
-    ) {
-    }
-
-    public function commandKey(): string
-    {
-        return $this->commandKey;
-    }
-
-    public function label(): string
-    {
-        return $this->label;
-    }
-
-    public function phase(): string
-    {
-        return $this->phase;
-    }
-
-    public function status(): string
-    {
-        return $this->status;
-    }
-
-    public function allowed(): bool
-    {
-        return $this->blockers === [] && $this->status !== self::BLOCKED;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function blockers(): array
-    {
-        return $this->blockers;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function plan(): array
-    {
-        return $this->plan;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function effects(): array
-    {
-        return $this->effects;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Security\AdminSessionState;
-
-final class MaintenanceCommandService
-{
-    public function __construct(
-        private readonly AdminCommandCatalog $catalog = new AdminCommandCatalog(),
-        private readonly AdminCommandAccessPolicy $accessPolicy = new AdminCommandAccessPolicy(),
-        private readonly MaintenanceRuntimeMutator $runtimeMutator = new MaintenanceRuntimeMutator(),
-    ) {
-    }
-
-    public function handle(
-        string $commandKey,
-        string $phase,
-        AdminSessionState $adminSession,
-        bool $csrfValid,
-        bool $rateLimitAllowed,
-        bool $confirmed,
-        int $now,
-        ?string $targetAlias = null,
-        ?string $stateDir = null,
-    ): MaintenanceCommandResult {
-        $command = $this->catalog->get($commandKey);
-        if (!$command instanceof AdminCommand) {
-            return new MaintenanceCommandResult($commandKey, 'Unknown command', $phase, MaintenanceCommandResult::BLOCKED, ['Unknown admin command.'], []);
-        }
-
-        if (!$command->danger()) {
-            return new MaintenanceCommandResult($commandKey, $command->label(), $phase, MaintenanceCommandResult::BLOCKED, ['Command is not a maintenance command.'], []);
-        }
-
-        $phase = $phase === MaintenanceCommandResult::EXECUTE ? MaintenanceCommandResult::EXECUTE : MaintenanceCommandResult::PREVIEW;
-        $blockers = $this->blockers($commandKey, $adminSession, $csrfValid, $rateLimitAllowed, $now);
-        if ($phase === MaintenanceCommandResult::EXECUTE && !$confirmed) {
-            $blockers[] = 'Explicit confirmation is required before executing this action.';
-        }
-
-        if ($blockers !== []) {
-            return new MaintenanceCommandResult($command->key(), $command->label(), $phase, MaintenanceCommandResult::BLOCKED, $blockers, $this->plan($command->key(), $targetAlias));
-        }
-
-        if ($phase === MaintenanceCommandResult::PREVIEW) {
-            return new MaintenanceCommandResult($command->key(), $command->label(), $phase, MaintenanceCommandResult::PREVIEWED, [], $this->plan($command->key(), $targetAlias));
-        }
-
-        if (!in_array($command->key(), $this->executableCommandKeys(), true)) {
-            return new MaintenanceCommandResult(
-                $command->key(),
-                $command->label(),
-                $phase,
-                MaintenanceCommandResult::BLOCKED,
-                ['Execution handler is not implemented yet.'],
-                $this->plan($command->key(), $targetAlias)
-            );
-        }
-
-        if ($stateDir === null || $stateDir === '') {
-            return new MaintenanceCommandResult($command->key(), $command->label(), $phase, MaintenanceCommandResult::BLOCKED, ['Runtime state directory is required before executing this action.'], $this->plan($command->key(), $targetAlias));
-        }
-
-        try {
-            $effects = $this->executeCommand($command->key(), $stateDir, $targetAlias);
-        } catch (\RuntimeException $error) {
-            $status = str_contains($error->getMessage(), 'restored') ? MaintenanceCommandResult::ROLLED_BACK : MaintenanceCommandResult::FAILED;
-
-            return new MaintenanceCommandResult($command->key(), $command->label(), $phase, $status, [$error->getMessage()], $this->plan($command->key(), $targetAlias));
-        }
-
-        return new MaintenanceCommandResult($command->key(), $command->label(), $phase, MaintenanceCommandResult::EXECUTED, [], $this->plan($command->key(), $targetAlias), $effects);
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function blockers(string $commandKey, AdminSessionState $adminSession, bool $csrfValid, bool $rateLimitAllowed, int $now): array
-    {
-        $blockers = [];
-        $access = $this->accessPolicy->evaluate($commandKey, $adminSession, $now);
-        if (!$access->allowed()) {
-            $blockers[] = $access->message();
-        }
-
-        if (!$csrfValid) {
-            $blockers[] = 'Valid CSRF token is required before previewing or executing this action.';
-        }
-
-        if (!$rateLimitAllowed) {
-            $blockers[] = 'Maintenance-command rate limit is currently exceeded.';
-        }
-
-        return $blockers;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function executeCommand(string $commandKey, string $stateDir, ?string $targetAlias): array
-    {
-        if ($commandKey === AdminCommandCatalog::PREVIEW_HMAC_ROTATION) {
-            return $this->runtimeMutator->rotateHmac($stateDir);
-        }
-
-        if ($commandKey === AdminCommandCatalog::PREVIEW_RUNTIME_RESET) {
-            return $this->runtimeMutator->resetRuntime($stateDir);
-        }
-
-        if ($commandKey === AdminCommandCatalog::PREVIEW_LOG_CLEAR) {
-            return $this->runtimeMutator->clearActivityLog($stateDir);
-        }
-
-        return $this->runtimeMutator->deleteFileAlias($stateDir, (string)$targetAlias);
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function executableCommandKeys(): array
-    {
-        return [
-            AdminCommandCatalog::PREVIEW_HMAC_ROTATION,
-            AdminCommandCatalog::PREVIEW_RUNTIME_RESET,
-            AdminCommandCatalog::PREVIEW_LOG_CLEAR,
-            AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION,
-        ];
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function plan(string $commandKey, ?string $targetAlias): array
-    {
-        return match ($commandKey) {
-            AdminCommandCatalog::PREVIEW_HMAC_ROTATION => [
-                'A new HMAC secret is generated server-side.',
-                'Existing signed confirmation, ACK, and download links stop validating.',
-                'Runtime state is reset so the next cycle starts with the new secret.',
-            ],
-            AdminCommandCatalog::PREVIEW_RUNTIME_RESET => [
-                'Runtime state is replaced so scheduling starts from a clean state.',
-                'Configuration files and recipient definitions remain untouched.',
-                'One-time download leases are cleared.',
-            ],
-            AdminCommandCatalog::PREVIEW_LOG_CLEAR => [
-                'The configured runtime log file is truncated only after the log path is verified as safe.',
-                'Configuration files and runtime state remain untouched.',
-            ],
-            AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION => [
-                'The selected file alias is removed from recipient configuration.',
-                'Recipient references to that alias are removed.',
-                'Target alias: ' . ($targetAlias !== null && $targetAlias !== '' ? $targetAlias : '[not selected]') . '.',
-            ],
-            default => [],
-        };
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\ConfigDiscovery;
-use Totman\RuntimeUi\Config\MainConfigWriter;
-use Totman\RuntimeUi\Config\RecipientConfigWriter;
-use Totman\RuntimeUi\Contracts\RuntimeFileNames;
-use Totman\RuntimeUi\Security\HmacSecretGenerator;
-
-final class MaintenanceRuntimeMutator
-{
-    public function __construct(
-        private readonly ConfigDiscovery $discovery = new ConfigDiscovery(),
-        private readonly MainConfigWriter $mainWriter = new MainConfigWriter(),
-        private readonly RecipientConfigWriter $recipientWriter = new RecipientConfigWriter(),
-        private readonly HmacSecretGenerator $hmacSecretGenerator = new HmacSecretGenerator(),
-    ) {
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function rotateHmac(string $stateDir): array
-    {
-        $discovered = $this->discovery->discover($stateDir);
-        if (!$discovered->mainLiveStatus()->loaded()) {
-            throw new \RuntimeException('Loaded live main config is required before HMAC rotation.');
-        }
-
-        $config = $discovered->effectiveMainConfig();
-        $config['hmac_secret_hex'] = $this->hmacSecretGenerator->generateHex();
-        $mainPath = $discovered->mainLiveStatus()->path();
-        $statePath = $this->statePath($stateDir, $config);
-        $mainBackup = $this->backupFile($mainPath);
-        $stateBackup = $this->backupFile($statePath);
-
-        try {
-            $this->mainWriter->write($stateDir, $config);
-            $this->resetRuntimeState($statePath, $this->lockPath($stateDir, $config), $config);
-        } catch (\Throwable $error) {
-            try {
-                $this->restoreFile($mainBackup, $mainPath);
-                $this->restoreFile($stateBackup, $statePath);
-            } catch (\Throwable $rollbackError) {
-                throw new \RuntimeException('HMAC rotation failed and rollback also failed: ' . $rollbackError->getMessage(), 0, $error);
-            }
-
-            throw new \RuntimeException('HMAC rotation failed; previous configuration was restored. Original error: ' . $error->getMessage(), 0, $error);
-        }
-
-        return [
-            'Main config HMAC secret was replaced.',
-            'Runtime state was reset with a new confirmation token.',
-            'Existing signed confirmation, ACK, and download links no longer match the active secret.',
-        ];
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function resetRuntime(string $stateDir): array
-    {
-        $config = $this->liveMainConfig($stateDir);
-        $statePath = $this->statePath($stateDir, $config);
-        $stateBackup = $this->backupFile($statePath);
-
-        try {
-            $this->resetRuntimeState($statePath, $this->lockPath($stateDir, $config), $config);
-        } catch (\Throwable $error) {
-            try {
-                $this->restoreFile($stateBackup, $statePath);
-            } catch (\Throwable $rollbackError) {
-                throw new \RuntimeException('Runtime reset failed and rollback also failed: ' . $rollbackError->getMessage(), 0, $error);
-            }
-
-            throw new \RuntimeException('Runtime reset failed; previous state was restored. Original error: ' . $error->getMessage(), 0, $error);
-        }
-
-        return [
-            'Runtime state was reset with a new confirmation token.',
-            'Escalation progress and one-time download leases were cleared.',
-            'Configuration, recipients, logs, and download files were not changed.',
-        ];
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function clearActivityLog(string $stateDir): array
-    {
-        $config = $this->liveMainConfig($stateDir);
-        $path = $this->logPath($stateDir, $config);
-        if (!$this->logPathIsSafe($path, $stateDir)) {
-            throw new \RuntimeException('The activity log path is not safe for maintenance here.');
-        }
-
-        $dir = dirname($path);
-        if (!is_dir($dir) || !is_writable($dir)) {
-            throw new \RuntimeException('Log directory is not writable: ' . $dir);
-        }
-
-        if (is_file($path) && !is_writable($path)) {
-            throw new \RuntimeException('Log file is not writable: ' . $path);
-        }
-
-        $fh = fopen($path, 'c');
-        if ($fh === false) {
-            throw new \RuntimeException('Could not open log file: ' . $path);
-        }
-
-        try {
-            if (!flock($fh, LOCK_EX)) {
-                throw new \RuntimeException('Could not lock log file: ' . $path);
-            }
-
-            if (!ftruncate($fh, 0)) {
-                throw new \RuntimeException('Could not clear log file: ' . $path);
-            }
-
-            fflush($fh);
-        } finally {
-            flock($fh, LOCK_UN);
-            fclose($fh);
-        }
-
-        return [
-            'Configured runtime log was cleared.',
-            'Configuration, recipients, runtime state, and download files were not changed.',
-        ];
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function deleteFileAlias(string $stateDir, string $alias): array
-    {
-        $alias = trim($alias);
-        if ($alias === '') {
-            throw new \RuntimeException('File alias is required before deletion.');
-        }
-
-        $discovered = $this->discovery->discover($stateDir);
-        if (!$discovered->recipientLiveStatus()->loaded()) {
-            throw new \RuntimeException('Loaded live recipients config is required before file-alias deletion.');
-        }
-
-        $data = $discovered->liveRecipientConfig();
-        $files = $this->arrayValue($data['files'] ?? []);
-        if (!array_key_exists($alias, $files)) {
-            throw new \RuntimeException('Unknown file alias: ' . $alias);
-        }
-
-        $relativePath = (string)$files[$alias];
-        unset($files[$alias]);
-        $messages = $this->arrayValue($data['messages'] ?? []);
-        $recipients = $this->removeAliasFromRecipients($this->arrayValue($data['recipients'] ?? []), $alias);
-        $recipientPath = $discovered->recipientLiveStatus()->path();
-        $recipientBackup = $this->backupFile($recipientPath);
-
-        try {
-            $this->recipientWriter->write($stateDir, $files, $messages, $recipients, basename($recipientPath) ?: RuntimeFileNames::RECIPIENTS_LIVE);
-        } catch (\Throwable $error) {
-            $this->restoreFile($recipientBackup, $recipientPath);
-            throw $error;
-        }
-
-        $effects = [
-            'File alias was removed from recipient configuration.',
-            'Recipient download references to the alias were removed.',
-        ];
-
-        try {
-            $deletePath = $this->safeDownloadDeletePath($this->liveMainConfig($stateDir), $alias, $relativePath);
-            if ($deletePath === null) {
-                $effects[] = 'Download file was already missing.';
-            } elseif (!unlink($deletePath)) {
-                $effects[] = 'Download file deletion needs manual review: ' . $relativePath;
-            } else {
-                $effects[] = 'Download file was deleted.';
-            }
-        } catch (\RuntimeException $error) {
-            $effects[] = 'Download file deletion needs manual review: ' . $error->getMessage();
-        }
-
-        return $effects;
-    }
-
-    /**
-     * @param array<string, mixed> $config
-     */
-    private function resetRuntimeState(string $statePath, string $lockPath, array $config): void
-    {
-        $secret = (string)($config['hmac_secret_hex'] ?? '');
-        if (preg_match('/^[a-f0-9]{32,}$/i', $secret) !== 1 || strlen($secret) % 2 !== 0) {
-            throw new \RuntimeException('Valid HMAC secret is required before runtime state reset.');
-        }
-
-        $lock = fopen($lockPath, 'c+');
-        if ($lock === false) {
-            throw new \RuntimeException('Could not open state lock: ' . $lockPath);
-        }
-
-        try {
-            if (!flock($lock, LOCK_EX)) {
-                throw new \RuntimeException('Could not acquire state lock.');
-            }
-
-            $now = time();
-            $check = max(1, (int)($config['check_interval_seconds'] ?? 86400));
-            $window = max(1, (int)($config['confirm_window_seconds'] ?? 7200));
-            $state = [
-                'runtime' => [
-                    'version' => 1,
-                    'created_at' => $now,
-                    'last_tick_at' => $now,
-                    'cycle_start_at' => $now,
-                    'last_confirm_at' => 0,
-                    'missed_cycles' => 0,
-                    'missed_cycle_deadline' => null,
-                    'token' => $this->makeToken($secret),
-                    'next_check_at' => $now + $check,
-                    'deadline_at' => $now + $check + $window,
-                    'next_reminder_at' => $now + $check,
-                    'escalation_event_at' => null,
-                    'operator_alerts' => [],
-                    'escalation_delivery' => [],
-                    'escalated_sent_at' => null,
-                    'escalate_ack_token' => null,
-                    'escalate_ack_recipients' => [],
-                    'escalate_ack_at' => null,
-                    'escalate_ack_sent_count' => 0,
-                    'escalate_ack_next_at' => null,
-                ],
-                'downloads' => [],
-            ];
-
-            $this->atomicWrite($statePath, json_encode($state, JSON_THROW_ON_ERROR));
-        } finally {
-            flock($lock, LOCK_UN);
-            fclose($lock);
-        }
-    }
-
-    /**
-     * @return array{id: string, sig: string}
-     */
-    private function makeToken(string $secretHex): array
-    {
-        $id = bin2hex(random_bytes(16));
-        $secret = hex2bin($secretHex);
-        if ($secret === false) {
-            throw new \RuntimeException('Invalid HMAC secret.');
-        }
-
-        return [
-            'id' => $id,
-            'sig' => hash_hmac('sha256', $id, $secret),
-        ];
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function liveMainConfig(string $stateDir): array
-    {
-        $discovered = $this->discovery->discover($stateDir);
-        if (!$discovered->mainLiveStatus()->loaded()) {
-            throw new \RuntimeException('Loaded live main config is required before maintenance execution.');
-        }
-
-        return $discovered->effectiveMainConfig();
-    }
-
-    /**
-     * @param array<string, mixed> $config
-     */
-    private function logPath(string $stateDir, array $config): string
-    {
-        $configured = $config['log_file'] ?? null;
-        if (is_string($configured) && trim($configured) !== '') {
-            return $configured;
-        }
-
-        return rtrim($stateDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . basename((string)($config['log_file_name'] ?? 'totman.log'));
-    }
-
-    private function logPathIsSafe(string $path, string $stateDir): bool
-    {
-        $base = basename($path);
-        if ($path === '' || $stateDir === '' || is_dir($path) || str_starts_with($base, '.')) {
-            return false;
-        }
-
-        if (preg_match('/\.(php|phtml|phar|bak)$/i', $base) === 1) {
-            return false;
-        }
-
-        if (preg_match('/(secret|password|credential|token|key|backup)/i', $base) === 1) {
-            return false;
-        }
-
-        return $this->pathIsInsideDir($path, $stateDir);
-    }
-
-    private function pathIsInsideDir(string $path, string $dir): bool
-    {
-        $realDir = realpath($dir);
-        $pathDir = realpath(dirname($path));
-        if ($realDir === false || $pathDir === false) {
-            return false;
-        }
-
-        $realDir = rtrim($realDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-        $pathDir = rtrim($pathDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
-
-        return str_starts_with($pathDir, $realDir);
-    }
-
-    /**
-     * @return array<mixed>
-     */
-    private function arrayValue(mixed $value): array
-    {
-        return is_array($value) ? $value : [];
-    }
-
-    /**
-     * @param array<mixed> $recipients
-     * @return array<mixed>
-     */
-    private function removeAliasFromRecipients(array $recipients, string $alias): array
-    {
-        $updated = [];
-        foreach ($recipients as $recipient) {
-            if (!is_array($recipient)) {
-                $updated[] = $recipient;
-                continue;
-            }
-
-            $base = array_slice($recipient, 0, 3);
-            $normal = $this->aliasListWithout($recipient[3] ?? [], $alias);
-            $singleUse = $this->aliasListWithout($recipient[4] ?? [], $alias);
-            if ($normal !== [] || $singleUse !== []) {
-                $base[] = $normal;
-            }
-
-            if ($singleUse !== []) {
-                $base[] = $singleUse;
-            }
-
-            $updated[] = $base;
-        }
-
-        return $updated;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function aliasListWithout(mixed $value, string $alias): array
-    {
-        if (!is_array($value)) {
-            return [];
-        }
-
-        $filtered = [];
-        foreach ($value as $candidate) {
-            if (!is_string($candidate) || $candidate === $alias || $candidate === '') {
-                continue;
-            }
-
-            $filtered[] = $candidate;
-        }
-
-        return array_values(array_unique($filtered));
-    }
-
-    /**
-     * @param array<string, mixed> $config
-     */
-    private function safeDownloadDeletePath(array $config, string $alias, string $relativePath): ?string
-    {
-        if (!$this->relativeDownloadPathIsSafe($relativePath)) {
-            throw new \RuntimeException('Download file for alias ' . $alias . ' is not safe to delete.');
-        }
-
-        $base = realpath(rtrim((string)($config['download_base_dir'] ?? ''), DIRECTORY_SEPARATOR));
-        if ($base === false || !is_dir($base) || !is_readable($base)) {
-            throw new \RuntimeException('Download file for alias ' . $alias . ' is not safe to delete.');
-        }
-
-        $base = rtrim($base, DIRECTORY_SEPARATOR);
-        $candidate = $base . DIRECTORY_SEPARATOR . ltrim(str_replace('\\', '/', $relativePath), DIRECTORY_SEPARATOR);
-        if (is_link($candidate) || is_dir($candidate)) {
-            throw new \RuntimeException('Download file for alias ' . $alias . ' is not safe to delete.');
-        }
-
-        $real = realpath($candidate);
-        if ($real === false) {
-            return null;
-        }
-
-        if (!is_file($real) || is_link($real) || !str_starts_with($real, $base . DIRECTORY_SEPARATOR)) {
-            throw new \RuntimeException('Download file for alias ' . $alias . ' is not safe to delete.');
-        }
-
-        $name = basename($real);
-        if (str_starts_with($name, '.') || preg_match('/\.(php|phtml|phar)$/i', $name) === 1 || preg_match('/(secret|password|credential|token|key|backup)/i', $name) === 1) {
-            throw new \RuntimeException('Download file for alias ' . $alias . ' is not safe to delete.');
-        }
-
-        if (!is_writable(dirname($real))) {
-            throw new \RuntimeException('Could not delete download file for alias ' . $alias . ': ' . $relativePath);
-        }
-
-        return $real;
-    }
-
-    private function relativeDownloadPathIsSafe(string $relativePath): bool
-    {
-        $normalised = str_replace('\\', '/', $relativePath);
-
-        return $normalised !== ''
-            && !str_starts_with($normalised, '/')
-            && !str_contains($normalised, '../')
-            && !str_contains($normalised, '/..')
-            && $normalised !== '..'
-            && !str_contains($normalised, "\0");
-    }
-
-    /**
-     * @param array<string, mixed> $config
-     */
-    private function statePath(string $stateDir, array $config): string
-    {
-        return rtrim($stateDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . basename((string)($config['state_file'] ?? 'totman.json'));
-    }
-
-    /**
-     * @param array<string, mixed> $config
-     */
-    private function lockPath(string $stateDir, array $config): string
-    {
-        return rtrim($stateDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . basename((string)($config['lock_file'] ?? 'totman.lock'));
-    }
-
-    private function backupFile(string $path): ?string
-    {
-        if (!is_file($path)) {
-            return null;
-        }
-
-        $dir = dirname($path) . DIRECTORY_SEPARATOR . '.totman-ui-backups';
-        if (!is_dir($dir) && !mkdir($dir, 0770, true)) {
-            throw new \RuntimeException('Could not create backup directory: ' . $dir);
-        }
-
-        $backup = $dir . DIRECTORY_SEPARATOR . basename($path) . '.' . gmdate('Ymd-His') . '.' . bin2hex(random_bytes(4)) . '.bak';
-        if (!copy($path, $backup)) {
-            throw new \RuntimeException('Could not create backup for ' . $path);
-        }
-
-        @chmod($backup, 0660);
-
-        return $backup;
-    }
-
-    private function restoreFile(?string $backup, string $target): void
-    {
-        if ($backup === null) {
-            if (is_file($target) && !unlink($target)) {
-                throw new \RuntimeException('Could not remove partially written file: ' . $target);
-            }
-
-            return;
-        }
-
-        if (!copy($backup, $target)) {
-            throw new \RuntimeException('Could not restore backup for ' . $target);
-        }
-
-        @chmod($target, 0660);
-    }
-
-    private function atomicWrite(string $path, string $content): void
-    {
-        $dir = dirname($path);
-        if (!is_dir($dir) || !is_writable($dir)) {
-            throw new \RuntimeException('Directory is not writable: ' . $dir);
-        }
-
-        $tmp = tempnam($dir, '.totman-tmp-');
-        if ($tmp === false) {
-            throw new \RuntimeException('Could not create temporary file in ' . $dir);
-        }
-
-        try {
-            if (file_put_contents($tmp, $content, LOCK_EX) === false) {
-                throw new \RuntimeException('Could not write temporary file: ' . $tmp);
-            }
-
-            if (!rename($tmp, $path)) {
-                throw new \RuntimeException('Could not replace file: ' . $path);
-            }
-
-            @chmod($path, 0660);
-        } finally {
-            if (is_file($tmp)) {
-                @unlink($tmp);
-            }
-        }
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\ConfigDiscovery;
-use Totman\RuntimeUi\Http\FirstRunRequestMapper;
-use Totman\RuntimeUi\Http\PrototypeController;
-use Totman\RuntimeUi\Http\PrototypeRenderer;
-use Totman\RuntimeUi\Http\RuntimeUiMode;
-use Totman\RuntimeUi\Config\MainConfigWriter;
-use Totman\RuntimeUi\Config\RecipientConfigWriter;
-use Totman\RuntimeUi\Security\AdminSessionStore;
-use Totman\RuntimeUi\Security\PrototypeCsrfPolicy;
-use Totman\RuntimeUi\Security\PrototypeRateLimitPolicy;
-use Totman\RuntimeUi\Security\PrototypeSaveIntentPolicy;
-use Totman\RuntimeUi\Security\SetupAccessPolicy;
-use Totman\RuntimeUi\Security\SetupSessionStore;
-
-final class PrototypeApplicationFactory
-{
-    private readonly FirstRunSetupService $setupService;
-    private readonly FirstRunWizardApplicationService $wizardService;
-    private readonly AdminAuthApplicationService $adminAuthService;
-    private readonly PrototypeRenderer $renderer;
-    private readonly RuntimeUiTextCatalog $text;
-
-    /**
-     * @param list<string> $privateConfigFallbackPaths
-     */
-    public function __construct(
-        ?FirstRunSetupService $setupService = null,
-        private readonly FirstRunRequestMapper $requestMapper = new FirstRunRequestMapper(),
-        private readonly SetupAccessPolicy $accessPolicy = new SetupAccessPolicy(),
-        private readonly PrototypeRateLimitPolicy $rateLimitPolicy = new PrototypeRateLimitPolicy(),
-        private readonly PrototypeCsrfPolicy $csrfPolicy = new PrototypeCsrfPolicy(),
-        private readonly PrototypeSaveIntentPolicy $saveIntentPolicy = new PrototypeSaveIntentPolicy(),
-        ?AdminAuthApplicationService $adminAuthService = null,
-        ?FirstRunWizardApplicationService $wizardService = null,
-        private readonly SetupSessionStore $sessionStore = new SetupSessionStore(),
-        private readonly AdminSessionStore $adminSessionStore = new AdminSessionStore(),
-        private readonly FirstRunDraftStore $draftStore = new FirstRunDraftStore(),
-        private readonly ConfigDiscovery $discovery = new ConfigDiscovery(),
-        private readonly RuntimeSummaryReader $runtimeSummaryReader = new RuntimeSummaryReader(),
-        private readonly RuntimeLogReader $runtimeLogReader = new RuntimeLogReader(),
-        private readonly FileAliasInventoryReader $fileAliasInventoryReader = new FileAliasInventoryReader(),
-        private readonly MaintenanceCommandService $maintenanceCommandService = new MaintenanceCommandService(),
-        ?PrototypeRenderer $renderer = null,
-        private readonly string $expectedSetupCode = '',
-        private readonly string $runtimeUiMode = RuntimeUiMode::PROTOTYPE,
-        private readonly array $privateConfigFallbackPaths = [],
-    ) {
-        $runtimeUiMode = RuntimeUiMode::normalise($this->runtimeUiMode);
-        $this->text = new RuntimeUiTextCatalog($runtimeUiMode);
-        $generatedByLine = $runtimeUiMode === RuntimeUiMode::PRODUCT
-            ? 'Generated by the totman runtime UI.'
-            : 'Generated by the totman runtime UI.';
-        $this->setupService = $setupService ?? new FirstRunSetupService(
-            viewModelBuilder: new FirstRunViewModelBuilder(text: $this->text),
-            mainWriter: new MainConfigWriter($generatedByLine),
-            recipientWriter: new RecipientConfigWriter($generatedByLine),
-            text: $this->text
-        );
-        $this->wizardService = $wizardService ?? new FirstRunWizardApplicationService(
-            setupService: $this->setupService,
-            text: $this->text
-        );
-        $this->adminAuthService = $adminAuthService ?? new AdminAuthApplicationService(
-            privateConfigFallbackPaths: $this->privateConfigFallbackPaths
-        );
-        $this->renderer = $renderer ?? new PrototypeRenderer(text: $this->text);
-    }
-
-    public function controller(): PrototypeController
-    {
-        return new PrototypeController($this->pageService(), $this->requestMapper, $this->renderer);
-    }
-
-    private function pageService(): PrototypePageApplicationService
-    {
-        return new PrototypePageApplicationService(
-            $this->setupService,
-            $this->accessPolicy,
-            $this->rateLimitPolicy,
-            $this->csrfPolicy,
-            $this->saveIntentPolicy,
-            $this->adminAuthService,
-            $this->wizardService,
-            $this->sessionStore,
-            $this->adminSessionStore,
-            $this->draftStore,
-            $this->discovery,
-            $this->runtimeSummaryReader,
-            $this->runtimeLogReader,
-            $this->fileAliasInventoryReader,
-            $this->maintenanceCommandService,
-            $this->expectedSetupCode,
-            $this->text
-        );
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\ConfigDiscovery;
-use Totman\RuntimeUi\Config\DiscoveryResult;
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-use Totman\RuntimeUi\Http\FirstRunRequest;
-use Totman\RuntimeUi\Security\AdminSessionStore;
-use Totman\RuntimeUi\Security\PrototypeCsrfPolicy;
-use Totman\RuntimeUi\Security\PrototypeRateLimitPolicy;
-use Totman\RuntimeUi\Security\PrototypeSaveIntentPolicy;
-use Totman\RuntimeUi\Security\SetupAccessPolicy;
-use Totman\RuntimeUi\Security\SetupAccessResult;
-use Totman\RuntimeUi\Security\SetupSessionStore;
-use Totman\RuntimeUi\Setup\FirstRunStepCatalog;
-
-final class PrototypePageApplicationService
-{
-    public function __construct(
-        private readonly FirstRunSetupService $setupService = new FirstRunSetupService(),
-        private readonly SetupAccessPolicy $accessPolicy = new SetupAccessPolicy(),
-        private readonly PrototypeRateLimitPolicy $rateLimitPolicy = new PrototypeRateLimitPolicy(),
-        private readonly PrototypeCsrfPolicy $csrfPolicy = new PrototypeCsrfPolicy(),
-        private readonly PrototypeSaveIntentPolicy $saveIntentPolicy = new PrototypeSaveIntentPolicy(),
-        private readonly AdminAuthApplicationService $adminAuthService = new AdminAuthApplicationService(),
-        private readonly FirstRunWizardApplicationService $wizardService = new FirstRunWizardApplicationService(),
-        private readonly SetupSessionStore $sessionStore = new SetupSessionStore(),
-        private readonly AdminSessionStore $adminSessionStore = new AdminSessionStore(),
-        private readonly FirstRunDraftStore $draftStore = new FirstRunDraftStore(),
-        private readonly ConfigDiscovery $discovery = new ConfigDiscovery(),
-        private readonly RuntimeSummaryReader $runtimeSummaryReader = new RuntimeSummaryReader(),
-        private readonly RuntimeLogReader $runtimeLogReader = new RuntimeLogReader(),
-        private readonly FileAliasInventoryReader $fileAliasInventoryReader = new FileAliasInventoryReader(),
-        private readonly MaintenanceCommandService $maintenanceCommandService = new MaintenanceCommandService(),
-        private readonly string $expectedSetupCode = '',
-        private readonly RuntimeUiTextCatalog $text = new RuntimeUiTextCatalog(),
-    ) {
-    }
-
-    public function handle(string $stateDir, DeploymentContext $context, FirstRunRequest $request): PrototypePageResult
-    {
-        $sessionResult = $this->sessionStore->loadResult();
-        $adminSessionResult = $this->adminSessionStore->loadResult();
-        $draftResult = $this->draftStore->loadResult();
-        $session = $sessionResult->state();
-        $adminSession = $adminSessionResult->state();
-        $draft = $draftResult->state();
-        $stateNotice = $this->notice($sessionResult->notice(), $adminSessionResult->notice(), $draftResult->notice());
-        $discovered = $this->discovery->discover($stateDir);
-        $draft = $this->discardProductCompleteDraft($draft, $discovered);
-        $adminAuth = $this->adminAuthService->preview($stateDir, $discovered, $adminSession, $this->expectedSetupCode)->view();
-        $csrfToken = $this->csrfPolicy->ensureToken($session);
-        $adminInspection = $this->adminInspection($stateDir, $context, $adminAuth);
-
-        $rateLimit = $this->rateLimitPolicy->evaluate($request, $stateDir, time());
-        if (!$rateLimit->allowed()) {
-            $this->sessionStore->save($session);
-            return new PrototypePageResult($this->setupService->preview($stateDir, $context, $stateNotice, draft: $draft), $rateLimit, $csrfToken, $adminAuth, $adminInspection);
-        }
-
-        $csrf = $this->csrfPolicy->evaluate($request, $session);
-        if (!$csrf->allowed()) {
-            $this->sessionStore->save($session);
-            return new PrototypePageResult($this->setupService->preview($stateDir, $context, $stateNotice, draft: $draft), $csrf, $csrfToken, $adminAuth, $adminInspection);
-        }
-
-        if ($request->isAuthAction()) {
-            $authResult = $this->adminAuthService->handle($stateDir, $discovered, $request, $this->expectedSetupCode, $session, $adminSession);
-            $this->sessionStore->save($session);
-            $this->adminSessionStore->save($adminSession);
-
-            return new PrototypePageResult(
-                $this->setupService->preview($stateDir, $context, $this->notice($stateNotice, $authResult->notice()), draft: $draft),
-                $authResult->access(),
-                $csrfToken,
-                $authResult->view(),
-                $this->adminInspection($stateDir, $context, $authResult->view())
-            );
-        }
-
-        if (!$request->isStateChanging() && $adminAuth->showLogin()) {
-            $this->sessionStore->save($session);
-            $this->adminSessionStore->save($adminSession);
-
-            return new PrototypePageResult(
-                $this->setupService->preview($stateDir, $context, $stateNotice, draft: $draft),
-                SetupAccessResult::allow(),
-                $csrfToken,
-                $adminAuth,
-                $adminInspection
-            );
-        }
-
-        $access = $this->accessPolicy->evaluate($discovered, $request, $this->expectedSetupCode, $session, $adminSession);
-        $this->sessionStore->save($session);
-        $this->adminSessionStore->save($adminSession);
-        if (!$access->allowed()) {
-            return new PrototypePageResult($this->setupService->preview($stateDir, $context, $stateNotice, draft: $draft), $access, $csrfToken, $adminAuth, $adminInspection);
-        }
-
-        if ($request->isAdminCommand()) {
-            $inspection = $this->adminInspection(
-                $stateDir,
-                $context,
-                $adminAuth,
-                $this->maintenanceCommandService->handle(
-                    $request->adminCommandKey(),
-                    $request->adminCommandPhase(),
-                    $adminSession,
-                    csrfValid: true,
-                    rateLimitAllowed: true,
-                    confirmed: $request->confirmAdminCommand(),
-                    now: time(),
-                    targetAlias: $request->adminCommandTargetAlias(),
-                    stateDir: $stateDir
-                )
-            );
-
-            return new PrototypePageResult(
-                $this->setupService->preview($stateDir, $context, $stateNotice, draft: $draft),
-                $access,
-                $csrfToken,
-                $adminAuth,
-                $inspection
-            );
-        }
-
-        if ($request->isDiscardDraft()) {
-            $this->draftStore->clear();
-            $emptyDraft = new FirstRunDraftState();
-
-            return new PrototypePageResult(
-                $this->setupService->preview($stateDir, $context, $this->text->get('notice.draft_discarded'), draft: $emptyDraft),
-                $access,
-                $csrfToken,
-                $adminAuth,
-                $adminInspection
-            );
-        }
-
-        if ($request->isUpdateDraft() || $request->isNextStep() || $request->isPreviousStep()) {
-            $wizard = $this->wizardService->handle($stateDir, $context, $this->wizardCommand($request), $draft);
-            $this->saveDraftIfChanged($wizard);
-
-            return new PrototypePageResult($wizard->view(), $access, $csrfToken, $adminAuth, $adminInspection);
-        }
-
-        $saveIntent = $this->saveIntentPolicy->evaluate($request);
-        if (!$saveIntent->allowed()) {
-            return new PrototypePageResult($this->setupService->preview($stateDir, $context, $stateNotice, draft: $draft), $saveIntent, $csrfToken, $adminAuth, $adminInspection);
-        }
-
-        if ($request->isRuntimeSave()) {
-            $wizard = $this->wizardService->handle($stateDir, $context, FirstRunWizardCommand::saveRuntime(), $draft);
-
-            if ($wizard->runtimeSaved() && $this->text->productMode()) {
-                $this->draftStore->clear();
-                $postSaveDiscovered = $this->discovery->discover($stateDir);
-                $postSaveAuth = $this->adminAuthService->preview($stateDir, $postSaveDiscovered, $adminSession, $this->expectedSetupCode)->view();
-
-                return new PrototypePageResult(
-                    $this->setupService->preview($stateDir, $context, $this->text->get('notice.config_saved'), draft: new FirstRunDraftState()),
-                    $access,
-                    $csrfToken,
-                    $postSaveAuth,
-                    $this->adminInspection($stateDir, $context, $postSaveAuth)
-                );
-            }
-
-            $this->saveDraftIfChanged($wizard);
-
-            return new PrototypePageResult($wizard->view(), $access, $csrfToken, $adminAuth, $adminInspection);
-        }
-
-        $wizard = $this->wizardService->handle($stateDir, $context, FirstRunWizardCommand::preview(), $draft);
-
-        return new PrototypePageResult($wizard->view(), $access, $csrfToken, $adminAuth, $adminInspection);
-    }
-
-    private function discardProductCompleteDraft(FirstRunDraftState $draft, DiscoveryResult $discovered): FirstRunDraftState
-    {
-        if (!$this->text->productMode() || !$draft->dirty() || $draft->activeStep() !== FirstRunStepCatalog::COMPLETE) {
-            return $draft;
-        }
-
-        $this->draftStore->clear();
-        if ($discovered->mainLiveStatus()->loaded() || $discovered->recipientLiveStatus()->loaded()) {
-            return new FirstRunDraftState([], FirstRunStepCatalog::PREFLIGHT, time(), true);
-        }
-
-        return new FirstRunDraftState();
-    }
-
-    private function wizardCommand(FirstRunRequest $request): FirstRunWizardCommand
-    {
-        if ($request->isNextStep()) {
-            return FirstRunWizardCommand::nextStep($request->input());
-        }
-
-        if ($request->isPreviousStep()) {
-            return FirstRunWizardCommand::previousStep($request->input());
-        }
-
-        return FirstRunWizardCommand::updateDraft($request->input());
-    }
-
-    private function saveDraftIfChanged(FirstRunWizardResult $wizard): void
-    {
-        if ($wizard->draftChanged()) {
-            $this->draftStore->save($wizard->draft());
-        }
-    }
-
-    private function notice(string ...$notices): string
-    {
-        $notices = array_values(array_filter($notices, static fn (string $notice): bool => $notice !== ''));
-
-        return implode(' ', $notices);
-    }
-
-    private function adminInspection(
-        string $stateDir,
-        DeploymentContext $context,
-        AdminAuthViewModel $adminAuth,
-        ?MaintenanceCommandResult $maintenanceCommand = null,
-    ): AdminInspectionViewModel {
-        if (!$adminAuth->showSignedIn()) {
-            return AdminInspectionViewModel::unavailable('Status is available after admin sign-in.');
-        }
-
-        return AdminInspectionViewModel::fromReadModels(
-            $this->runtimeSummaryReader->read($stateDir, $context),
-            $this->runtimeLogReader->read($stateDir, $context),
-            $this->fileAliasInventoryReader->read($stateDir, $context),
-            $maintenanceCommand
-        );
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Security\SetupAccessResult;
-
-final class PrototypePageResult
-{
-    public function __construct(
-        private readonly FirstRunViewModel $view,
-        private readonly SetupAccessResult $access,
-        private readonly string $csrfToken,
-        private readonly AdminAuthViewModel $adminAuth,
-        private readonly AdminInspectionViewModel $adminInspection,
-    ) {
-    }
-
-    public function view(): FirstRunViewModel
-    {
-        return $this->view;
-    }
-
-    public function access(): SetupAccessResult
-    {
-        return $this->access;
-    }
-
-    public function csrfToken(): string
-    {
-        return $this->csrfToken;
-    }
-
-    public function adminAuth(): AdminAuthViewModel
-    {
-        return $this->adminAuth;
-    }
-
-    public function adminInspection(): AdminInspectionViewModel
-    {
-        return $this->adminInspection;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class RecipientConfigDraft
-{
-    /**
-     * @param array<string, mixed> $files
-     * @param array<string, mixed> $messages
-     * @param array<int, mixed> $recipients
-     */
-    public function __construct(
-        private readonly array $files,
-        private readonly array $messages,
-        private readonly array $recipients,
-    ) {
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function files(): array
-    {
-        return $this->files;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function messages(): array
-    {
-        return $this->messages;
-    }
-
-    /**
-     * @return array<int, mixed>
-     */
-    public function recipients(): array
-    {
-        return $this->recipients;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\DiscoveryResult;
-
-final class RecipientConfigDraftBuilder
-{
-    public function build(FirstRunInput $input, DiscoveryResult $discovered): RecipientConfigDraft
-    {
-        $files = $this->topLevelArray($discovered, 'files');
-        $messages = $this->topLevelArray($discovered, 'messages');
-        $recipients = $this->topLevelArray($discovered, 'recipients');
-
-        if ($input->downloadAlias() !== '' && $input->downloadPath() !== '') {
-            $files[$input->downloadAlias()] = $input->downloadPath();
-        }
-
-        if ($input->messageSubject() !== '' || $input->messageBody() !== '') {
-            $messages['default'] = [
-                'subject' => $this->value($input->messageSubject(), $messages['default'] ?? [], 'subject', '[totman] Message'),
-                'body' => $this->value($input->messageBody(), $messages['default'] ?? [], 'body', 'Hello {RECIPIENT_NAME}'),
-            ];
-            if ($input->downloadSingleUse()) {
-                $messages['default']['single_use_notice'] = 'Please save this file straight away. This download link works only once.';
-            }
-        }
-
-        if ($input->recipientName() !== '' || $input->recipientMailbox() !== '') {
-            $row = [
-                $input->recipientName(),
-                $input->recipientMailbox(),
-                'default',
-            ];
-            if ($input->downloadAlias() !== '' && $input->downloadPath() !== '') {
-                if ($input->downloadSingleUse()) {
-                    $row[3] = [];
-                    $row[4] = [$input->downloadAlias()];
-                } else {
-                    $row[3] = [$input->downloadAlias()];
-                }
-            }
-            $recipients = [$row];
-        }
-
-        return new RecipientConfigDraft($files, $messages, $recipients);
-    }
-
-    /**
-     * @return array<mixed>
-     */
-    private function topLevelArray(DiscoveryResult $discovered, string $key): array
-    {
-        $value = $discovered->liveRecipientConfig()[$key] ?? $discovered->distRecipientConfig()[$key] ?? [];
-
-        return is_array($value) ? $value : [];
-    }
-
-    /**
-     * @param array<string, mixed> $current
-     */
-    private function value(string $inputValue, array $current, string $key, mixed $default): mixed
-    {
-        if ($inputValue !== '') {
-            return $inputValue;
-        }
-
-        if (!array_key_exists($key, $current)) {
-            return $default;
-        }
-
-        $value = $current[$key];
-        if (is_array($value)) {
-            return $this->firstStringValue($value) !== '' ? $value : $default;
-        }
-
-        return $value === '' ? $default : $value;
-    }
-
-    private function firstStringValue(mixed $value): string
-    {
-        if (is_string($value)) {
-            return $value;
-        }
-
-        if (is_array($value)) {
-            foreach ($value as $item) {
-                if (is_string($item)) {
-                    return $item;
-                }
-            }
-        }
-
-        return '';
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-use Totman\RuntimeUi\Security\SecretRedactor;
-
-final class RuntimeLogReader
-{
-    private const MAX_LINES = 200;
-    private const MAX_BYTES = 65536;
-
-    public function __construct(
-        private readonly RuntimeSummaryReader $summaryReader = new RuntimeSummaryReader(),
-        private readonly SecretRedactor $redactor = new SecretRedactor(),
-    ) {
-    }
-
-    public function read(string $stateDir, DeploymentContext $context): RuntimeLogTail
-    {
-        $summary = $this->summaryReader->read($stateDir, $context);
-        $path = $summary->paths()['log_file'] ?? rtrim($stateDir, '/') . '/totman.log';
-
-        if (!is_file($path)) {
-            return new RuntimeLogTail($path, 'missing', 'Log file is not present yet.', [], 0);
-        }
-
-        if (!is_readable($path)) {
-            return new RuntimeLogTail($path, 'unavailable', 'Log file exists but is not readable.', [], 0);
-        }
-
-        $size = filesize($path);
-        if ($size === false) {
-            return new RuntimeLogTail($path, 'unavailable', 'Log file size could not be read.', [], 0);
-        }
-
-        $bytes = min($size, self::MAX_BYTES);
-        $handle = fopen($path, 'rb');
-        if ($handle === false) {
-            return new RuntimeLogTail($path, 'unavailable', 'Log file could not be opened.', [], 0);
-        }
-
-        try {
-            if ($size > $bytes) {
-                fseek($handle, -$bytes, SEEK_END);
-            }
-
-            $content = stream_get_contents($handle);
-        } finally {
-            fclose($handle);
-        }
-
-        if ($content === false) {
-            return new RuntimeLogTail($path, 'unavailable', 'Log file could not be read.', [], 0);
-        }
-
-        if ($size > $bytes) {
-            $firstNewline = strpos($content, "\n");
-            if ($firstNewline !== false) {
-                $content = substr($content, $firstNewline + 1);
-            }
-        }
-
-        $lines = preg_split('/\R/', rtrim($content, "\r\n"));
-        if ($lines === false || $lines === ['']) {
-            $lines = [];
-        }
-
-        $lines = array_slice($lines, -self::MAX_LINES);
-        $lines = array_map(fn (string $line): string => $this->redactor->redactText($line), $lines);
-
-        return new RuntimeLogTail($path, 'loaded', 'Log entries loaded.', $lines, $bytes);
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class RuntimeLogTail
-{
-    /**
-     * @param list<string> $lines
-     */
-    public function __construct(
-        private readonly string $path,
-        private readonly string $status,
-        private readonly string $message,
-        private readonly array $lines,
-        private readonly int $bytesRead,
-    ) {
-    }
-
-    public function path(): string
-    {
-        return $this->path;
-    }
-
-    public function status(): string
-    {
-        return $this->status;
-    }
-
-    public function message(): string
-    {
-        return $this->message;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function lines(): array
-    {
-        return $this->lines;
-    }
-
-    public function bytesRead(): int
-    {
-        return $this->bytesRead;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-final class RuntimeStateFileStatus
-{
-    public function __construct(
-        private readonly string $path,
-        private readonly string $status,
-        private readonly string $message,
-    ) {
-    }
-
-    public function path(): string
-    {
-        return $this->path;
-    }
-
-    public function status(): string
-    {
-        return $this->status;
-    }
-
-    public function message(): string
-    {
-        return $this->message;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Preflight\PreflightResult;
-
-final class RuntimeSummary
-{
-    /**
-     * @param array<string, string> $paths
-     * @param array<string, mixed> $redactedConfig
-     * @param list<string> $issues
-     */
-    public function __construct(
-        private readonly string $mode,
-        private readonly string $mainSource,
-        private readonly string $recipientSource,
-        private readonly PreflightResult $preflight,
-        private readonly RuntimeStateFileStatus $stateFile,
-        private readonly array $paths,
-        private readonly array $redactedConfig,
-        private readonly array $issues,
-    ) {
-    }
-
-    public function mode(): string
-    {
-        return $this->mode;
-    }
-
-    public function mainSource(): string
-    {
-        return $this->mainSource;
-    }
-
-    public function recipientSource(): string
-    {
-        return $this->recipientSource;
-    }
-
-    public function preflight(): PreflightResult
-    {
-        return $this->preflight;
-    }
-
-    public function stateFile(): RuntimeStateFileStatus
-    {
-        return $this->stateFile;
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function paths(): array
-    {
-        return $this->paths;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function redactedConfig(): array
-    {
-        return $this->redactedConfig;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function issues(): array
-    {
-        return $this->issues;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Config\ConfigDiscovery;
-use Totman\RuntimeUi\Config\MainConfigImporter;
-use Totman\RuntimeUi\Config\RecipientConfigImporter;
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-use Totman\RuntimeUi\Preflight\FirstRunPreflight;
-use Totman\RuntimeUi\Security\SecretRedactor;
-
-final class RuntimeSummaryReader
-{
-    public function __construct(
-        private readonly ConfigDiscovery $discovery = new ConfigDiscovery(),
-        private readonly MainConfigImporter $mainImporter = new MainConfigImporter(),
-        private readonly RecipientConfigImporter $recipientImporter = new RecipientConfigImporter(),
-        private readonly FirstRunPreflight $preflight = new FirstRunPreflight(),
-        private readonly SecretRedactor $redactor = new SecretRedactor(),
-    ) {
-    }
-
-    public function read(string $stateDir, DeploymentContext $context): RuntimeSummary
-    {
-        $discovered = $this->discovery->discover($stateDir);
-        $main = $this->mainImporter->import($discovered, $context);
-        $recipients = $this->recipientImporter->import($discovered);
-        $preflight = $this->preflight->check($main, $recipients, $context);
-        $paths = $this->paths($stateDir, $discovered->effectiveMainConfig());
-
-        return new RuntimeSummary(
-            $discovered->mode(),
-            $discovered->mainSource(),
-            $discovered->recipientSource(),
-            $preflight,
-            $this->stateFileStatus($paths['state_file']),
-            $paths,
-            $this->redactor->redactArray($discovered->effectiveMainConfig()),
-            $discovered->issues()
-        );
-    }
-
-    /**
-     * @param array<string, mixed> $config
-     * @return array<string, string>
-     */
-    private function paths(string $stateDir, array $config): array
-    {
-        $stateRoot = $this->stringValue($config['state_dir'] ?? null, $stateDir);
-        $stateFile = $this->stringValue($config['state_file'] ?? null, 'totman.json');
-        $downloadBaseDir = $this->stringValue($config['download_base_dir'] ?? null, $stateRoot . '/downloads');
-        $logFile = $this->stringValue($config['log_file'] ?? null, '');
-        if ($logFile === '') {
-            $logFile = $this->stringValue($config['log_file_name'] ?? null, 'totman.log');
-        }
-
-        return [
-            'state_dir' => $stateRoot,
-            'state_file' => $this->resolvePath($stateRoot, $stateFile),
-            'download_base_dir' => $this->resolvePath($stateRoot, $downloadBaseDir),
-            'log_file' => $this->resolvePath($stateRoot, $logFile),
-        ];
-    }
-
-    private function stateFileStatus(string $path): RuntimeStateFileStatus
-    {
-        if (!is_file($path)) {
-            return new RuntimeStateFileStatus($path, 'missing', 'State file is not present yet.');
-        }
-
-        if (!is_readable($path)) {
-            return new RuntimeStateFileStatus($path, 'unavailable', 'State file exists but is not readable.');
-        }
-
-        $content = file_get_contents($path);
-        if ($content === false) {
-            return new RuntimeStateFileStatus($path, 'unavailable', 'State file could not be read.');
-        }
-
-        if (trim($content) === '') {
-            return new RuntimeStateFileStatus($path, 'corrupt', 'State file is empty.');
-        }
-
-        try {
-            $decoded = json_decode($content, true, flags: JSON_THROW_ON_ERROR);
-        } catch (\JsonException) {
-            return new RuntimeStateFileStatus($path, 'corrupt', 'State file is not valid JSON.');
-        }
-
-        if (!is_array($decoded)) {
-            return new RuntimeStateFileStatus($path, 'corrupt', 'State file does not contain an object.');
-        }
-
-        return new RuntimeStateFileStatus($path, 'loaded', 'State file is readable.');
-    }
-
-    private function resolvePath(string $baseDir, string $path): string
-    {
-        if ($path === '') {
-            return $baseDir;
-        }
-
-        if (str_starts_with($path, '/')) {
-            return $path;
-        }
-
-        return rtrim($baseDir, '/') . '/' . ltrim($path, '/');
-    }
-
-    private function stringValue(mixed $value, string $fallback): string
-    {
-        if (!is_string($value) || $value === '') {
-            return $fallback;
-        }
-
-        return $value;
-    }
-}
-
-namespace Totman\RuntimeUi\Application;
-
-use Totman\RuntimeUi\Http\RuntimeUiMode;
-
-final class RuntimeUiTextCatalog
-{
-    public function __construct(private readonly string $runtimeUiMode = RuntimeUiMode::PROTOTYPE)
-    {
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function all(): array
-    {
-        $text = [
-            'page.title' => 'totman runtime UI',
-            'product.name' => 'totman',
-            'header.language' => 'Language',
-            'header.toggle_theme' => 'Toggle theme',
-            'footer.label' => 'Footer',
-            'footer.documentation' => 'Documentation',
-            'modal.close' => 'Close',
-            'setup.initial_title' => 'Initial setup',
-            'setup.locked' => 'Setup is locked until a setup code is configured.',
-            'setup.locked_help' => 'Edit the deployed UI PHP file on the server and set TOTMAN_UI_SETUP_CODE near the top, then reload this page. Docker or managed hosting can set the same value in the server environment instead.',
-            'setup.code' => 'Setup Code',
-            'setup.code_help' => 'One-time code configured before first setup.',
-            'setup.username' => 'Username',
-            'setup.username_help' => 'Admin username for this browser UI.',
-            'setup.password' => 'Password',
-            'setup.password_help' => 'Minimum length: 10 characters.',
-            'setup.repeat_password' => 'Repeat Password',
-            'setup.repeat_password_help' => 'Password repetition catches typing mistakes.',
-            'password.show' => 'Show',
-            'password.hide' => 'Hide',
-            'setup.data_directory' => 'Data directory',
-            'setup.data_directory_default' => '/var/lib/totman',
-            'setup.data_directory_help' => 'Default runtime state directory. Set TOTMAN_STATE_DIR on the server before loading this page if another path is needed.',
-            'setup.create_access' => 'Create access',
-            'notice.draft_saved' => 'Prototype draft saved.',
-            'notice.draft_discarded' => 'Prototype draft discarded.',
-            'notice.config_saved' => 'Prototype config saved.',
-            'summary.state_dir' => 'State directory',
-            'summary.state_dir_hidden' => 'Configured runtime state directory',
-            'summary.mode' => 'Mode',
-            'summary.current_step' => 'Current step',
-            'summary.preflight' => 'Preflight',
-            'summary.path_fields' => 'Path fields',
-            'summary.paths_read_only' => 'Read-only in this context',
-            'summary.paths_editable' => 'Editable in this context',
-            'section.summary' => 'Summary',
-            'section.steps' => 'Setup steps',
-            'section.admin_access' => 'Admin access',
-            'section.runtime_inspection' => 'Status',
-            'section.wizard_step' => 'Wizard step',
-            'section.setup_details' => 'Setup details',
-            'nav.setup' => 'Setup',
-            'nav.status' => 'Status',
-            'nav.configuration' => 'Configuration',
-            'nav.recipients' => 'Recipients',
-            'nav.activity_log' => 'Activity Log',
-            'nav.maintenance' => 'Maintenance',
-            'subnav.system_status' => 'System status',
-            'subnav.preflight' => 'Preflight',
-            'subnav.cycle' => 'Cycle',
-            'subnav.general' => 'General',
-            'subnav.schedule' => 'Schedule',
-            'subnav.delivery' => 'Delivery',
-            'subnav.security_web' => 'Security & Web',
-            'subnav.paths' => 'Paths',
-            'subnav.recipients' => 'Recipients',
-            'subnav.messages' => 'Messages',
-            'subnav.files' => 'Files',
-            'subnav.log_entries' => 'Log entries',
-            'subnav.security' => 'Security',
-            'subnav.runtime_state' => 'Runtime state',
-            'subnav.logs' => 'Logs',
-            'subnav.file_aliases' => 'File aliases',
-            'status.ready' => 'Ready. The current configuration passes the system check.',
-            'status.warning' => 'Ready with warnings. Review the system check before relying on automation.',
-            'status.not_ready' => 'Not ready. Fix the blocking items before totman can run safely.',
-            'status.no_issues' => 'No blocking issues are currently reported.',
-            'status.no_cycle' => 'No cycle has run yet.',
-            'advanced.details' => 'Advanced technical details',
-            'configuration.source_help' => 'These values come from the effective runtime configuration. Editing remains available through the setup/configuration flow.',
-            'configuration.no_values' => 'No values are available in this section yet.',
-            'recipients.configured_help' => 'Recipient records are loaded from the effective recipient configuration.',
-            'recipients.messages_help' => 'Message templates are loaded from the effective recipient configuration.',
-            'admin.unavailable_after_signin' => 'Status is available after admin sign-in.',
-            'admin.config_blocked' => 'Admin access is unavailable while configuration discovery is blocked.',
-            'admin.private_config_blocked' => 'Admin access is unavailable because the private UI config is unreadable or invalid.',
-            'admin.disabled' => 'Browser administration is disabled. Set web_ui_enabled to true in the effective runtime configuration, then reload this page.',
-            'admin.disabled_summary' => 'Browser administration is currently unavailable.',
-            'admin.reenter_password' => 'Re-enter password',
-            'admin.sign_in' => 'Sign in',
-            'admin.sign_out' => 'Sign out',
-            'admin.reauthenticate' => 'Reauthenticate',
-            'admin.username' => 'Username',
-            'admin.password' => 'Password',
-            'admin.username_help' => 'Use the admin name for this browser UI.',
-            'admin.password_help' => 'Enter the password for this browser UI account.',
-            'admin.new_password_help' => 'Use at least 10 characters. The password is stored only as a hash.',
-            'admin.repeat_password_help' => 'Repeat the password to avoid a typo.',
-            'admin.reauth_help' => 'Required before sensitive maintenance actions.',
-            'admin.setup_code' => 'Setup code',
-            'admin.create_username' => 'Admin username',
-            'admin.create_password' => 'Admin password',
-            'admin.repeat_password' => 'Repeat admin password',
-            'admin.create_access' => 'Create admin access',
-            'inspection.unavailable' => 'Status is unavailable.',
-            'inspection.summary' => 'System status',
-            'inspection.main_source' => 'Configuration source',
-            'inspection.recipient_source' => 'Recipient configuration',
-            'inspection.state_file' => 'Cycle data',
-            'inspection.paths' => 'Paths',
-            'inspection.log_tail' => 'Log entries',
-            'inspection.file_aliases' => 'Files',
-            'inspection.download_base_dir' => 'Download folder',
-            'inspection.no_aliases' => 'No file aliases configured.',
-            'inspection.alias_normal' => 'normal',
-            'inspection.alias_single_use' => 'single-use',
-            'inspection.alias_file' => 'file',
-            'inspection.file_present' => 'present',
-            'inspection.file_missing' => 'missing',
-            'inspection.unavailable_after_signin_intro' => 'Review status, logs, files, and guarded maintenance actions after sign-in.',
-            'danger.heading' => 'Danger Zone',
-            'danger.none_selected' => 'No maintenance command selected.',
-            'danger.status' => 'Status',
-            'danger.phase' => 'Phase',
-            'danger.effects' => 'Effects',
-            'danger.allowed' => 'Allowed',
-            'danger.blocked' => 'Blocked',
-            'danger.hmac_rotation' => 'HMAC rotation',
-            'danger.runtime_reset' => 'Runtime state',
-            'danger.log_clear' => 'Log',
-            'danger.file_alias_deletion' => 'File alias',
-            'danger.preview' => 'Preview',
-            'danger.execute' => 'Execute',
-            'danger.confirm_execute' => 'Confirm execution',
-            'danger.confirm_execute_help' => 'Required before this maintenance action can change runtime files or state.',
-            'danger.alias' => 'Alias',
-            'danger.alias_help' => 'Enter the file alias exactly as it appears in Files.',
-            'field.required' => 'Required',
-            'field.source' => 'Source',
-            'field.base_url.label' => 'Public URL',
-            'field.base_url.hint' => 'Enter the public HTTPS address where recipients will open totman links, for example https://example.com/totman.',
-            'field.mail_from.label' => 'Mail from',
-            'field.mail_from.hint' => 'Sender address for outgoing mail.',
-            'field.sendmail_path.label' => 'Sendmail path',
-            'field.sendmail_path.hint' => 'Enter the local mail command used by the server. In Docker or managed hosting this may already be fixed.',
-            'field.to_self.label' => 'Operator mailbox',
-            'field.to_self.hint' => 'Operator address for self-reminders, warnings, and setup diagnostics.',
-            'field.recipient_name.label' => 'Recipient name',
-            'field.recipient_name.hint' => 'Enter the name of the first person who should be contacted if the switch is triggered.',
-            'field.recipient_mailbox.label' => 'Recipient mailbox',
-            'field.recipient_mailbox.hint' => 'E-mail address plus optional display name.',
-            'field.message_subject.label' => 'Message subject',
-            'field.message_subject.hint' => 'Enter the subject line for the first escalation message.',
-            'field.message_body.label' => 'Message body',
-            'field.message_body.hint' => 'Write the message body the recipient should receive. You can adjust it later.',
-            'field.web_ui_enabled.label' => 'Enable Web UI after setup',
-            'field.web_ui_enabled.hint' => 'Controls browser administration after setup. Manual runtime operation remains independent.',
-            'field.download_alias.label' => 'Optional download alias',
-            'field.download_alias.hint' => 'Leave this empty unless the first recipient should receive a private download link.',
-            'field.download_path.label' => 'Optional download path',
-            'field.download_path.hint' => 'Enter the relative file path inside the download directory, for example documents/letter.pdf.',
-            'field.download_single_use.label' => 'Single-use download',
-            'field.download_single_use.hint' => 'Use this when the download link should stop working after the first successful access.',
-            'action.update_draft' => 'Save draft',
-            'action.discard_draft' => 'Discard draft',
-            'action.previous_step' => 'Back',
-            'action.next_step' => 'Continue',
-            'action.save_runtime' => 'Write runtime files',
-            'step.discover.description' => 'Inspect the runtime directory and decide whether setup can continue.',
-            'step.repair-blocking-problem.description' => 'Repair unreadable or broken configuration before browser setup continues.',
-            'step.create-or-import.description' => 'Start from templates or import the existing runtime files without changing them.',
-            'step.public-url.description' => 'Set the public HTTPS URL used in generated mail links.',
-            'step.mail-delivery.description' => 'Configure the sender identity and local mail hand-off command.',
-            'step.operator-mailbox.description' => 'Set the operator mailbox for warnings and setup diagnostics.',
-            'step.first-recipient.description' => 'Define the first recipient for escalation mail.',
-            'step.first-message.description' => 'Define the first recipient-specific escalation message.',
-            'step.optional-download.description' => 'Attach an optional private download to the first recipient.',
-            'step.review.description' => 'Review the values before the system check.',
-            'step.preflight.description' => 'Check the current draft before runtime files can be written.',
-            'step.save.description' => 'Write runtime files only after confirmation and passing preflight.',
-            'step.complete.description' => 'The first-run flow has finished.',
-            'wizard.setup_code' => 'Setup code',
-            'wizard.setup_code_help' => 'Enter the setup code from the server environment to authorise setup changes.',
-            'wizard.no_fields' => 'No fields are required on this step.',
-            'wizard.review' => 'Review',
-            'wizard.preflight' => 'Preflight',
-            'wizard.save' => 'Save runtime files',
-            'wizard.save_notice' => 'Runtime files will only be written after this confirmation and a passing draft preflight.',
-            'wizard.confirm_save' => 'Confirm save',
-            'wizard.confirm_save_help' => 'Required before the UI writes the runtime configuration files.',
-            'wizard.complete' => 'First-run setup is complete.',
-            'review.enabled' => 'Enabled',
-            'review.disabled' => 'Disabled',
-            'review.not_set' => 'Not set',
-            'preflight.fix' => 'Fix',
-            'preflight.status_ok' => 'OK',
-            'preflight.status_warn' => 'WARN',
-            'preflight.status_fail' => 'FAIL',
-            'source.live' => 'Saved configuration',
-            'source.dist' => 'Template value',
-            'source.draft' => 'Entered here',
-            'source.generated' => 'Suggested value',
-            'source.missing' => 'Not set',
-        ];
-
-        if ($this->runtimeUiMode === RuntimeUiMode::PRODUCT) {
-            $text['page.title'] = 'totman runtime UI';
-            $text['notice.draft_saved'] = 'Draft saved.';
-            $text['notice.draft_discarded'] = 'Draft discarded.';
-            $text['notice.config_saved'] = 'Runtime config saved.';
-        }
-
-        return $text;
-    }
-
-    public function get(string $key): string
-    {
-        return $this->all()[$key] ?? $key;
-    }
-
-    public function productMode(): bool
-    {
-        return $this->runtimeUiMode === RuntimeUiMode::PRODUCT;
-    }
-
-    public function format(string $key, string $placeholder, string $value): string
-    {
-        return str_replace('{' . $placeholder . '}', $value, $this->get($key));
-    }
-
-    /**
-     * @return list<string>
-     */
-    public static function requiredKeys(): array
-    {
-        return [
-            'page.title',
-            'product.name',
-            'notice.draft_saved',
-            'notice.config_saved',
-            'section.summary',
-            'summary.state_dir_hidden',
-            'section.admin_access',
-            'section.runtime_inspection',
-            'header.language',
-            'header.toggle_theme',
-            'footer.documentation',
-            'setup.initial_title',
-            'setup.locked',
-            'setup.locked_help',
-            'setup.create_access',
-            'field.base_url.label',
-            'field.message_body.hint',
-            'action.save_runtime',
-            'inspection.summary',
-            'inspection.log_tail',
-            'inspection.file_aliases',
-            'inspection.alias_normal',
-            'inspection.alias_single_use',
-            'danger.runtime_reset',
-            'danger.file_alias_deletion',
-            'danger.confirm_execute',
-            'preflight.fix',
-        ];
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-final class ConfigCoverageResult
-{
-    /**
-     * @param array<string, string> $classified
-     * @param list<string> $unclassified
-     */
-    public function __construct(
-        private readonly array $classified,
-        private readonly array $unclassified,
-    ) {
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function classified(): array
-    {
-        return $this->classified;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function unclassified(): array
-    {
-        return $this->unclassified;
-    }
-
-    public function classification(string $key): ?string
-    {
-        return $this->classified[$key] ?? null;
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-use Totman\RuntimeUi\Contracts\RuntimeFileNames;
-
-final class ConfigDiscovery
-{
-    public function discover(string $stateDir): DiscoveryResult
-    {
-        $stateDir = rtrim($stateDir, DIRECTORY_SEPARATOR);
-        $issues = [];
-
-        if (!is_dir($stateDir)) {
-            $missingMainLive = ConfigFileStatus::missing('main-live', $stateDir . DIRECTORY_SEPARATOR . RuntimeFileNames::MAIN_LIVE);
-            $missingMainDist = ConfigFileStatus::missing('main-dist', $stateDir . DIRECTORY_SEPARATOR . RuntimeFileNames::MAIN_DIST);
-            $missingRecipientLive = ConfigFileStatus::missing('recipient-live', $stateDir . DIRECTORY_SEPARATOR . RuntimeFileNames::RECIPIENTS_LIVE);
-            $missingRecipientDist = ConfigFileStatus::missing('recipient-dist', $stateDir . DIRECTORY_SEPARATOR . RuntimeFileNames::RECIPIENTS_DIST);
-
-            return new DiscoveryResult($stateDir, $missingMainLive, $missingMainDist, $missingRecipientLive, $missingRecipientDist, [], [], [], [], 'none', 'none', [], null, [
-                DiscoveryIssue::blocked('state_dir_missing', 'state directory does not exist', $stateDir),
-            ]);
-        }
-
-        [$mainLiveStatus, $liveConfig, $liveIssue] = $this->loadConfig(
-            'main-live',
-            $stateDir . DIRECTORY_SEPARATOR . RuntimeFileNames::MAIN_LIVE
-        );
-        [$mainDistStatus, $distConfig, $distIssue] = $this->loadConfig(
-            'main-dist',
-            $stateDir . DIRECTORY_SEPARATOR . RuntimeFileNames::MAIN_DIST
-        );
-
-        foreach ([$liveIssue, $distIssue] as $issue) {
-            if ($issue !== null) {
-                $issues[] = $issue;
-            }
-        }
-
-        $mainSource = $this->sourceName($liveConfig !== null, $distConfig !== null);
-        $effective = array_replace($distConfig ?? [], $liveConfig ?? []);
-
-        $configuredRecipientsFile = $this->normaliseRuntimeFilename(
-            $effective['recipients_file'] ?? RuntimeFileNames::RECIPIENTS_LIVE
-        );
-
-        $recipientLivePath = $stateDir . DIRECTORY_SEPARATOR . $configuredRecipientsFile;
-        $recipientDistPath = $stateDir . DIRECTORY_SEPARATOR . RuntimeFileNames::RECIPIENTS_DIST;
-        [$recipientLiveStatus, $recipientLiveConfig, $recipientLiveIssue] = $this->loadConfig('recipient-live', $recipientLivePath);
-        [$recipientDistStatus, $recipientDistConfig, $recipientDistIssue] = $this->loadConfig('recipient-dist', $recipientDistPath);
-        foreach ([$recipientLiveIssue, $recipientDistIssue] as $issue) {
-            if ($issue !== null) {
-                $issues[] = $issue;
-            }
-        }
-
-        $recipientSource = $this->sourceName($recipientLiveStatus->loaded(), $recipientDistStatus->loaded());
-
-        if ($mainSource !== 'none' && $recipientSource === 'none') {
-            $issues[] = DiscoveryIssue::missing(
-                'recipients_missing',
-                'no live or template recipient configuration found',
-                $recipientLivePath
-            );
-        }
-
-        return new DiscoveryResult(
-            $stateDir,
-            $mainLiveStatus,
-            $mainDistStatus,
-            $recipientLiveStatus,
-            $recipientDistStatus,
-            $liveConfig ?? [],
-            $distConfig ?? [],
-            $recipientLiveConfig ?? [],
-            $recipientDistConfig ?? [],
-            $mainSource,
-            $recipientSource,
-            $effective,
-            $configuredRecipientsFile,
-            $issues,
-        );
-    }
-
-    /**
-     * @return array{0: ConfigFileStatus, 1: ?array<string, mixed>, 2: ?DiscoveryIssue}
-     */
-    private function loadConfig(string $role, string $path): array
-    {
-        if (!is_file($path)) {
-            return [ConfigFileStatus::missing($role, $path), null, null];
-        }
-
-        try {
-            $value = require $path;
-        } catch (\Throwable $error) {
-            return [
-                ConfigFileStatus::invalid($role, $path, 'cannot be loaded'),
-                null,
-                DiscoveryIssue::blocked('config_load_failed', 'config cannot be loaded: ' . basename($path), $path),
-            ];
-        }
-
-        if (!is_array($value)) {
-            return [
-                ConfigFileStatus::invalid($role, $path, 'does not return an array'),
-                null,
-                DiscoveryIssue::blocked('config_not_array', 'config does not return an array: ' . basename($path), $path),
-            ];
-        }
-
-        return [ConfigFileStatus::loadedFile($role, $path), $value, null];
-    }
-
-    private function sourceName(bool $hasLive, bool $hasDist): string
-    {
-        if ($hasLive && $hasDist) {
-            return 'live+dist';
-        }
-
-        if ($hasLive) {
-            return 'live';
-        }
-
-        if ($hasDist) {
-            return 'dist';
-        }
-
-        return 'none';
-    }
-
-    private function normaliseRuntimeFilename(mixed $value): string
-    {
-        if (!is_string($value) || $value === '') {
-            return RuntimeFileNames::RECIPIENTS_LIVE;
-        }
-
-        return basename($value);
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-final class ConfigFileStatus
-{
-    public function __construct(
-        private readonly string $role,
-        private readonly string $path,
-        private readonly bool $exists,
-        private readonly bool $loaded,
-        private readonly bool $validArray,
-        private readonly ?string $error = null,
-    ) {
-    }
-
-    public static function missing(string $role, string $path): self
-    {
-        return new self($role, $path, false, false, false);
-    }
-
-    public static function loadedFile(string $role, string $path): self
-    {
-        return new self($role, $path, true, true, true);
-    }
-
-    public static function invalid(string $role, string $path, string $error): self
-    {
-        return new self($role, $path, true, false, false, $error);
-    }
-
-    public function role(): string
-    {
-        return $this->role;
-    }
-
-    public function path(): string
-    {
-        return $this->path;
-    }
-
-    public function basename(): string
-    {
-        return basename($this->path);
-    }
-
-    public function exists(): bool
-    {
-        return $this->exists;
-    }
-
-    public function loaded(): bool
-    {
-        return $this->loaded;
-    }
-
-    public function validArray(): bool
-    {
-        return $this->validArray;
-    }
-
-    public function error(): ?string
-    {
-        return $this->error;
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-final class DiscoveryIssue
-{
-    public function __construct(
-        private readonly string $severity,
-        private readonly string $code,
-        private readonly string $message,
-        private readonly ?string $path = null,
-    ) {
-    }
-
-    public static function blocked(string $code, string $message, ?string $path = null): self
-    {
-        return new self('blocked', $code, $message, $path);
-    }
-
-    public static function missing(string $code, string $message, ?string $path = null): self
-    {
-        return new self('missing', $code, $message, $path);
-    }
-
-    public function severity(): string
-    {
-        return $this->severity;
-    }
-
-    public function code(): string
-    {
-        return $this->code;
-    }
-
-    public function message(): string
-    {
-        return $this->message;
-    }
-
-    public function path(): ?string
-    {
-        return $this->path;
-    }
-
-    public function toLegacyString(): string
-    {
-        return $this->severity . ': ' . $this->message;
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-final class DiscoveryResult
-{
-    /**
-     * @param array<string, mixed> $effectiveMainConfig
-     * @param list<DiscoveryIssue> $issues
-     */
-    public function __construct(
-        private readonly string $stateDir,
-        private readonly ConfigFileStatus $mainLiveStatus,
-        private readonly ConfigFileStatus $mainDistStatus,
-        private readonly ConfigFileStatus $recipientLiveStatus,
-        private readonly ConfigFileStatus $recipientDistStatus,
-        private readonly array $liveMainConfig,
-        private readonly array $distMainConfig,
-        private readonly array $liveRecipientConfig,
-        private readonly array $distRecipientConfig,
-        private readonly string $mainSource,
-        private readonly string $recipientSource,
-        private readonly array $effectiveMainConfig,
-        private readonly ?string $configuredRecipientsFile,
-        private readonly array $issues,
-    ) {
-    }
-
-    public function stateDir(): string
-    {
-        return $this->stateDir;
-    }
-
-    public function mode(): string
-    {
-        if ($this->hasBlockingIssue()) {
-            return 'blocked';
-        }
-
-        if ($this->mainSource === 'none') {
-            return 'fresh';
-        }
-
-        return 'existing';
-    }
-
-    public function mainSource(): string
-    {
-        return $this->mainSource;
-    }
-
-    public function mainLiveStatus(): ConfigFileStatus
-    {
-        return $this->mainLiveStatus;
-    }
-
-    public function mainDistStatus(): ConfigFileStatus
-    {
-        return $this->mainDistStatus;
-    }
-
-    public function recipientSource(): string
-    {
-        return $this->recipientSource;
-    }
-
-    public function recipientLiveStatus(): ConfigFileStatus
-    {
-        return $this->recipientLiveStatus;
-    }
-
-    public function recipientDistStatus(): ConfigFileStatus
-    {
-        return $this->recipientDistStatus;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function liveMainConfig(): array
-    {
-        return $this->liveMainConfig;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function distMainConfig(): array
-    {
-        return $this->distMainConfig;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function liveRecipientConfig(): array
-    {
-        return $this->liveRecipientConfig;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function distRecipientConfig(): array
-    {
-        return $this->distRecipientConfig;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function effectiveMainConfig(): array
-    {
-        return $this->effectiveMainConfig;
-    }
-
-    public function configuredRecipientsFile(): ?string
-    {
-        return $this->configuredRecipientsFile;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function issues(): array
-    {
-        return array_map(
-            static fn (DiscoveryIssue $issue): string => $issue->toLegacyString(),
-            $this->issues
-        );
-    }
-
-    /**
-     * @return list<DiscoveryIssue>
-     */
-    public function issueObjects(): array
-    {
-        return $this->issues;
-    }
-
-    private function hasBlockingIssue(): bool
-    {
-        foreach ($this->issues as $issue) {
-            if ($issue->severity() === 'blocked') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-final class ImportedField
-{
-    public function __construct(
-        private readonly string $key,
-        private readonly mixed $value,
-        private readonly string $source,
-        private readonly bool $critical,
-        private readonly bool $editable,
-        private readonly bool $placeholder,
-        private readonly bool $invalid,
-        private readonly bool $serverGeneratedAvailable = false,
-    ) {
-    }
-
-    public function key(): string
-    {
-        return $this->key;
-    }
-
-    public function value(): mixed
-    {
-        return $this->value;
-    }
-
-    public function source(): string
-    {
-        return $this->source;
-    }
-
-    public function critical(): bool
-    {
-        return $this->critical;
-    }
-
-    public function editable(): bool
-    {
-        return $this->editable;
-    }
-
-    public function placeholder(): bool
-    {
-        return $this->placeholder;
-    }
-
-    public function invalid(): bool
-    {
-        return $this->invalid;
-    }
-
-    public function serverGeneratedAvailable(): bool
-    {
-        return $this->serverGeneratedAvailable;
-    }
-
-    public function needsOperatorInput(): bool
-    {
-        return $this->critical && !$this->serverGeneratedAvailable && ($this->placeholder || $this->invalid || $this->source === 'missing');
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-final class MainConfigCoverage
-{
-    public const FIRST_RUN_WIZARD = 'first-run-wizard';
-    public const RUNTIME_DEFAULTED = 'runtime-defaulted';
-    public const READ_ONLY = 'read-only';
-    public const GENERATED = 'generated';
-    public const DEFERRED = 'deferred';
-
-    /** @var array<string, self::*> */
-    private const CLASSIFICATIONS = [
-        'base_url' => self::FIRST_RUN_WIZARD,
-        'state_dir' => self::FIRST_RUN_WIZARD,
-        'download_base_dir' => self::FIRST_RUN_WIZARD,
-        'sendmail_path' => self::FIRST_RUN_WIZARD,
-        'to_self' => self::FIRST_RUN_WIZARD,
-        'mail_from' => self::FIRST_RUN_WIZARD,
-        'web_ui_enabled' => self::FIRST_RUN_WIZARD,
-        'hmac_secret_hex' => self::GENERATED,
-        'lib_file' => self::READ_ONLY,
-        'l18n_dir_name' => self::READ_ONLY,
-        'lock_file' => self::READ_ONLY,
-        'log_file_name' => self::READ_ONLY,
-        'recipients_file' => self::READ_ONLY,
-        'state_file' => self::READ_ONLY,
-        'web_file' => self::READ_ONLY,
-        'web_css_file' => self::READ_ONLY,
-        'download_valid_days' => self::RUNTIME_DEFAULTED,
-        'download_rate_limit_enabled' => self::RUNTIME_DEFAULTED,
-        'download_rate_limit_max_requests' => self::RUNTIME_DEFAULTED,
-        'download_rate_limit_window_seconds' => self::RUNTIME_DEFAULTED,
-        'download_lease_seconds' => self::RUNTIME_DEFAULTED,
-        'check_interval_seconds' => self::RUNTIME_DEFAULTED,
-        'confirm_window_seconds' => self::RUNTIME_DEFAULTED,
-        'remind_every_seconds' => self::RUNTIME_DEFAULTED,
-        'escalate_grace_seconds' => self::RUNTIME_DEFAULTED,
-        'missed_cycles_before_fire' => self::RUNTIME_DEFAULTED,
-        'escalate_ack_enabled' => self::RUNTIME_DEFAULTED,
-        'escalate_ack_remind_every_seconds' => self::RUNTIME_DEFAULTED,
-        'escalate_ack_max_reminds' => self::RUNTIME_DEFAULTED,
-        'stealth_neutral_for_invalid' => self::RUNTIME_DEFAULTED,
-        'stealth_level_2_neutral_on_stale' => self::RUNTIME_DEFAULTED,
-        'show_success_details' => self::RUNTIME_DEFAULTED,
-        'rate_limit_enabled' => self::RUNTIME_DEFAULTED,
-        'rate_limit_dir' => self::RUNTIME_DEFAULTED,
-        'rate_limit_max_requests' => self::RUNTIME_DEFAULTED,
-        'rate_limit_window_seconds' => self::RUNTIME_DEFAULTED,
-        'ip_mode' => self::RUNTIME_DEFAULTED,
-        'trusted_proxies' => self::RUNTIME_DEFAULTED,
-        'trusted_proxy_header' => self::RUNTIME_DEFAULTED,
-        'operator_alert_interval_hours' => self::RUNTIME_DEFAULTED,
-        'mail_timezone' => self::RUNTIME_DEFAULTED,
-        'mail_date_format' => self::RUNTIME_DEFAULTED,
-        'mail_time_format' => self::RUNTIME_DEFAULTED,
-        'mail_datetime_format' => self::RUNTIME_DEFAULTED,
-        'log_mode' => self::RUNTIME_DEFAULTED,
-        'log_file' => self::RUNTIME_DEFAULTED,
-        'reply_to' => self::DEFERRED,
-        'subject_reminder' => self::DEFERRED,
-        'body_reminder' => self::DEFERRED,
-    ];
-
-    /**
-     * @param array<string, mixed> $config
-     */
-    public function check(array $config): ConfigCoverageResult
-    {
-        $classified = [];
-        $unclassified = [];
-
-        foreach (array_keys($config) as $key) {
-            $classification = self::CLASSIFICATIONS[$key] ?? null;
-            if ($classification === null) {
-                $unclassified[] = $key;
-                continue;
-            }
-
-            $classified[$key] = $classification;
-        }
-
-        return new ConfigCoverageResult($classified, $unclassified);
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-final class MainConfigImport
-{
-    /**
-     * @param array<string, ImportedField> $fields
-     */
-    public function __construct(private readonly array $fields)
-    {
-    }
-
-    /**
-     * @return array<string, ImportedField>
-     */
-    public function fields(): array
-    {
-        return $this->fields;
-    }
-
-    public function field(string $key): ImportedField
-    {
-        if (!isset($this->fields[$key])) {
-            throw new \InvalidArgumentException('Unknown imported field: ' . $key);
-        }
-
-        return $this->fields[$key];
-    }
-
-    /**
-     * @return list<ImportedField>
-     */
-    public function fieldsNeedingOperatorInput(): array
-    {
-        return array_values(array_filter(
-            $this->fields,
-            static fn (ImportedField $field): bool => $field->needsOperatorInput()
-        ));
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-use Totman\RuntimeUi\Contracts\RuntimeFileNames;
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-
-final class MainConfigImporter
-{
-    /** @var array<string, array{critical: bool, default?: mixed, server_generated?: bool}> */
-    private const FIELD_RULES = [
-        'base_url' => ['critical' => true],
-        'mail_from' => ['critical' => true],
-        'to_self' => ['critical' => true],
-        'sendmail_path' => ['critical' => true],
-        'hmac_secret_hex' => ['critical' => true, 'server_generated' => true],
-        'recipients_file' => ['critical' => true, 'default' => RuntimeFileNames::RECIPIENTS_LIVE],
-        'web_ui_enabled' => ['critical' => false, 'default' => false],
-        'state_dir' => ['critical' => false],
-        'download_base_dir' => ['critical' => false],
-        'lib_file' => ['critical' => false, 'default' => 'totman-lib.php'],
-        'web_file' => ['critical' => false, 'default' => 'totman.php'],
-        'web_css_file' => ['critical' => false, 'default' => 'totman.css'],
-    ];
-
-    public function import(DiscoveryResult $discovery, DeploymentContext $context): MainConfigImport
-    {
-        return $this->importResolved($context, static function (string $key, array $rule) use ($discovery): array {
-            return self::resolveValue($key, $rule, $discovery);
-        });
-    }
-
-    /**
-     * @param array<string, mixed> $config
-     */
-    public function importConfig(array $config, DeploymentContext $context, string $source = 'draft'): MainConfigImport
-    {
-        return $this->importResolved($context, static function (string $key, array $rule) use ($config, $source): array {
-            if (array_key_exists($key, $config)) {
-                return [$config[$key], $source];
-            }
-
-            if (array_key_exists('default', $rule)) {
-                return [$rule['default'], 'generated'];
-            }
-
-            return [null, 'missing'];
-        });
-    }
-
-    /**
-     * @param callable(string, array{critical: bool, default?: mixed, server_generated?: bool}): array{0: mixed, 1: string} $resolver
-     */
-    private function importResolved(DeploymentContext $context, callable $resolver): MainConfigImport
-    {
-        $fields = [];
-        foreach (self::FIELD_RULES as $key => $rule) {
-            [$value, $source] = $resolver($key, $rule);
-            $serverGenerated = (bool)($rule['server_generated'] ?? false);
-            $critical = $rule['critical'];
-            $pathField = in_array($key, ['state_dir', 'download_base_dir', 'lib_file', 'web_file', 'web_css_file'], true);
-
-            $fields[$key] = new ImportedField(
-                $key,
-                $value,
-                $source,
-                $critical,
-                !$pathField || !$context->pathFieldsAreReadOnly(),
-                $this->isPlaceholder($key, $value),
-                $this->isInvalid($key, $value),
-                $serverGenerated
-            );
-        }
-
-        return new MainConfigImport($fields);
-    }
-
-    /**
-     * @param array{critical: bool, default?: mixed, server_generated?: bool} $rule
-     * @return array{0: mixed, 1: string}
-     */
-    private static function resolveValue(string $key, array $rule, DiscoveryResult $discovery): array
-    {
-        if (array_key_exists($key, $discovery->liveMainConfig())) {
-            return [$discovery->liveMainConfig()[$key], 'live'];
-        }
-
-        if (array_key_exists($key, $discovery->distMainConfig())) {
-            return [$discovery->distMainConfig()[$key], 'dist'];
-        }
-
-        if (array_key_exists('default', $rule)) {
-            return [$rule['default'], 'generated'];
-        }
-
-        return [null, 'missing'];
-    }
-
-    private function isPlaceholder(string $key, mixed $value): bool
-    {
-        if ($value === null || $value === '') {
-            return true;
-        }
-
-        if (is_array($value)) {
-            if ($value === []) {
-                return true;
-            }
-
-            foreach ($value as $item) {
-                if ($this->isPlaceholder($key, $item)) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        if (!is_string($value)) {
-            return false;
-        }
-
-        $lower = strtolower($value);
-
-        return str_contains($lower, 'example.com')
-            || str_contains($lower, 'example.invalid')
-            || str_contains($lower, 'recipient@example')
-            || str_contains($lower, 'operator@example')
-            || str_contains($lower, 'change-me')
-            || str_contains($lower, 'localhost');
-    }
-
-    private function isInvalid(string $key, mixed $value): bool
-    {
-        return match ($key) {
-            'base_url' => !is_string($value) || !str_starts_with($value, 'https://'),
-            'mail_from' => !is_string($value) || !$this->hasValidMailbox($value),
-            'to_self' => !$this->hasValidMailbox($value),
-            'sendmail_path', 'recipients_file', 'state_dir', 'download_base_dir', 'lib_file', 'web_file', 'web_css_file' => !is_string($value) || $value === '',
-            'hmac_secret_hex' => !is_string($value) || preg_match('/^[a-f0-9]{64}$/i', $value) !== 1,
-            'web_ui_enabled' => !is_bool($value),
-            default => false,
-        };
-    }
-
-    private function hasValidMailbox(mixed $value): bool
-    {
-        if (is_string($value)) {
-            return $this->isMailbox($value);
-        }
-
-        if (!is_array($value)) {
-            return false;
-        }
-
-        foreach ($value as $item) {
-            if (!is_string($item) || !$this->isMailbox($item)) {
-                return false;
-            }
-        }
-
-        return $value !== [];
-    }
-
-    private function isMailbox(string $value): bool
-    {
-        $value = trim($value);
-        if ($value === '' || preg_match('/[\r\n]/', $value) === 1 || str_contains($value, ',') || str_contains($value, ';')) {
-            return false;
-        }
-
-        if (preg_match('/^<([^<>\s]+@[^<>\s]+)>$/', $value, $matches) === 1) {
-            return $this->isMailboxAddress($matches[1]);
-        }
-
-        if (preg_match('/^(?:"[^"\r\n<>]+"|[^"<>,;]+)\s+<([^<>\s]+@[^<>\s]+)>$/', $value, $matches) === 1) {
-            return $this->isMailboxAddress($matches[1]);
-        }
-
-        return $this->isMailboxAddress($value);
-    }
-
-    private function isMailboxAddress(string $address): bool
-    {
-        if (filter_var($address, FILTER_VALIDATE_EMAIL) !== false) {
-            return true;
-        }
-
-        return str_contains($address, '@')
-            && preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $address) === 1;
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-use Totman\RuntimeUi\Contracts\RuntimeFileNames;
-
-final class MainConfigWriter
-{
-    /** @var list<list<string>> */
-    private const GROUPS = [
-        [
-            'state_dir',
-            'lib_file',
-            'l18n_dir_name',
-            'lock_file',
-            'log_file_name',
-            'recipients_file',
-            'state_file',
-            'web_file',
-            'web_css_file',
-            'download_base_dir',
-        ],
-        [
-            'base_url',
-            'hmac_secret_hex',
-            'web_ui_enabled',
-        ],
-        [
-            'sendmail_path',
-            'mail_from',
-            'reply_to',
-            'to_self',
-        ],
-    ];
-
-    public function __construct(
-        private readonly string $generatedByLine = 'Generated by the totman runtime UI.'
-    ) {
-    }
-
-    /**
-     * @param array<string, mixed> $config
-     */
-    public function write(string $stateDir, array $config): string
-    {
-        if (!is_dir($stateDir)) {
-            throw new \RuntimeException('State directory does not exist: ' . $stateDir);
-        }
-
-        $path = rtrim($stateDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . RuntimeFileNames::MAIN_LIVE;
-        $tmpPath = $path . '.tmp.' . bin2hex(random_bytes(6));
-        $bytes = file_put_contents($tmpPath, $this->render($config), LOCK_EX);
-        if ($bytes === false) {
-            throw new \RuntimeException('Unable to write temporary config: ' . $tmpPath);
-        }
-
-        if (!rename($tmpPath, $path)) {
-            @unlink($tmpPath);
-            throw new \RuntimeException('Unable to replace config: ' . $path);
-        }
-
-        return $path;
-    }
-
-    /**
-     * @param array<string, mixed> $config
-     */
-    public function render(array $config): string
-    {
-        $ordered = $this->orderedConfig($config);
-        $lines = [
-            '<?php',
-            '',
-            '/**',
-            ' * ' . $this->generatedByLine,
-            ' * This file is runtime-compatible; template comments are not preserved.',
-            ' */',
-            '',
-            'declare(strict_types=1);',
-            '',
-            'return [',
-        ];
-
-        foreach ($ordered as $key => $value) {
-            $lines[] = "'" . $key . "' => " . $this->export($value) . ',';
-        }
-
-        $lines[] = '];';
-        $lines[] = '';
-
-        return implode("\n", $lines);
-    }
-
-    /**
-     * @param array<string, mixed> $config
-     * @return array<string, mixed>
-     */
-    private function orderedConfig(array $config): array
-    {
-        $ordered = [];
-        foreach (self::GROUPS as $group) {
-            foreach ($group as $key) {
-                if (array_key_exists($key, $config)) {
-                    $ordered[$key] = $config[$key];
-                }
-            }
-        }
-
-        $remaining = array_diff_key($config, $ordered);
-        ksort($remaining);
-
-        return $ordered + $remaining;
-    }
-
-    private function export(mixed $value): string
-    {
-        return var_export($value, true);
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-final class RecipientConfigCoverage
-{
-    /**
-     * @param array<string, mixed> $template
-     */
-    public function check(array $template): ConfigCoverageResult
-    {
-        $classified = [];
-        $unclassified = [];
-
-        foreach (['files', 'messages', 'recipients'] as $key) {
-            if (!array_key_exists($key, $template)) {
-                $unclassified[] = $key;
-                continue;
-            }
-
-            $classified[$key] = $key;
-        }
-
-        foreach (array_keys($template) as $key) {
-            if (isset($classified[$key])) {
-                continue;
-            }
-
-            $unclassified[] = $key;
-        }
-
-        $this->classifyMessageFeatures($template['messages'] ?? null, $classified, $unclassified);
-        $this->classifyRecipientFeatures($template['recipients'] ?? null, $classified, $unclassified);
-
-        return new ConfigCoverageResult($classified, array_values(array_unique($unclassified)));
-    }
-
-    /**
-     * @param array<string, string> $classified
-     * @param list<string> $unclassified
-     */
-    private function classifyMessageFeatures(mixed $messages, array &$classified, array &$unclassified): void
-    {
-        if (!is_array($messages) || $messages === []) {
-            $unclassified[] = 'messages.entries';
-            return;
-        }
-
-        $hasAckBlock = false;
-        $hasDownloadLinks = false;
-        $hasSingleUseNotice = false;
-
-        foreach ($messages as $message) {
-            if (!is_array($message)) {
-                continue;
-            }
-
-            $body = is_string($message['body'] ?? null) ? $message['body'] : '';
-            $hasAckBlock = $hasAckBlock || str_contains($body, '{ACK_BLOCK}');
-            $hasDownloadLinks = $hasDownloadLinks || str_contains($body, '{DOWNLOAD_LINKS}');
-            $hasSingleUseNotice = $hasSingleUseNotice || is_string($message['single_use_notice'] ?? null);
-        }
-
-        $this->classifyRequiredFeature($hasAckBlock, 'messages.ack_block', $classified, $unclassified);
-        $this->classifyRequiredFeature($hasDownloadLinks, 'messages.download_links', $classified, $unclassified);
-        $this->classifyRequiredFeature($hasSingleUseNotice, 'messages.single_use_notice', $classified, $unclassified);
-    }
-
-    /**
-     * @param array<string, string> $classified
-     * @param list<string> $unclassified
-     */
-    private function classifyRecipientFeatures(mixed $recipients, array &$classified, array &$unclassified): void
-    {
-        if (!is_array($recipients) || $recipients === []) {
-            $unclassified[] = 'recipients.entries';
-            return;
-        }
-
-        $hasNormalDownloads = false;
-        $hasSingleUseDownloads = false;
-
-        foreach ($recipients as $recipient) {
-            if (!is_array($recipient)) {
-                continue;
-            }
-
-            $hasNormalDownloads = $hasNormalDownloads || (isset($recipient[3]) && is_array($recipient[3]) && $recipient[3] !== []);
-            $hasSingleUseDownloads = $hasSingleUseDownloads || (isset($recipient[4]) && is_array($recipient[4]) && $recipient[4] !== []);
-        }
-
-        $this->classifyRequiredFeature($hasNormalDownloads, 'recipients.normal_downloads', $classified, $unclassified);
-        $this->classifyRequiredFeature($hasSingleUseDownloads, 'recipients.single_use_downloads', $classified, $unclassified);
-    }
-
-    /**
-     * @param array<string, string> $classified
-     * @param list<string> $unclassified
-     */
-    private function classifyRequiredFeature(bool $present, string $feature, array &$classified, array &$unclassified): void
-    {
-        if ($present) {
-            $classified[$feature] = 'template-feature';
-            return;
-        }
-
-        $unclassified[] = $feature;
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-final class RecipientConfigImport
-{
-    /**
-     * @param array<string, mixed> $files
-     * @param array<string, mixed> $messages
-     * @param array<int, mixed> $recipients
-     * @param array<string, string> $sources
-     * @param list<string> $issues
-     */
-    public function __construct(
-        private readonly array $files,
-        private readonly array $messages,
-        private readonly array $recipients,
-        private readonly array $sources,
-        private readonly array $issues,
-    ) {
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function files(): array
-    {
-        return $this->files;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function messages(): array
-    {
-        return $this->messages;
-    }
-
-    /**
-     * @return array<int, mixed>
-     */
-    public function recipients(): array
-    {
-        return $this->recipients;
-    }
-
-    public function sourceFor(string $key): string
-    {
-        return $this->sources[$key] ?? 'missing';
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function issues(): array
-    {
-        return $this->issues;
-    }
-
-    public function readyForFirstRecipient(): bool
-    {
-        return $this->issues === [];
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-final class RecipientConfigImporter
-{
-    public function import(DiscoveryResult $discovery): RecipientConfigImport
-    {
-        $sources = [];
-        $files = $this->resolveTopLevel('files', $discovery, $sources);
-        $messages = $this->resolveTopLevel('messages', $discovery, $sources);
-        $recipients = $this->resolveTopLevel('recipients', $discovery, $sources);
-
-        return $this->importResolved($files, $messages, $recipients, $sources);
-    }
-
-    /**
-     * @param array<string, mixed> $files
-     * @param array<string, mixed> $messages
-     * @param array<int, mixed> $recipients
-     */
-    public function importConfig(array $files, array $messages, array $recipients, string $source = 'draft'): RecipientConfigImport
-    {
-        return $this->importResolved($files, $messages, $recipients, [
-            'files' => $source,
-            'messages' => $source,
-            'recipients' => $source,
-        ]);
-    }
-
-    /**
-     * @param array<string, string> $sources
-     */
-    private function importResolved(mixed $files, mixed $messages, mixed $recipients, array $sources): RecipientConfigImport
-    {
-        $issues = [
-            ...$this->validateFiles($files),
-            ...$this->validateMessages($messages),
-            ...$this->validateRecipients($recipients, $messages, $files),
-        ];
-
-        return new RecipientConfigImport(
-            is_array($files) ? $files : [],
-            is_array($messages) ? $messages : [],
-            is_array($recipients) ? $recipients : [],
-            $sources,
-            $issues
-        );
-    }
-
-    /**
-     * @param array<string, string> $sources
-     */
-    private function resolveTopLevel(string $key, DiscoveryResult $discovery, array &$sources): mixed
-    {
-        if (array_key_exists($key, $discovery->liveRecipientConfig())) {
-            $sources[$key] = 'live';
-            return $discovery->liveRecipientConfig()[$key];
-        }
-
-        if (array_key_exists($key, $discovery->distRecipientConfig())) {
-            $sources[$key] = 'dist';
-            return $discovery->distRecipientConfig()[$key];
-        }
-
-        $sources[$key] = 'missing';
-        return null;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function validateFiles(mixed $files): array
-    {
-        if (!is_array($files)) {
-            return ['files must be an array'];
-        }
-
-        $issues = [];
-        foreach ($files as $alias => $path) {
-            if (!is_string($alias) || preg_match('/^[a-z0-9_-]+$/', $alias) !== 1) {
-                $issues[] = 'files contains an invalid alias';
-            }
-
-            if (!is_string($path) || trim($path) === '' || str_starts_with($path, '/')) {
-                $issues[] = "files alias {$alias} must use a non-empty relative path";
-            }
-        }
-
-        return $issues;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function validateMessages(mixed $messages): array
-    {
-        if (!is_array($messages) || $messages === []) {
-            return ['messages must contain at least one entry'];
-        }
-
-        $issues = [];
-        foreach ($messages as $key => $entry) {
-            if (!is_string($key) || preg_match('/^[a-z0-9_-]+$/', $key) !== 1) {
-                $issues[] = 'messages contains an invalid key';
-            }
-
-            if (!is_array($entry) || !is_string($entry['subject'] ?? null) || trim($entry['subject']) === '' || !is_string($entry['body'] ?? null) || trim($entry['body']) === '') {
-                $issues[] = "message {$key} must contain non-empty subject and body";
-                continue;
-            }
-
-            if (array_key_exists('single_use_notice', $entry) && !is_string($entry['single_use_notice'])) {
-                $issues[] = "message {$key} single_use_notice must be a string";
-            }
-        }
-
-        return $issues;
-    }
-
-    /**
-     * @param mixed $recipients
-     * @param mixed $messages
-     * @param mixed $files
-     * @return list<string>
-     */
-    private function validateRecipients(mixed $recipients, mixed $messages, mixed $files): array
-    {
-        if (!is_array($recipients) || $recipients === []) {
-            return ['recipients must contain at least one entry'];
-        }
-
-        $messageKeys = is_array($messages) ? array_keys($messages) : [];
-        $fileAliases = is_array($files) ? array_keys($files) : [];
-        $issues = [];
-
-        foreach ($recipients as $index => $row) {
-            if (!is_array($row) || array_is_list($row) === false || count($row) < 3) {
-                $issues[] = "recipient entry #{$index} must be a list with at least three values";
-                continue;
-            }
-
-            [$name, $mailbox, $messageKey] = $row;
-            if (!is_string($name) || trim($name) === '') {
-                $issues[] = "recipient entry #{$index} must contain a name";
-            }
-
-            if (!is_string($mailbox) || !$this->validMailbox($mailbox) || $this->placeholder($mailbox)) {
-                $issues[] = "recipient entry #{$index} must contain a real mailbox";
-            }
-
-            if (!is_string($messageKey) || !in_array($messageKey, $messageKeys, true)) {
-                $issues[] = "recipient entry #{$index} must reference an existing message";
-            }
-
-            foreach ([3 => 'normal', 4 => 'single-use'] as $field => $label) {
-                if (!array_key_exists($field, $row)) {
-                    continue;
-                }
-
-                if (!is_array($row[$field]) || array_is_list($row[$field]) === false) {
-                    $issues[] = "recipient entry #{$index} {$label} file aliases must be a list";
-                    continue;
-                }
-
-                foreach ($row[$field] as $alias) {
-                    if (!is_string($alias) || !in_array($alias, $fileAliases, true)) {
-                        $issues[] = "recipient entry #{$index} references an unknown {$label} file alias";
-                    }
-                }
-            }
-        }
-
-        return $issues;
-    }
-
-    private function validMailbox(string $mailbox): bool
-    {
-        $mailbox = trim($mailbox);
-        if ($mailbox === '' || preg_match('/[\r\n]/', $mailbox) === 1 || str_contains($mailbox, ',') || str_contains($mailbox, ';')) {
-            return false;
-        }
-
-        if (preg_match('/^<([^<>\s]+@[^<>\s]+)>$/', $mailbox, $match) === 1) {
-            return $this->validMailboxAddress($match[1]);
-        }
-
-        if (preg_match('/^(?:"[^"\r\n<>]+"|[^"<>,;]+)\s+<([^<>\s]+@[^<>\s]+)>$/', $mailbox, $match) === 1) {
-            return $this->validMailboxAddress($match[1]);
-        }
-
-        return $this->validMailboxAddress($mailbox);
-    }
-
-    private function validMailboxAddress(string $address): bool
-    {
-        if (filter_var($address, FILTER_VALIDATE_EMAIL) !== false) {
-            return true;
-        }
-
-        return str_contains($address, '@')
-            && preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $address) === 1;
-    }
-
-    private function placeholder(string $value): bool
-    {
-        $lower = strtolower($value);
-
-        return str_contains($lower, 'example.com')
-            || str_contains($lower, 'example.invalid')
-            || str_contains($lower, 'recipient@example');
-    }
-}
-
-namespace Totman\RuntimeUi\Config;
-
-use Totman\RuntimeUi\Contracts\RuntimeFileNames;
-
-final class RecipientConfigWriter
-{
-    public function __construct(
-        private readonly string $generatedByLine = 'Generated by the totman runtime UI.'
-    ) {
-    }
-
-    /**
-     * @param array<string, mixed> $files
-     * @param array<string, mixed> $messages
-     * @param array<int, mixed> $recipients
-     */
-    public function write(
-        string $stateDir,
-        array $files,
-        array $messages,
-        array $recipients,
-        string $fileName = RuntimeFileNames::RECIPIENTS_LIVE
-    ): string {
-        if (!is_dir($stateDir)) {
-            throw new \RuntimeException('State directory does not exist: ' . $stateDir);
-        }
-
-        $path = rtrim($stateDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . basename($fileName);
-        $tmpPath = $path . '.tmp.' . bin2hex(random_bytes(6));
-        $bytes = file_put_contents($tmpPath, $this->render($files, $messages, $recipients), LOCK_EX);
-        if ($bytes === false) {
-            throw new \RuntimeException('Unable to write temporary recipient config: ' . $tmpPath);
-        }
-
-        if (!rename($tmpPath, $path)) {
-            @unlink($tmpPath);
-            throw new \RuntimeException('Unable to replace recipient config: ' . $path);
-        }
-
-        return $path;
-    }
-
-    /**
-     * @param array<string, mixed> $files
-     * @param array<string, mixed> $messages
-     * @param array<int, mixed> $recipients
-     */
-    public function render(array $files, array $messages, array $recipients): string
-    {
-        $config = [
-            'files' => $files,
-            'messages' => $messages,
-            'recipients' => $recipients,
-        ];
-
-        $lines = [
-            '<?php',
-            '',
-            '/**',
-            ' * ' . $this->generatedByLine,
-            ' * This file is runtime-compatible; template comments are not preserved.',
-            ' */',
-            '',
-            'declare(strict_types=1);',
-            '',
-            'return [',
-        ];
-
-        foreach ($config as $key => $value) {
-            $lines[] = "'" . $key . "' => " . $this->export($value) . ',';
-        }
-
-        $lines[] = '];';
-        $lines[] = '';
-
-        return implode("\n", $lines);
-    }
-
-    private function export(mixed $value): string
-    {
-        return var_export($value, true);
-    }
-}
-
-namespace Totman\RuntimeUi\Contracts;
-
-final class RuntimeFileNames
-{
-    public const MAIN_LIVE = 'totman.inc.php';
-    public const MAIN_DIST = 'totman.inc.dist.php';
-    public const RECIPIENTS_LIVE = 'totman-recipients.php';
-    public const RECIPIENTS_DIST = 'totman-recipients.dist.php';
-
-    private function __construct()
-    {
-    }
-}
-
-namespace Totman\RuntimeUi\Deployment;
-
-final class DeploymentCapabilities
-{
-    /**
-     * @param list<string> $setupSources
-     */
-    public function __construct(
-        private readonly bool $pathFieldsReadOnly,
-        private readonly bool $browserSetupExpected,
-        private readonly bool $manualVolumeEditsExpected,
-        private readonly array $setupSources,
-    ) {
-    }
-
-    public function pathFieldsReadOnly(): bool
-    {
-        return $this->pathFieldsReadOnly;
-    }
-
-    public function browserSetupExpected(): bool
-    {
-        return $this->browserSetupExpected;
-    }
-
-    public function manualVolumeEditsExpected(): bool
-    {
-        return $this->manualVolumeEditsExpected;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function setupSources(): array
-    {
-        return $this->setupSources;
-    }
-}
-
-namespace Totman\RuntimeUi\Deployment;
-
-final class DeploymentContext
-{
-    public const CLASSIC = 'classic-hosting';
-    public const DOCKER = 'docker';
-    public const PODMAN = 'podman';
-
-    public function __construct(
-        private readonly string $kind,
-        private readonly ?string $fixedStateDir = null,
-        private readonly ?string $fixedDownloadDir = null,
-    ) {
-        if (!in_array($kind, [self::CLASSIC, self::DOCKER, self::PODMAN], true)) {
-            throw new \InvalidArgumentException('Unsupported deployment context: ' . $kind);
-        }
-    }
-
-    public static function classic(): self
-    {
-        return new self(self::CLASSIC);
-    }
-
-    public static function docker(string $stateDir = '/var/lib/totman', string $downloadDir = '/var/lib/totman/downloads'): self
-    {
-        return new self(self::DOCKER, $stateDir, $downloadDir);
-    }
-
-    public static function podman(string $stateDir = '/var/lib/totman', string $downloadDir = '/var/lib/totman/downloads'): self
-    {
-        return new self(self::PODMAN, $stateDir, $downloadDir);
-    }
-
-    public function kind(): string
-    {
-        return $this->kind;
-    }
-
-    public function fixedStateDir(): ?string
-    {
-        return $this->fixedStateDir;
-    }
-
-    public function fixedDownloadDir(): ?string
-    {
-        return $this->fixedDownloadDir;
-    }
-
-    public function pathFieldsAreReadOnly(): bool
-    {
-        return $this->capabilities()->pathFieldsReadOnly();
-    }
-
-    public function capabilities(): DeploymentCapabilities
-    {
-        $fixedPaths = $this->fixedStateDir !== null || $this->fixedDownloadDir !== null;
-
-        if ($this->kind === self::CLASSIC) {
-            return new DeploymentCapabilities(
-                $fixedPaths,
-                true,
-                false,
-                ['manual-config', 'browser-ui']
-            );
-        }
-
-        return new DeploymentCapabilities(
-            true,
-            true,
-            false,
-            ['environment', 'browser-ui']
-        );
-    }
-}
-
-namespace Totman\RuntimeUi\Http;
-
-use Totman\RuntimeUi\Application\FirstRunInput;
-use Totman\RuntimeUi\Security\AdminAuthInput;
-
-final class FirstRunRequest
-{
-    public const PREVIEW = 'preview';
-    public const UPDATE_DRAFT = 'update_draft';
-    public const NEXT_STEP = 'next_step';
-    public const PREVIOUS_STEP = 'previous_step';
-    public const DISCARD_DRAFT = 'discard_draft';
-    public const SAVE_RUNTIME = 'save_runtime';
-    public const CREATE_ADMIN = 'create_admin';
-    public const LOGIN = 'login';
-    public const LOGOUT = 'logout';
-    public const REAUTH = 'reauth';
-    public const ADMIN_COMMAND = 'admin_command';
-
-    private function __construct(
-        private readonly string $intent,
-        private readonly FirstRunInput $input,
-        private readonly string $setupCode = '',
-        private readonly string $csrfToken = '',
-        private readonly bool $confirmSave = false,
-        private readonly ?AdminAuthInput $authInput = null,
-        private readonly string $adminCommandKey = '',
-        private readonly string $adminCommandTargetAlias = '',
-        private readonly string $adminCommandPhase = 'preview',
-        private readonly bool $confirmAdminCommand = false,
-    ) {
-    }
-
-    public static function preview(): self
-    {
-        return new self(self::PREVIEW, new FirstRunInput());
-    }
-
-    public static function updateDraft(FirstRunInput $input, string $setupCode = '', string $csrfToken = ''): self
-    {
-        return new self(self::UPDATE_DRAFT, $input, $setupCode, $csrfToken);
-    }
-
-    public static function nextStep(FirstRunInput $input, string $setupCode = '', string $csrfToken = ''): self
-    {
-        return new self(self::NEXT_STEP, $input, $setupCode, $csrfToken);
-    }
-
-    public static function previousStep(FirstRunInput $input, string $setupCode = '', string $csrfToken = ''): self
-    {
-        return new self(self::PREVIOUS_STEP, $input, $setupCode, $csrfToken);
-    }
-
-    public static function discardDraft(string $setupCode = '', string $csrfToken = ''): self
-    {
-        return new self(self::DISCARD_DRAFT, new FirstRunInput(), $setupCode, $csrfToken);
-    }
-
-    public static function saveRuntime(FirstRunInput $input, string $setupCode = '', string $csrfToken = '', bool $confirmSave = false): self
-    {
-        return new self(self::SAVE_RUNTIME, $input, $setupCode, $csrfToken, $confirmSave);
-    }
-
-    public static function save(FirstRunInput $input, string $setupCode = '', string $csrfToken = '', bool $confirmSave = false): self
-    {
-        return self::saveRuntime($input, $setupCode, $csrfToken, $confirmSave);
-    }
-
-    public static function createAdmin(AdminAuthInput $authInput, string $setupCode = '', string $csrfToken = ''): self
-    {
-        return new self(self::CREATE_ADMIN, new FirstRunInput(), $setupCode, $csrfToken, authInput: $authInput);
-    }
-
-    public static function login(AdminAuthInput $authInput, string $csrfToken = ''): self
-    {
-        return new self(self::LOGIN, new FirstRunInput(), csrfToken: $csrfToken, authInput: $authInput);
-    }
-
-    public static function logout(string $csrfToken = ''): self
-    {
-        return new self(self::LOGOUT, new FirstRunInput(), csrfToken: $csrfToken);
-    }
-
-    public static function reauth(AdminAuthInput $authInput, string $csrfToken = ''): self
-    {
-        return new self(self::REAUTH, new FirstRunInput(), csrfToken: $csrfToken, authInput: $authInput);
-    }
-
-    public static function adminCommand(
-        string $commandKey,
-        string $targetAlias = '',
-        string $csrfToken = '',
-        string $phase = 'preview',
-        bool $confirmed = false
-    ): self {
-        return new self(
-            self::ADMIN_COMMAND,
-            new FirstRunInput(),
-            csrfToken: $csrfToken,
-            adminCommandKey: $commandKey,
-            adminCommandTargetAlias: $targetAlias,
-            adminCommandPhase: $phase,
-            confirmAdminCommand: $confirmed
-        );
-    }
-
-    public function intent(): string
-    {
-        return $this->intent;
-    }
-
-    public function isSave(): bool
-    {
-        return $this->isRuntimeSave();
-    }
-
-    public function isUpdateDraft(): bool
-    {
-        return $this->intent === self::UPDATE_DRAFT;
-    }
-
-    public function isNextStep(): bool
-    {
-        return $this->intent === self::NEXT_STEP;
-    }
-
-    public function isPreviousStep(): bool
-    {
-        return $this->intent === self::PREVIOUS_STEP;
-    }
-
-    public function isDiscardDraft(): bool
-    {
-        return $this->intent === self::DISCARD_DRAFT;
-    }
-
-    public function isRuntimeSave(): bool
-    {
-        return $this->intent === self::SAVE_RUNTIME;
-    }
-
-    public function isCreateAdmin(): bool
-    {
-        return $this->intent === self::CREATE_ADMIN;
-    }
-
-    public function isLogin(): bool
-    {
-        return $this->intent === self::LOGIN;
-    }
-
-    public function isLogout(): bool
-    {
-        return $this->intent === self::LOGOUT;
-    }
-
-    public function isReauth(): bool
-    {
-        return $this->intent === self::REAUTH;
-    }
-
-    public function isAdminCommand(): bool
-    {
-        return $this->intent === self::ADMIN_COMMAND;
-    }
-
-    public function isAuthAction(): bool
-    {
-        return $this->isCreateAdmin() || $this->isLogin() || $this->isLogout() || $this->isReauth();
-    }
-
-    public function isStateChanging(): bool
-    {
-        return $this->isUpdateDraft() || $this->isNextStep() || $this->isPreviousStep() || $this->isDiscardDraft() || $this->isRuntimeSave() || $this->isAuthAction() || $this->isAdminCommand();
-    }
-
-    public function input(): FirstRunInput
-    {
-        return $this->input;
-    }
-
-    public function setupCode(): string
-    {
-        return $this->setupCode;
-    }
-
-    public function csrfToken(): string
-    {
-        return $this->csrfToken;
-    }
-
-    public function confirmSave(): bool
-    {
-        return $this->confirmSave;
-    }
-
-    public function authInput(): AdminAuthInput
-    {
-        return $this->authInput ?? new AdminAuthInput();
-    }
-
-    public function adminCommandKey(): string
-    {
-        return $this->adminCommandKey;
-    }
-
-    public function adminCommandTargetAlias(): string
-    {
-        return $this->adminCommandTargetAlias;
-    }
-
-    public function adminCommandPhase(): string
-    {
-        return $this->adminCommandPhase;
-    }
-
-    public function confirmAdminCommand(): bool
-    {
-        return $this->confirmAdminCommand;
-    }
-}
-
-namespace Totman\RuntimeUi\Http;
-
-use Totman\RuntimeUi\Application\FirstRunInput;
-use Totman\RuntimeUi\Security\AdminAuthInput;
-
-final class FirstRunRequestMapper
-{
-    /**
-     * @param array<string, string> $post
-     */
-    public function map(string $method, array $post = []): FirstRunRequest
-    {
-        if (strtoupper($method) !== 'POST') {
-            return FirstRunRequest::preview();
-        }
-
-        $input = FirstRunInput::fromPost($post);
-        $setupCode = $this->clean($post['setup_code'] ?? '');
-        $csrfToken = $this->clean($post['csrf_token'] ?? '');
-        $action = $this->clean($post['action'] ?? FirstRunRequest::SAVE_RUNTIME);
-        $authInput = $this->authInput($post);
-
-        if ($action === FirstRunRequest::UPDATE_DRAFT) {
-            return FirstRunRequest::updateDraft($input, $setupCode, $csrfToken);
-        }
-
-        if ($action === FirstRunRequest::NEXT_STEP) {
-            return FirstRunRequest::nextStep($input, $setupCode, $csrfToken);
-        }
-
-        if ($action === FirstRunRequest::PREVIOUS_STEP) {
-            return FirstRunRequest::previousStep($input, $setupCode, $csrfToken);
-        }
-
-        if ($action === FirstRunRequest::DISCARD_DRAFT) {
-            return FirstRunRequest::discardDraft($setupCode, $csrfToken);
-        }
-
-        if ($action === FirstRunRequest::CREATE_ADMIN) {
-            return FirstRunRequest::createAdmin($authInput, $setupCode, $csrfToken);
-        }
-
-        if ($action === FirstRunRequest::LOGIN) {
-            return FirstRunRequest::login($authInput, $csrfToken);
-        }
-
-        if ($action === FirstRunRequest::LOGOUT) {
-            return FirstRunRequest::logout($csrfToken);
-        }
-
-        if ($action === FirstRunRequest::REAUTH) {
-            return FirstRunRequest::reauth($authInput, $csrfToken);
-        }
-
-        if ($action === FirstRunRequest::ADMIN_COMMAND) {
-            return FirstRunRequest::adminCommand(
-                $this->clean($post['admin_command'] ?? ''),
-                $this->clean($post['admin_command_target_alias'] ?? ''),
-                $csrfToken,
-                $this->clean($post['admin_command_phase'] ?? 'preview'),
-                $this->truthy($post['confirm_admin_command'] ?? '')
-            );
-        }
-
-        return FirstRunRequest::saveRuntime(
-            $input,
-            $setupCode,
-            $csrfToken,
-            $this->truthy($post['confirm_save'] ?? '')
-        );
-    }
-
-    /**
-     * @param array<string, string> $post
-     */
-    private function authInput(array $post): AdminAuthInput
-    {
-        return new AdminAuthInput(
-            $this->clean($post['admin_username'] ?? ''),
-            $this->clean($post['admin_password'] ?? ''),
-            $this->clean($post['admin_password_confirm'] ?? ''),
-            $this->clean($post['login_username'] ?? ''),
-            $this->clean($post['login_password'] ?? ''),
-            $this->clean($post['reauth_password'] ?? '')
-        );
-    }
-
-    private function clean(string $value): string
-    {
-        return trim(str_replace(["\r", "\0"], '', $value));
-    }
-
-    private function truthy(string $value): bool
-    {
-        return in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'on'], true);
-    }
-}
-
-namespace Totman\RuntimeUi\Http;
-
-final class ProductRuntimeContextAdapter
-{
-    public const DEFAULT_STATE_DIR = '/var/lib/totman';
-
-    public function __construct(private readonly PrototypeEnvironmentFactory $environmentFactory = new PrototypeEnvironmentFactory())
-    {
-    }
-
-    /**
-     * @param array<string, mixed> $server
-     * @param array<string, mixed> $post
-     * @param array<string, mixed> $env
-     */
-    public function fromArrays(
-        array $server,
-        array $post,
-        array $env,
-        string $defaultStateDir = self::DEFAULT_STATE_DIR
-    ): PrototypeEnvironment {
-        return $this->environmentFactory->fromArrays(
-            [],
-            $server,
-            $post,
-            $env,
-            $defaultStateDir,
-            RuntimeUiMode::PRODUCT
-        );
-    }
-}
-
-namespace Totman\RuntimeUi\Http;
-
-use Totman\RuntimeUi\Application\PrototypePageApplicationService;
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-
-final class PrototypeController
-{
-    public function __construct(
-        private readonly PrototypePageApplicationService $pageService,
-        private readonly FirstRunRequestMapper $requestMapper = new FirstRunRequestMapper(),
-        private readonly PrototypeRenderer $renderer = new PrototypeRenderer(),
-    ) {
-    }
-
-    /**
-     * @param array<string, string> $post
-     */
-    public function handle(string $stateDir, DeploymentContext $context, string $method, array $post = []): string
-    {
-        $request = $this->requestMapper->map($method, $post);
-        $result = $this->pageService->handle($stateDir, $context, $request);
-
-        return $this->renderer->render($result->view(), $result->access(), $result->csrfToken(), $result->adminAuth(), $result->adminInspection());
-    }
-}
-
-namespace Totman\RuntimeUi\Http;
-
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-
-final class PrototypeEnvironment
-{
-    /**
-     * @param array<string, string> $post
-     */
-    public function __construct(
-        private readonly string $stateDir,
-        private readonly string $stateDirSource,
-        private readonly string $runtimeUiMode,
-        private readonly DeploymentContext $context,
-        private readonly string $method,
-        private readonly array $post,
-        private readonly string $expectedSetupCode,
-    ) {
-    }
-
-    public function stateDir(): string
-    {
-        return $this->stateDir;
-    }
-
-    public function stateDirSource(): string
-    {
-        return $this->stateDirSource;
-    }
-
-    public function runtimeUiMode(): string
-    {
-        return $this->runtimeUiMode;
-    }
-
-    public function context(): DeploymentContext
-    {
-        return $this->context;
-    }
-
-    public function method(): string
-    {
-        return $this->method;
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function post(): array
-    {
-        return $this->post;
-    }
-
-    public function expectedSetupCode(): string
-    {
-        return $this->expectedSetupCode;
-    }
-}
-
-namespace Totman\RuntimeUi\Http;
-
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-
-final class PrototypeEnvironmentFactory
-{
-    public const QUERY_STATE_DIR = 'query';
-    public const ENV_STATE_DIR = 'environment';
-    public const PRODUCT_ENV_STATE_DIR = 'product-environment';
-    public const DEFAULT_STATE_DIR = 'default';
-
-    /**
-     * @param array<string, mixed> $query
-     * @param array<string, mixed> $server
-     * @param array<string, mixed> $post
-     * @param array<string, mixed> $env
-     */
-    public function fromArrays(
-        array $query,
-        array $server,
-        array $post,
-        array $env,
-        string $defaultStateDir,
-        string $runtimeUiMode = RuntimeUiMode::PROTOTYPE,
-    ): PrototypeEnvironment {
-        $runtimeUiMode = RuntimeUiMode::normalise($runtimeUiMode);
-        [$stateDir, $source] = $this->stateDir($query, $env, $defaultStateDir, $runtimeUiMode);
-        $contextName = $this->contextName($query, $env, $runtimeUiMode);
-
-        return new PrototypeEnvironment(
-            $stateDir,
-            $source,
-            $runtimeUiMode,
-            $this->context($contextName, $stateDir),
-            $this->string($server['REQUEST_METHOD'] ?? null) ?: 'GET',
-            $this->post($post),
-            $this->setupCode($env, $runtimeUiMode)
-        );
-    }
-
-    public function ensureStateDirectory(string $stateDir): void
-    {
-        if (is_dir($stateDir)) {
-            return;
-        }
-
-        $ancestor = $this->nearestExistingAncestor($stateDir);
-        if ($ancestor === null || !is_writable($ancestor)) {
-            return;
-        }
-
-        @mkdir($stateDir, 0700, true);
-    }
-
-    /**
-     * @param array<string, mixed> $query
-     * @param array<string, mixed> $env
-     * @return array{0: string, 1: string}
-     */
-    private function stateDir(array $query, array $env, string $defaultStateDir, string $runtimeUiMode): array
-    {
-        if ($runtimeUiMode === RuntimeUiMode::PROTOTYPE) {
-            $queryStateDir = $this->string($query['state_dir'] ?? null);
-            if ($queryStateDir !== '') {
-                return [$queryStateDir, self::QUERY_STATE_DIR];
-            }
-        }
-
-        if ($runtimeUiMode === RuntimeUiMode::PRODUCT) {
-            $productStateDir = $this->string($env['TOTMAN_STATE_DIR'] ?? null);
-            if ($productStateDir !== '') {
-                return [$productStateDir, self::PRODUCT_ENV_STATE_DIR];
-            }
-
-            return [$defaultStateDir, self::DEFAULT_STATE_DIR];
-        }
-
-        $envStateDir = $this->string($env['TOTMAN_STATE_DIR'] ?? null);
-        if ($envStateDir !== '') {
-            return [$envStateDir, self::ENV_STATE_DIR];
-        }
-
-        return [$defaultStateDir, self::DEFAULT_STATE_DIR];
-    }
-
-    private function nearestExistingAncestor(string $path): ?string
-    {
-        $candidate = $path;
-        while (!is_dir($candidate)) {
-            $parent = dirname($candidate);
-            if ($parent === $candidate) {
-                return null;
-            }
-
-            $candidate = $parent;
-        }
-
-        return $candidate;
-    }
-
-    /**
-     * @param array<string, mixed> $query
-     * @param array<string, mixed> $env
-     */
-    private function contextName(array $query, array $env, string $runtimeUiMode): string
-    {
-        if ($runtimeUiMode === RuntimeUiMode::PROTOTYPE) {
-            $queryContext = $this->string($query['context'] ?? null);
-            if ($queryContext !== '') {
-                return $queryContext;
-            }
-        }
-
-        if ($runtimeUiMode === RuntimeUiMode::PRODUCT) {
-            return $this->string($env['TOTMAN_UI_DEPLOYMENT_CONTEXT'] ?? null) ?: 'classic';
-        }
-
-        return $this->string($env['TOTMAN_UI_DEPLOYMENT_CONTEXT'] ?? null) ?: 'classic';
-    }
-
-    /**
-     * @param array<string, mixed> $env
-     */
-    private function setupCode(array $env, string $runtimeUiMode): string
-    {
-        if ($runtimeUiMode === RuntimeUiMode::PRODUCT) {
-            $productSetupCode = $this->string($env['TOTMAN_UI_SETUP_CODE'] ?? null);
-            if ($productSetupCode !== '') {
-                return $productSetupCode;
-            }
-
-            return '';
-        }
-
-        return $this->string($env['TOTMAN_UI_SETUP_CODE'] ?? null);
-    }
-
-    private function context(string $contextName, string $stateDir): DeploymentContext
-    {
-        return match ($contextName) {
-            'docker' => DeploymentContext::docker($stateDir, $stateDir . '/downloads'),
-            'podman' => DeploymentContext::podman($stateDir, $stateDir . '/downloads'),
-            default => DeploymentContext::classic(),
-        };
-    }
-
-    /**
-     * @param array<string, mixed> $post
-     * @return array<string, string>
-     */
-    private function post(array $post): array
-    {
-        $normalised = [];
-        foreach ($post as $key => $value) {
-            $normalised[$key] = is_scalar($value) ? (string)$value : '';
-        }
-
-        return $normalised;
-    }
-
-    private function string(mixed $value): string
-    {
-        return is_scalar($value) ? (string)$value : '';
-    }
-}
-
-namespace Totman\RuntimeUi\Http;
-
-use Totman\RuntimeUi\Application\FirstRunField;
-use Totman\RuntimeUi\Application\AdminCommandCatalog;
-use Totman\RuntimeUi\Application\AdminAuthViewModel;
-use Totman\RuntimeUi\Application\AdminInspectionViewModel;
-use Totman\RuntimeUi\Application\FirstRunHiddenFieldPolicy;
-use Totman\RuntimeUi\Application\FirstRunViewModel;
-use Totman\RuntimeUi\Application\MaintenanceCommandResult;
-use Totman\RuntimeUi\Application\RuntimeUiTextCatalog;
-use Totman\RuntimeUi\Security\SetupAccessResult;
-use Totman\RuntimeUi\Setup\FirstRunStepCatalog;
-
-final class PrototypeRenderer
-{
-    private const PRODUCT_LOGO_DATA_URI = 'data:image/png;base64,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';
-
-    public function __construct(
-        private readonly FirstRunHiddenFieldPolicy $hiddenFieldPolicy = new FirstRunHiddenFieldPolicy(),
-        private readonly RuntimeUiTextCatalog $text = new RuntimeUiTextCatalog(),
-    ) {
-    }
-
-    public function render(
-        FirstRunViewModel $view,
-        ?SetupAccessResult $access = null,
-        string $csrfToken = '',
-        ?AdminAuthViewModel $adminAuth = null,
-        ?AdminInspectionViewModel $adminInspection = null,
-    ): string {
-        $steps = $this->renderSteps($view);
-        $errors = '';
-        foreach ($view->errors() as $error) {
-            $errors .= '<li>' . $this->e($error) . '</li>';
-        }
-
-        if ($access !== null && !$access->allowed() && $access->message() !== '') {
-            $errors .= '<li>' . $this->e($access->message()) . '</li>';
-        }
-
-        $notice = $view->notice() !== '' ? '<p class="notice ok ui-status" role="status">' . $this->e($view->notice()) . '</p>' : '';
-        $alert = $errors !== '' ? '<ul class="notice error ui-alert" role="alert">' . $errors . '</ul>' : '';
-
-        if ($this->text->productMode()) {
-            $authView = $adminAuth ?? AdminAuthViewModel::accessMissing();
-            return $this->renderDocument($this->renderProductPage(
-                $view,
-                $csrfToken,
-                $authView,
-                $adminInspection ?? AdminInspectionViewModel::unavailable($this->text->get('admin.unavailable_after_signin')),
-            ), $this->productNotificationItems($view, $access, $authView));
-        }
-
-        $authView = $adminAuth ?? AdminAuthViewModel::accessMissing();
-        if ($authView->showAdministrationDisabled()) {
-            $content = $this->renderHeader($csrfToken, $authView)
-                . $notice
-                . $alert
-                . $this->renderSection('admin-access', $this->text->get('section.admin_access'), $this->renderAdminAccess($csrfToken, $authView))
-                . $this->renderFooter();
-
-            return $this->renderDocument($content);
-        }
-
-        if ($authView->showLogin()) {
-            $content = $this->renderHeader($csrfToken, $authView)
-                . $notice
-                . $alert
-                . $this->renderSection('admin-access', $this->text->get('section.admin_access'), $this->renderAdminAccess($csrfToken, $authView))
-                . $this->renderFooter();
-
-            return $this->renderDocument($content);
-        }
-
-        $wizard = '<form class="ui-form ui-wizard-form form-grid" method="post">
-<input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-' . $this->renderHiddenFields($view) . '
-<div class="input-group ui-field ui-setup-code full-width"><label>' . $this->e($this->text->get('wizard.setup_code')) . ' <input name="setup_code"></label></div>
-' . $this->renderCurrentStep($view) . '
-<div class="action-bar ui-actions full-width">' . $this->renderActions($view) . '</div>
-</form>';
-
-        $content = $this->renderHeader($csrfToken, $authView)
-            . $notice
-            . $alert
-            . $this->renderSection('summary', $this->text->get('section.summary'), $this->renderSummary($view))
-            . $this->renderSection('steps', $this->text->get('section.steps'), $steps)
-            . $this->renderSection('admin-access', $this->text->get('section.admin_access'), $this->renderAdminAccess($csrfToken, $authView))
-            . $this->renderSection('runtime-inspection', $this->text->get('section.runtime_inspection'), $this->renderAdminInspection($csrfToken, $adminInspection ?? AdminInspectionViewModel::unavailable($this->text->get('admin.unavailable_after_signin'))))
-            . $this->renderSection('wizard', $this->text->get('section.wizard_step'), $wizard)
-            . $this->renderFooter();
-
-        return $this->renderDocument($content);
-    }
-
-    private function renderProductPage(
-        FirstRunViewModel $view,
-        string $csrfToken,
-        AdminAuthViewModel $adminAuth,
-        AdminInspectionViewModel $adminInspection,
-    ): string {
-        if ($adminAuth->showSetupLocked()) {
-            return $this->renderHeader($csrfToken, $adminAuth)
-                . $this->renderProductSetupLocked()
-                . $this->renderFooter();
-        }
-
-        if ($adminAuth->showCreateAdmin()) {
-            return $this->renderHeader($csrfToken, $adminAuth)
-                . $this->renderProductInitialSetup($csrfToken)
-                . $this->renderFooter();
-        }
-
-        if ($adminAuth->showAdministrationDisabled()) {
-            return $this->renderHeader($csrfToken, $adminAuth)
-                . $this->renderProductAdministrationDisabled()
-                . $this->renderFooter();
-        }
-
-        if ($adminAuth->showLogin()) {
-            return $this->renderHeader($csrfToken, $adminAuth)
-                . $this->renderProductLogin($csrfToken, $adminAuth)
-                . $this->renderFooter();
-        }
-
-        if ($this->setupRequired($view, $adminInspection)) {
-            return $this->renderHeader($csrfToken, $adminAuth)
-                . $this->renderSetupArea($view, $csrfToken, $adminAuth, false, false, false, false)
-                . $this->renderFooter();
-        }
-
-        return $this->renderHeader($csrfToken, $adminAuth)
-            . $this->renderProductAdminShell($csrfToken, $adminInspection)
-            . $this->renderFooter();
-    }
-
-    private function renderProductInitialSetup(string $csrfToken): string
-    {
-        return '<div class="auth-main view-animate">
-<section class="card auth-card" aria-labelledby="initial-setup-title">
-<h2 id="initial-setup-title">' . $this->e($this->text->get('setup.initial_title')) . '</h2>
-<form method="post" class="form-grid">
-<input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-' . $this->renderPlainInputGroup('setup-code', 'setup_code', $this->text->get('setup.code'), $this->text->get('setup.code_help'), 'text', 'one-time-code') . '
-' . $this->renderPlainInputGroup('setup-user', 'admin_username', $this->text->get('setup.username'), $this->text->get('setup.username_help'), 'text', 'username') . '
-' . $this->renderPlainInputGroup('setup-password', 'admin_password', $this->text->get('setup.password'), $this->text->get('setup.password_help'), 'password', 'new-password') . '
-' . $this->renderPlainInputGroup('setup-password-confirm', 'admin_password_confirm', $this->text->get('setup.repeat_password'), $this->text->get('setup.repeat_password_help'), 'password', 'new-password') . '
-' . $this->renderReadonlyInputGroup('setup-state-dir', $this->text->get('setup.data_directory'), $this->text->get('setup.data_directory_default'), $this->text->get('setup.data_directory_help'), 'full-width') . '
-<div class="action-bar full-width"><button type="submit" name="action" value="create_admin" class="btn-primary">' . $this->e($this->text->get('setup.create_access')) . '</button></div>
-</form>
-</section>
-</div>';
-    }
-
-    private function renderProductAdministrationDisabled(): string
-    {
-        return '<div class="auth-main view-animate">
-<section class="card auth-card" aria-labelledby="admin-disabled-title">
-<h2 id="admin-disabled-title">' . $this->e($this->text->get('section.admin_access')) . '</h2>
-<p class="helper-text">' . $this->e($this->text->get('admin.disabled_summary')) . '</p>
-</section>
-</div>';
-    }
-
-    private function renderProductLogin(string $csrfToken, AdminAuthViewModel $adminAuth): string
-    {
-        return '<div class="auth-main view-animate">
-<section class="card auth-card" aria-labelledby="admin-login-title">
-<h2 id="admin-login-title">' . $this->e($this->text->get('admin.sign_in')) . '</h2>
-' . $this->renderAdminAccess($csrfToken, $adminAuth) . '
-</section>
-</div>';
-    }
-
-    private function renderProductSetupLocked(): string
-    {
-        return '<div class="auth-main view-animate">
-<section class="card auth-card" aria-labelledby="initial-setup-title">
-<h2 id="initial-setup-title">' . $this->e($this->text->get('setup.initial_title')) . '</h2>
-<p class="helper-text">' . $this->e($this->text->get('setup.locked_help')) . '</p>
-</section>
-</div>';
-    }
-
-    private function setupRequired(FirstRunViewModel $view, AdminInspectionViewModel $adminInspection): bool
-    {
-        return !$adminInspection->available()
-            || !$view->runtimeFilesExist()
-            || $view->mode() !== 'existing'
-            || $view->preflightStatus() === 'FAIL';
-    }
-
-    private function renderProductAdminShell(string $csrfToken, AdminInspectionViewModel $adminInspection): string
-    {
-        return '<div class="admin-shell view-animate" data-tab-scope="main">'
-            . $this->renderMainNavigation('status')
-            . $this->renderStatusArea($adminInspection)
-            . $this->renderConfigurationArea($adminInspection)
-            . $this->renderRecipientsArea($adminInspection)
-            . $this->renderActivityLogArea($adminInspection)
-            . $this->renderMaintenanceArea($csrfToken, $adminInspection)
-            . '</div>';
-    }
-
-    private function renderMainNavigation(string $activeSection): string
-    {
-        $items = [
-            ['status', $this->text->get('nav.status')],
-            ['configuration', $this->text->get('nav.configuration')],
-            ['recipients', $this->text->get('nav.recipients')],
-            ['activity-log', $this->text->get('nav.activity_log')],
-            ['maintenance', $this->text->get('nav.maintenance')],
-        ];
-        $buttons = '';
-        foreach ($items as [$key, $label]) {
-            $active = $key === $activeSection;
-            $buttons .= '<button type="button" class="nav-item' . ($active ? ' active' : '') . '"'
-                . ($active ? ' aria-selected="true"' : ' aria-selected="false"')
-                . ' aria-controls="main-' . $this->e($key) . '" data-tab-target="main-' . $this->e($key) . '"'
-                . '>' . $this->e($label) . '</button>';
-        }
-
-        return '<nav class="ui-main-nav view-animate" role="tablist" aria-label="Main views">' . $buttons . '</nav>';
-    }
-
-    private function renderSetupArea(
-        FirstRunViewModel $view,
-        string $csrfToken,
-        AdminAuthViewModel $adminAuth,
-        bool $showAdminCard = true,
-        bool $showSetupCode = true,
-        bool $showSteps = true,
-        bool $showDraftActions = true,
-    ): string {
-        $setupCodeField = $showSetupCode ? $this->renderSetupCodeField() : '';
-        $steps = $showSteps ? $this->renderSteps($view) : '';
-        $hideStepHeading = $this->text->productMode() || $this->compactSingleFieldStep($view);
-        $stepHeading = '<h3 id="setup-current-step"' . ($hideStepHeading ? ' class="sr-only"' : '') . '>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</h3>';
-        $wizard = '<form class="ui-form ui-wizard-form form-grid" method="post">
-<input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-' . $this->renderHiddenFields($view) . '
-' . $setupCodeField . '
-' . $this->renderCurrentStep($view) . '
-<div class="action-bar ui-actions full-width">' . $this->renderActions($view, $showDraftActions) . '</div>
-</form>';
-
-        $adminCard = $showAdminCard ? '<aside class="card setup-admin-card" aria-labelledby="setup-admin-access">
-<h3 id="setup-admin-access">' . $this->e($this->text->get('section.admin_access')) . '</h3>
-' . $this->renderAdminAccess($csrfToken, $adminAuth) . '
-</aside>' : '';
-
-        $setupClasses = ['ui-section', 'setup-view', 'view-animate'];
-        if (in_array($view->currentStep(), [FirstRunStepCatalog::REVIEW, FirstRunStepCatalog::PREFLIGHT, FirstRunStepCatalog::SAVE], true)) {
-            $setupClasses[] = 'setup-view-wide';
-        }
-
-        return '<section class="' . $this->e(implode(' ', $setupClasses)) . '" data-section="setup" aria-labelledby="setup-title">
-<div class="section-heading">
-<h2 id="setup-title">' . $this->e($this->text->get('nav.setup')) . '</h2>
-<p class="section-intro">' . $this->e($this->shortStepDescription($view, $view->currentStep())) . '</p>
-</div>
-' . $steps . '
-<div class="' . ($showAdminCard ? 'setup-layout' : 'setup-layout setup-layout-single') . '">
-<section class="card setup-step-card" aria-labelledby="setup-current-step">
-' . $stepHeading . '
-' . $wizard . '
-</section>
-' . $adminCard . '
-</div>
-</section>';
-    }
-
-    private function renderStatusArea(AdminInspectionViewModel $inspection): string
-    {
-        if (!$inspection->available() || $inspection->summary() === null) {
-            return $this->renderMainPanel('status', $this->text->get('nav.status'), '<p>' . $this->e($inspection->notice() ?: $this->text->get('inspection.unavailable')) . '</p>', true);
-        }
-
-        $summary = $inspection->summary();
-        $statusDetails = $summary->preflight()->status() === 'FAIL'
-            ? $this->renderBlockingPreflightIssues($summary->preflight())
-            : $this->renderSummaryIssues($summary->issues());
-        $technicalDetails = $this->text->productMode() ? '' : '
-<details><summary>' . $this->e($this->text->get('advanced.details')) . '</summary>
-<dl>
-<dt>' . $this->e($this->text->get('summary.mode')) . '</dt><dd>' . $this->e($summary->mode()) . '</dd>
-<dt>' . $this->e($this->text->get('inspection.main_source')) . '</dt><dd>' . $this->e($summary->mainSource()) . '</dd>
-<dt>' . $this->e($this->text->get('inspection.recipient_source')) . '</dt><dd>' . $this->e($summary->recipientSource()) . '</dd>
-</dl>
-</details>';
-        $system = '<section id="status-system" class="tab-panel" data-tab-panel="status-system">
-<div class="card">
-<h3>' . $this->e($this->text->get('subnav.system_status')) . '</h3>
-<p class="status-lede status-' . $this->e(strtolower($summary->preflight()->status())) . '">' . $this->e($this->humanPreflightSummary($summary->preflight()->status())) . '</p>
-' . $statusDetails . $technicalDetails . '
-</div>
-</section>';
-
-        $preflight = '<section id="status-preflight" class="tab-panel" data-tab-panel="status-preflight" hidden>
-<div class="card preflight-card">
-<h3>' . $this->e($this->text->get('subnav.preflight')) . '</h3>
-<div class="preflight-grid">' . $this->preflightResultItems($summary->preflight()) . '</div>
-</div>
-</section>';
-
-        $statusTabs = [
-            ['system', $this->text->get('subnav.system_status')],
-            ['preflight', $this->text->get('subnav.preflight')],
-        ];
-        $cycle = '';
-        $showCycle = !$this->text->productMode() || $summary->stateFile()->status() !== 'loaded';
-        if ($showCycle) {
-            $statusTabs[] = ['cycle', $this->text->get('subnav.cycle')];
-            $cycleDetails = $this->text->productMode() ? '' : '
-<details><summary>' . $this->e($this->text->get('advanced.details')) . '</summary>
-<dl><dt>' . $this->e($this->text->get('inspection.state_file')) . '</dt><dd>' . $this->e($summary->stateFile()->status()) . '</dd></dl>
-</details>';
-            $cycleMessage = $summary->stateFile()->message();
-            if ($this->text->productMode() && $summary->stateFile()->status() === 'missing') {
-                $cycleMessage = $this->text->get('status.no_cycle');
-            }
-            $cycle = '<section id="status-cycle" class="tab-panel" data-tab-panel="status-cycle" hidden>
-<div class="card">
-<h3>' . $this->e($this->text->get('subnav.cycle')) . '</h3>
-<p>' . $this->e($cycleMessage !== '' ? $cycleMessage : $this->text->get('status.no_cycle')) . '</p>
-' . $cycleDetails . '
-</div>
-</section>';
-        }
-
-        return $this->renderMainPanel(
-            'status',
-            $this->text->get('nav.status'),
-            '<div data-tab-scope="status">'
-            . $this->renderSubNavigation('status', $statusTabs, 'system')
-            . $system
-            . $preflight
-            . $cycle
-            . '</div>',
-            true,
-        );
-    }
-
-    private function renderConfigurationArea(AdminInspectionViewModel $inspection): string
-    {
-        if (!$inspection->available() || $inspection->summary() === null) {
-            return $this->renderMainPanel('configuration', $this->text->get('nav.configuration'), '<p>' . $this->e($inspection->notice() ?: $this->text->get('inspection.unavailable')) . '</p>');
-        }
-
-        $summary = $inspection->summary();
-        $config = $summary->redactedConfig();
-        $generalDetails = $this->text->productMode() ? '' : '<details><summary>' . $this->e($this->text->get('advanced.details')) . '</summary><p>' . $this->e($this->text->get('configuration.source_help')) . '</p></details>';
-        $general = '<section id="configuration-general" class="tab-panel" data-tab-panel="configuration-general">
-<div class="card">
-<h3>' . $this->e($this->text->get('subnav.general')) . '</h3>
-' . $this->renderRedactedConfigList($config, ['base_url', 'timezone', 'language']) . '
-' . $generalDetails . '
-</div>
-</section>';
-        $schedule = '<section id="configuration-schedule" class="tab-panel" data-tab-panel="configuration-schedule" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.schedule')) . '</h3>' . $this->renderRedactedConfigList($config, ['interval_days', 'grace_days', 'reminder_days']) . '</div></section>';
-        $delivery = '<section id="configuration-delivery" class="tab-panel" data-tab-panel="configuration-delivery" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.delivery')) . '</h3>' . $this->renderRedactedConfigList($config, ['mail_from', 'sendmail_path', 'to_self']) . '</div></section>';
-        $security = '<section id="configuration-security" class="tab-panel" data-tab-panel="configuration-security" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.security_web')) . '</h3>' . $this->renderRedactedConfigList($config, ['web_ui_enabled']) . '</div></section>';
-        $paths = '<section id="configuration-paths" class="tab-panel" data-tab-panel="configuration-paths" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.paths')) . '</h3>' . $this->renderRuntimePaths($summary->paths()) . '</div></section>';
-
-        return $this->renderMainPanel(
-            'configuration',
-            $this->text->get('nav.configuration'),
-            '<div data-tab-scope="configuration">'
-            . $this->renderSubNavigation('configuration', [
-                ['general', $this->text->get('subnav.general')],
-                ['schedule', $this->text->get('subnav.schedule')],
-                ['delivery', $this->text->get('subnav.delivery')],
-                ['security', $this->text->get('subnav.security_web')],
-                ['paths', $this->text->get('subnav.paths')],
-            ], 'general')
-            . $general . $schedule . $delivery . $security . $paths
-            . '</div>',
-        );
-    }
-
-    private function renderRecipientsArea(AdminInspectionViewModel $inspection): string
-    {
-        if (!$inspection->available() || $inspection->fileAliases() === null) {
-            return $this->renderMainPanel('recipients', $this->text->get('nav.recipients'), '<p>' . $this->e($inspection->notice() ?: $this->text->get('inspection.unavailable')) . '</p>');
-        }
-
-        $recipients = '<section id="recipients-people" class="tab-panel" data-tab-panel="recipients-people"><div class="card"><h3>' . $this->e($this->text->get('subnav.recipients')) . '</h3><p class="helper-text">' . $this->e($this->text->get('recipients.configured_help')) . '</p></div></section>';
-        $messages = '<section id="recipients-messages" class="tab-panel" data-tab-panel="recipients-messages" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.messages')) . '</h3><p class="helper-text">' . $this->e($this->text->get('recipients.messages_help')) . '</p></div></section>';
-        $files = '<section id="recipients-files" class="tab-panel" data-tab-panel="recipients-files" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.files')) . '</h3>' . $this->renderFileAliases($inspection->fileAliases()) . '</div></section>';
-
-        return $this->renderMainPanel(
-            'recipients',
-            $this->text->get('nav.recipients'),
-            '<div data-tab-scope="recipients">'
-            . $this->renderSubNavigation('recipients', [
-                ['people', $this->text->get('subnav.recipients')],
-                ['messages', $this->text->get('subnav.messages')],
-                ['files', $this->text->get('subnav.files')],
-            ], 'people')
-            . $recipients . $messages . $files
-            . '</div>',
-        );
-    }
-
-    private function renderActivityLogArea(AdminInspectionViewModel $inspection): string
-    {
-        if (!$inspection->available() || $inspection->logTail() === null) {
-            return $this->renderMainPanel('activity-log', $this->text->get('nav.activity_log'), '<p>' . $this->e($inspection->notice() ?: $this->text->get('inspection.unavailable')) . '</p>');
-        }
-
-        $logTail = $inspection->logTail();
-        $content = '<div data-tab-scope="activity-log">'
-            . $this->renderSubNavigation('activity-log', [['entries', $this->text->get('subnav.log_entries')]], 'entries')
-            . '<section id="activity-log-entries" class="tab-panel" data-tab-panel="activity-log-entries"><div class="card terminal-card"><h3>' . $this->e($this->text->get('subnav.log_entries')) . '</h3><p>' . $this->e($logTail->status()) . ': ' . $this->e($logTail->message()) . '</p>'
-            . ($logTail->lines() !== [] ? '<div class="log-window">' . $this->renderLogLines($logTail->lines()) . '</div>' : '')
-            . '</div></section></div>';
-
-        return $this->renderMainPanel('activity-log', $this->text->get('nav.activity_log'), $content);
-    }
-
-    private function renderMaintenanceArea(string $csrfToken, AdminInspectionViewModel $inspection): string
-    {
-        $content = '<div data-tab-scope="maintenance">'
-            . $this->renderSubNavigation('maintenance', [
-                ['security', $this->text->get('subnav.security')],
-                ['runtime-state', $this->text->get('subnav.runtime_state')],
-                ['logs', $this->text->get('subnav.logs')],
-                ['file-aliases', $this->text->get('subnav.file_aliases')],
-            ], 'security')
-            . '<section id="maintenance-security" class="tab-panel" data-tab-panel="maintenance-security"><div class="maintenance-danger-zone"><h3>' . $this->e($this->text->get('danger.heading')) . '</h3>' . $this->renderDangerPreview($inspection) . $this->renderDangerPreviewForms($csrfToken, [AdminCommandCatalog::PREVIEW_HMAC_ROTATION]) . '</div></section>'
-            . '<section id="maintenance-runtime-state" class="tab-panel" data-tab-panel="maintenance-runtime-state" hidden><div class="maintenance-danger-zone"><h3>' . $this->e($this->text->get('subnav.runtime_state')) . '</h3>' . $this->renderDangerPreviewForms($csrfToken, [AdminCommandCatalog::PREVIEW_RUNTIME_RESET]) . '</div></section>'
-            . '<section id="maintenance-logs" class="tab-panel" data-tab-panel="maintenance-logs" hidden><div class="maintenance-danger-zone"><h3>' . $this->e($this->text->get('subnav.logs')) . '</h3>' . $this->renderDangerPreviewForms($csrfToken, [AdminCommandCatalog::PREVIEW_LOG_CLEAR]) . '</div></section>'
-            . '<section id="maintenance-file-aliases" class="tab-panel" data-tab-panel="maintenance-file-aliases" hidden><div class="maintenance-danger-zone"><h3>' . $this->e($this->text->get('subnav.file_aliases')) . '</h3>' . $this->renderDangerPreviewForms($csrfToken, [AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION]) . '</div></section>'
-            . '</div>';
-
-        return $this->renderMainPanel('maintenance', $this->text->get('nav.maintenance'), $content);
-    }
-
-    private function renderMainPanel(string $key, string $title, string $content, bool $active = false): string
-    {
-        return '<section id="main-' . $this->e($key) . '" class="ui-section main-panel view-animate" data-section="' . $this->e($key) . '" data-tab-panel="main-' . $this->e($key) . '" aria-labelledby="main-' . $this->e($key) . '-title"' . ($active ? '' : ' hidden') . '>
-<div class="section-heading">
-<h2 id="main-' . $this->e($key) . '-title">' . $this->e($title) . '</h2>
-</div>
-' . $content . '
-</section>';
-    }
-
-    /**
-     * @param list<array{0: string, 1: string}> $items
-     */
-    private function renderSubNavigation(string $scope, array $items, string $activeKey): string
-    {
-        $buttons = '';
-        foreach ($items as [$key, $label]) {
-            $target = $scope . '-' . $key;
-            $active = $key === $activeKey;
-            $buttons .= '<button type="button" class="sub-nav-item' . ($active ? ' active' : '') . '"'
-                . ($active ? ' aria-selected="true"' : ' aria-selected="false"')
-                . ' aria-controls="' . $this->e($target) . '" data-tab-target="' . $this->e($target) . '">'
-                . $this->e($label)
-                . '</button>';
-        }
-
-        return '<nav class="sub-nav" role="tablist" aria-label="' . $this->e($scope) . '">' . $buttons . '</nav>';
-    }
-
-    private function humanPreflightSummary(string $status): string
-    {
-        return match ($status) {
-            'OK' => $this->text->get('status.ready'),
-            'WARN' => $this->text->get('status.warning'),
-            'FAIL' => $this->text->get('status.not_ready'),
-            default => $status,
-        };
-    }
-
-    /**
-     * @param list<string> $issues
-     */
-    private function renderSummaryIssues(array $issues): string
-    {
-        if ($issues === []) {
-            return '<p class="helper-text">' . $this->e($this->text->get('status.no_issues')) . '</p>';
-        }
-
-        $items = '';
-        foreach ($issues as $issue) {
-            $items .= '<li>' . $this->e($issue) . '</li>';
-        }
-
-        return '<ul class="notice neutral">' . $items . '</ul>';
-    }
-
-    private function renderBlockingPreflightIssues(\Totman\RuntimeUi\Preflight\PreflightResult $preflight): string
-    {
-        $items = '';
-        foreach ($preflight->checks() as $check) {
-            if ($check->status() !== 'FAIL') {
-                continue;
-            }
-
-            $items .= '<li><strong>' . $this->e($this->preflightLabel($check->code())) . '</strong>'
-                . '<span>' . $this->e($check->message()) . '</span></li>';
-        }
-
-        if ($items === '') {
-            return '<p class="helper-text">' . $this->e($this->text->get('status.no_issues')) . '</p>';
-        }
-
-        return '<ul class="notice error status-blockers">' . $items . '</ul>';
-    }
-
-    private function preflightResultItems(\Totman\RuntimeUi\Preflight\PreflightResult $preflight): string
-    {
-        $checks = '';
-        foreach ($preflight->checks() as $check) {
-            if ($this->text->productMode()) {
-                $checks .= '<div class="preflight-item status-' . $this->e(strtolower($check->status())) . '">'
-                    . '<strong>' . $this->e($this->statusLabel($check->status())) . '</strong>'
-                    . '<h4>' . $this->e($this->preflightLabel($check->code())) . '</h4>'
-                    . '<p>' . $this->e($check->message()) . '</p>'
-                    . ($check->fix() !== '' ? '<small>' . $this->e($this->text->get('preflight.fix')) . ': ' . $this->e($check->fix()) . '</small>' : '')
-                    . '</div>';
-                continue;
-            }
-
-            $checks .= '<div class="preflight-item status-' . $this->e(strtolower($check->status())) . '"><strong>' . $this->e($this->statusLabel($check->status())) . '</strong> '
-                . '<code>' . $this->e($check->code()) . '</code>: ' . $this->e($check->message())
-                . ($check->fix() !== '' ? ' <small>' . $this->e($this->text->get('preflight.fix')) . ': ' . $this->e($check->fix()) . '</small>' : '')
-                . '</div>';
-        }
-
-        return $checks;
-    }
-
-    /**
-     * @param array<string, mixed> $config
-     * @param list<string> $keys
-     */
-    private function renderRedactedConfigList(array $config, array $keys): string
-    {
-        $items = '';
-        foreach ($keys as $key) {
-            if (!array_key_exists($key, $config)) {
-                continue;
-            }
-
-            $value = $config[$key];
-            if (is_bool($value)) {
-                $value = $value ? 'true' : 'false';
-            } elseif (is_array($value)) {
-                $value = '[' . count($value) . ']';
-            } elseif ($value === null) {
-                $value = '';
-            } elseif (!is_scalar($value)) {
-                $value = get_debug_type($value);
-            }
-
-            $items .= '<dt>' . $this->e($this->humanConfigKey($key)) . '</dt><dd>' . $this->e((string)$value) . '</dd>';
-        }
-
-        return $items !== '' ? '<dl>' . $items . '</dl>' : '<p class="helper-text">' . $this->e($this->text->get('configuration.no_values')) . '</p>';
-    }
-
-    private function humanConfigKey(string $key): string
-    {
-        return ucwords(str_replace('_', ' ', $key));
-    }
-
-    /**
-     * @param list<array{type: string, message: string}> $notifications
-     */
-    private function renderDocument(string $content, array $notifications = []): string
-    {
-        $mode = $this->text->productMode() ? 'product' : 'prototype';
-
-        return '<!doctype html>
-<html lang="en-GB">
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>' . $this->e($this->text->get('page.title')) . '</title>
-' . $this->renderStylesheetLink() . '
-<body class="ui-shell mode-' . $this->e($mode) . '" data-runtime-ui-mode="' . $this->e($mode) . '" data-surface="' . $this->e($mode) . '">
-<div class="container">
-<main class="ui-main">
-' . $content . '
-</main>
-</div>
-' . $this->renderNotificationModal($notifications) . '
-' . $this->renderScriptLink() . '
-</body>
-</html>';
-    }
-
-    /**
-     * @return list<array{type: string, message: string}>
-     */
-    private function productNotificationItems(
-        FirstRunViewModel $view,
-        ?SetupAccessResult $access,
-        AdminAuthViewModel $adminAuth,
-    ): array {
-        $items = [];
-        if ($view->notice() !== '') {
-            $items[] = ['type' => 'ok', 'message' => $view->notice()];
-        }
-
-        foreach ($view->errors() as $error) {
-            $items[] = ['type' => 'error', 'message' => $error];
-        }
-
-        if ($access !== null && !$access->allowed() && $access->message() !== '') {
-            $message = $access->code() === 'administration_disabled'
-                ? $this->text->get('admin.disabled')
-                : $access->message();
-            $items[] = ['type' => 'error', 'message' => $message];
-        }
-
-        if ($adminAuth->showSetupLocked()) {
-            $items[] = ['type' => 'error', 'message' => $this->text->get('setup.locked')];
-        }
-
-        if ($adminAuth->showAdministrationDisabled()) {
-            $items[] = ['type' => 'error', 'message' => $this->text->get('admin.disabled')];
-        }
-
-        if ($adminAuth->showConfigBlocked()) {
-            $items[] = ['type' => 'error', 'message' => $this->text->get('admin.config_blocked')];
-        }
-
-        if ($adminAuth->showPrivateConfigBlocked()) {
-            $items[] = ['type' => 'error', 'message' => $this->text->get('admin.private_config_blocked')];
-        }
-
-        $unique = [];
-        $deduplicated = [];
-        foreach ($items as $item) {
-            $key = $item['type'] . "\0" . $item['message'];
-            if (isset($unique[$key])) {
-                continue;
-            }
-
-            $unique[$key] = true;
-            $deduplicated[] = $item;
-        }
-
-        return $deduplicated;
-    }
-
-    /**
-     * @param list<array{type: string, message: string}> $notifications
-     */
-    private function renderNotificationModal(array $notifications): string
-    {
-        if (!$this->text->productMode() || $notifications === []) {
-            return '';
-        }
-
-        return '<div id="notification-modal" class="notification-backdrop hidden" role="status" aria-live="polite" aria-atomic="true" data-notifications="' . $this->e(json_encode($notifications, JSON_THROW_ON_ERROR)) . '">
-<div class="notification-dialog" role="document">
-<button type="button" class="notification-close" aria-label="' . $this->e($this->text->get('modal.close')) . '" data-notification-close>&times;</button>
-<div data-notification-items></div>
-<div class="notification-progress" aria-hidden="true"><span data-notification-progress></span></div>
-</div>
-</div>';
-    }
-
-    public function stylesheet(): string
-    {
-        if (!$this->text->productMode()) {
-            return '';
-        }
-
-        return ':root{--bg-main:#f1f5f9;--bg-surface:#fff;--text-primary:#0f172a;--text-muted:#334155;--bg-card:rgba(255,255,255,.9);--accent:#c1121f;--accent-hover:#9f0f1a;--accent-glow:rgba(193,18,31,.16);--border:#cbd5e1;--success:#15803d;--warning:#2563eb;--danger:#b91c1c;--radius-s:8px;--radius-m:12px;--space-s:.5rem;--space-m:1rem;--space-l:1.6rem}
-html[data-theme=dark]{--bg-main:#0b0f1a;--bg-surface:#161e2e;--bg-card:rgba(22,30,46,.92);--text-primary:#f8fafc;--text-muted:#cbd5e1;--accent:#e63946;--accent-hover:#ff5d68;--accent-glow:rgba(230,57,70,.25);--border:#334155;--success:#22c55e;--warning:#60a5fa;--danger:#f87171}
-*{box-sizing:border-box;margin:0;padding:0}
-body.mode-product{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg-main);color:var(--text-primary);line-height:1.55;min-height:100vh}
-.mode-product .container{width:min(100% - 3rem,1200px);margin-inline:auto;padding-block:clamp(1.6rem,3vw,2.75rem)}
-.mode-product .header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-bottom:clamp(2.2rem,5vw,4rem);gap:var(--space-m)}
-.mode-product .brand{display:flex;align-items:center;gap:1rem;color:inherit;text-decoration:none;border-radius:var(--radius-m)}
-.mode-product .brand-logo{width:clamp(56px,9vw,112px);height:auto;display:block}
-.mode-product .brand-text h1{font-size:clamp(2rem,1.6rem + 1.8vw,3.4rem);line-height:.95;font-weight:950;letter-spacing:-.02em}
-.mode-product .tagline{margin-top:.25rem;color:var(--text-muted);font-size:clamp(.95rem,.85rem + .35vw,1.12rem);font-weight:800}
-.mode-product .header-actions{display:flex;align-items:center;justify-content:flex-end;gap:.65rem;flex-wrap:wrap;max-width:min(100%,42rem)}
-.mode-product .ui-main-nav{display:flex;flex-wrap:wrap;gap:.35rem;width:max-content;max-width:100%;padding:.4rem;margin:0 0 var(--space-l);background:color-mix(in srgb,var(--bg-surface),var(--bg-main)30%);border:1px solid var(--border);border-radius:999px}
-.mode-product .ui-main-nav .nav-item{border:0;border-radius:999px;background:transparent;color:var(--text-muted);min-height:0;padding:.72rem 1.05rem;font-weight:900;transition:background-color .18s ease,color .18s ease,box-shadow .18s ease,transform .18s ease}
-.mode-product .ui-main-nav .nav-item:hover:not(:disabled):not(.active){background:var(--accent-glow);color:var(--accent);transform:translateY(-1px)}
-.mode-product .ui-main-nav .nav-item.active{background:var(--accent);color:#fff;box-shadow:0 6px 18px var(--accent-glow)}
-.mode-product .ui-main-nav .nav-item:disabled{opacity:.45}
-.mode-product .main-panel[hidden],.mode-product .tab-panel[hidden]{display:none!important}
-.mode-product .language-menu{position:relative}
-.mode-product .language-menu summary{list-style:none;min-height:46px;display:inline-flex;align-items:center;gap:.65rem;border:1.5px solid var(--border);border-radius:var(--radius-m);background:var(--bg-surface);color:var(--text-primary);font-weight:900;font-size:.95rem;padding:.65rem 2.15rem .65rem .9rem;cursor:pointer;user-select:none}
-.mode-product .language-menu summary::-webkit-details-marker{display:none}
-.mode-product .language-menu summary:after{content:"";position:absolute;right:.9rem;top:50%;width:.55rem;height:.55rem;border-right:2px solid var(--text-muted);border-bottom:2px solid var(--text-muted);transform:translateY(-65%) rotate(45deg);pointer-events:none}
-.mode-product .language-menu[open] summary{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-glow);background:var(--bg-surface)}
-.mode-product .language-menu[open] summary:after{transform:translateY(-25%) rotate(225deg)}
-.mode-product .language-options{position:absolute;right:0;top:calc(100% + .45rem);z-index:50;min-width:100%;padding:.35rem;border:1px solid var(--border);border-radius:var(--radius-m);background:var(--bg-surface);box-shadow:0 14px 36px rgba(15,23,42,.2);display:grid;gap:.25rem}
-.mode-product .language-options button{min-height:0;border:0;border-radius:8px;background:transparent;color:var(--text-primary);font:inherit;font-weight:800;text-align:left;padding:.6rem .75rem;cursor:pointer;justify-content:flex-start;transition:background-color .18s ease,color .18s ease}
-.mode-product .language-options button:hover,.mode-product .language-options button[aria-current=true]{background:var(--accent-glow);color:var(--accent)}
-.mode-product .theme-toggle{width:46px;height:46px;min-height:46px;padding:0!important;font-size:1.25rem;line-height:1;color:var(--text-primary);font-weight:900}
-.mode-product .theme-icon{display:none;line-height:1}
-.mode-product .theme-toggle[data-theme-resolved=light] .theme-icon-light,.mode-product .theme-toggle[data-theme-resolved=dark] .theme-icon-dark{display:block}
-.mode-product .signout-btn{border-color:rgba(185,28,28,.35)!important;background:rgba(185,28,28,.08)!important;color:var(--danger)!important}
-.mode-product .signout-btn:hover:not(:disabled){border-color:var(--danger)!important;background:rgba(185,28,28,.14)!important;color:var(--danger)!important}
-.mode-product .card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-m);padding:var(--space-l);margin-bottom:var(--space-l);box-shadow:0 1px 3px rgba(0,0,0,.1)}
-.mode-product .card>h2,.mode-product .card>h3{margin-bottom:calc(var(--space-m) + .45rem)}
-.mode-product .auth-main{display:grid;place-items:start center;padding-block:clamp(1rem,4vw,3rem)}
-.mode-product .auth-card{width:min(100%,760px)}
-.mode-product .auth-card .form-grid{margin-top:var(--space-m)}
-.mode-product h2{font-size:clamp(1.25rem,1.05rem + .8vw,1.75rem);line-height:1.15}
-.mode-product h3{font-size:1.08rem;margin:var(--space-m) 0 .55rem}
-.mode-product h4{font-size:1rem;margin:var(--space-m) 0 .45rem}
-.mode-product p{margin-bottom:var(--space-m)}
-.mode-product .dashboard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:var(--space-s);margin-bottom:var(--space-m)}
-.mode-product .stat-card{display:flex;align-items:center;gap:1rem;padding:1rem;margin-bottom:0;background:var(--bg-surface);min-height:86px}
-.mode-product .stat-icon{width:42px;height:42px;background:rgba(100,116,139,.14);color:#475569;border-radius:10px;display:grid;place-items:center;font-weight:900;flex:0 0 auto}
-html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);color:#cbd5e1}
-.mode-product .stat-content{display:flex;flex-direction:column;gap:2px;min-width:0}
-.mode-product .stat-label{font-size:.72rem;font-weight:800;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em}
-.mode-product .stat-value{font-size:clamp(1rem,.8rem + 1vw,1.35rem);font-weight:900;overflow-wrap:anywhere}
-.mode-product .stat-desc,.mode-product .helper-text,.mode-product .text-muted{color:var(--text-muted);font-size:.85rem}
-.mode-product .ui-section{--section-content-width:1200px}
-.mode-product .setup-view{--section-content-width:760px}
-.mode-product .setup-view-wide{--section-content-width:1200px}
-.mode-product .section-heading{width:min(100%,var(--section-content-width));margin:0 auto clamp(1.5rem,3vw,2.4rem)}
-.mode-product .section-kicker{margin:0 0 .25rem;color:var(--accent);font-size:.78rem;font-weight:950;letter-spacing:.08em;text-transform:uppercase}
-.mode-product .section-intro{color:var(--text-muted);max-width:48rem}
-.mode-product .setup-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(18rem,24rem);gap:var(--space-l);align-items:start;margin-top:.25rem}
-.mode-product .setup-layout-single{grid-template-columns:minmax(0,var(--section-content-width));justify-content:center}
-.mode-product .setup-step-card{margin-bottom:0}
-.mode-product .setup-admin-card{margin-bottom:0}
-.mode-product .sub-nav{display:flex;flex-wrap:wrap;gap:1.15rem;padding:0;margin:0 0 var(--space-l);background:transparent;border:0;border-bottom:1px solid var(--border);border-radius:0;box-shadow:none}
-.mode-product .sub-nav .sub-nav-item{border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;color:var(--text-muted);min-height:0;padding:.45rem 0 .65rem;font-size:.92rem;font-weight:850;transition:color .18s ease,border-color .18s ease}
-.mode-product .sub-nav .sub-nav-item:hover,.mode-product .sub-nav .sub-nav-item.active,.mode-product .sub-nav .sub-nav-item[aria-selected=true]{color:var(--accent);border-bottom-color:var(--accent)}
-.mode-product .setup-step-list{list-style:none;padding-left:0}
-.mode-product .setup-step-list .sub-nav-item{list-style:none;border:0;border-bottom:3px solid transparent;border-radius:0;background:transparent;padding:.45rem 0 .65rem;color:var(--text-muted);font-size:.92rem;font-weight:850;transition:color .18s ease,border-color .18s ease}
-.mode-product .setup-step-list .sub-nav-item[aria-current=step]{color:var(--accent);border-bottom-color:var(--accent)}
-.mode-product .setup-step-list .sub-nav-item.is-complete{color:var(--success)}
-.mode-product .setup-step-list .sub-nav-item.is-blocked{color:var(--danger)}
-.mode-product .setup-step-list small{display:block;font-size:.72rem;font-weight:800;opacity:.8}
-.mode-product .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:var(--space-m)var(--space-l)}
-.mode-product .full-width,.mode-product fieldset{grid-column:1/-1}
-.mode-product fieldset{border:1px solid var(--border);border-radius:var(--radius-m);padding:var(--space-m);background:var(--bg-surface)}
-.mode-product .setup-fields{border:0;border-radius:0;padding:0;background:transparent}
-.mode-product legend{padding:0 .45rem;font-weight:900;color:var(--text-primary)}
-.mode-product .input-group{margin-bottom:.95rem}
-.mode-product .field-label-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.45rem}
-.mode-product .input-group label,.mode-product .group-label,.mode-product label{font-size:1rem;font-weight:850;color:var(--text-muted)}
-.mode-product .help-wrap{position:relative;display:inline-flex;align-items:center}
-.mode-product .help-trigger{width:1.45rem;height:1.45rem;min-height:0;padding:0!important;border-radius:999px!important;border:1.5px solid var(--border)!important;background:var(--bg-surface)!important;color:var(--text-muted)!important;font-size:.8rem!important;font-weight:950!important;line-height:1}
-.mode-product .help-popover{position:absolute;right:0;top:calc(100% + .45rem);z-index:60;display:none;width:min(18rem,80vw);padding:.75rem .85rem;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--bg-surface);color:var(--text-primary);box-shadow:0 14px 36px rgba(15,23,42,.22);font-size:.84rem;font-weight:700}
-.mode-product .help-wrap:hover .help-popover,.mode-product .help-wrap:focus-within .help-popover{display:block}
-.mode-product .field-meta{margin:.2rem 0 0;color:var(--text-muted);font-size:.78rem;font-weight:750}
-.mode-product .field-errors{margin:.45rem 0 0;padding-left:1.1rem;color:var(--danger);font-size:.86rem;font-weight:800}
-.mode-product form label{display:grid;gap:.45rem;max-width:44rem}
-.mode-product form label:has(input[type=checkbox]){display:inline-flex;align-items:center;gap:.55rem}
-.mode-product input,.mode-product textarea,.mode-product select{width:100%;padding:.85rem 1rem;background:var(--bg-main);border:1.5px solid var(--border);border-radius:var(--radius-s);color:var(--text-primary);font:inherit;font-weight:600}
-.mode-product .password-input-wrap{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.55rem;align-items:stretch}
-.mode-product .password-input-wrap input{min-width:0}
-.mode-product .password-toggle{min-height:0!important;padding:.75rem .9rem!important;white-space:nowrap}
-.mode-product textarea{min-height:8.5rem;resize:vertical}
-.mode-product textarea.auto-grow{overflow:hidden}
-.mode-product input[type=checkbox]{width:1.05rem;height:1.05rem;margin:0;accent-color:var(--accent)}
-.mode-product input:focus,.mode-product textarea:focus,.mode-product select:focus{outline:none;border-color:var(--accent);background:var(--bg-surface);box-shadow:0 0 0 4px var(--accent-glow)}
-.mode-product input[readonly]{opacity:.78}
-.mode-product .checkbox-card{margin:var(--space-m) 0}
-.mode-product .checkbox-card-label{display:grid!important;grid-template-columns:auto minmax(0,1fr);gap:.75rem;align-items:start;max-width:none!important;padding:.9rem 1rem;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--bg-main);cursor:pointer}
-.mode-product .checkbox-card input[type=checkbox]{margin-top:.2rem;flex:0 0 auto}
-.mode-product .checkbox-card-copy{display:grid;gap:.18rem;min-width:0}
-.mode-product .checkbox-card-title{display:block;color:var(--text-primary);font-weight:850}
-.mode-product .checkbox-card .helper-text{margin:0}
-.mode-product .checkbox-card .field-errors{grid-column:1/-1}
-.mode-product .checkbox-card-label:has(input:focus-visible){outline:3px solid var(--accent);outline-offset:3px}
-.mode-product .maintenance-danger-zone .checkbox-card-label{background:rgba(255,255,255,.55)}
-html[data-theme=dark] .mode-product .maintenance-danger-zone .checkbox-card-label{background:rgba(15,23,42,.3)}
-.mode-product .command-alias-field{min-width:min(100%,18rem);margin-bottom:0}
-.mode-product button{border-radius:var(--radius-m);font-weight:700;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;justify-content:center;gap:.6rem;min-height:54px;font:inherit;font-size:1rem;line-height:1.2}
-.mode-product button[name=action][value=save_runtime],.mode-product button[name=action][value=create_admin],.mode-product button[name=action][value=login],.mode-product button[name=action][value=admin_command]{background:var(--accent);color:white;border:0;padding:1rem 1.65rem}
-.mode-product button[name=action][value=save_runtime]:hover:not(:disabled),.mode-product button[name=action][value=create_admin]:hover:not(:disabled),.mode-product button[name=action][value=login]:hover:not(:disabled),.mode-product button[name=action][value=admin_command]:hover:not(:disabled){background:var(--accent-hover);transform:translateY(-1px)}
-.mode-product button:not([name=action]),.mode-product button[name=action][value=update_draft],.mode-product button[name=action][value=discard_draft],.mode-product button[name=action][value=previous_step],.mode-product button[name=action][value=next_step],.mode-product button[name=action][value=reauth],.mode-product button[name=action][value=logout]{background:var(--bg-main);color:var(--text-primary);border:1.5px solid var(--border);padding:.95rem 1.45rem}
-.mode-product button:not([name=action]):hover:not(:disabled),.mode-product button[name=action][value=update_draft]:hover:not(:disabled),.mode-product button[name=action][value=discard_draft]:hover:not(:disabled),.mode-product button[name=action][value=previous_step]:hover:not(:disabled),.mode-product button[name=action][value=next_step]:hover:not(:disabled),.mode-product button[name=action][value=reauth]:hover:not(:disabled),.mode-product button[name=action][value=logout]:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
-.mode-product button:disabled{opacity:.55;cursor:not-allowed}
-.mode-product :focus-visible{outline:3px solid var(--accent);outline-offset:3px}
-.mode-product .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-.mode-product .action-bar{display:flex;justify-content:flex-end;align-items:center;gap:.8rem;width:100%;margin-block:var(--space-l);flex-wrap:wrap}
-.mode-product .ui-wizard-form .action-bar .btn-secondary{order:1}
-.mode-product .ui-wizard-form .action-bar .btn-primary{order:2}
-.mode-product .notice{padding:.9rem 1rem;border-radius:var(--radius-s);margin-bottom:var(--space-m);font-weight:800}
-.mode-product .notice.ok{background:rgba(21,128,61,.12);color:var(--success);border:1px solid rgba(21,128,61,.3)}
-.mode-product .notice.error{background:rgba(185,28,28,.12);color:var(--danger);border:1px solid rgba(185,28,28,.3)}
-.mode-product .notice.neutral{background:rgba(37,99,235,.12);color:var(--warning);border:1px solid rgba(37,99,235,.3)}
-.mode-product .ui-alert{padding-left:2rem}
-.mode-product .status-lede{font-weight:900;font-size:1.05rem}
-.mode-product .status-ok{color:var(--success)}
-.mode-product .status-warn{color:var(--warning)}
-.mode-product .status-fail{color:var(--danger)}
-.mode-product .notification-backdrop{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:1rem;background:rgba(15,23,42,.32);backdrop-filter:blur(3px)}
-.mode-product .notification-backdrop.hidden{display:none}
-.mode-product .notification-dialog{position:relative;overflow:hidden;width:min(100%,34rem);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-m);box-shadow:0 24px 70px rgba(15,23,42,.34);padding:var(--space-l);color:var(--text-primary)}
-.mode-product .notification-close{position:absolute;top:.65rem;right:.65rem;width:2rem;height:2rem;min-height:2rem;padding:0!important;border:1px solid var(--border)!important;border-radius:999px;background:var(--bg-surface)!important;color:var(--text-muted)!important;font:inherit;font-weight:900;cursor:pointer}
-.mode-product .notification-close:hover,.mode-product .notification-close:focus-visible{border-color:var(--accent)!important;color:var(--accent)!important}
-.mode-product .notification-item{padding:.7rem .9rem;border-radius:var(--radius-s);border:1px solid var(--border);font-weight:750}
-.mode-product .notification-item+.notification-item{margin-top:.55rem}
-.mode-product .notification-item.ok{background:rgba(21,128,61,.12);border-color:rgba(21,128,61,.32);color:var(--success)}
-.mode-product .notification-item.warn{background:rgba(37,99,235,.12);border-color:rgba(37,99,235,.32);color:var(--warning)}
-.mode-product .notification-item.error{background:rgba(185,28,28,.12);border-color:rgba(185,28,28,.32);color:var(--danger)}
-.mode-product .notification-progress{height:3px;margin:1rem -.2rem -.75rem;border-radius:999px;background:rgba(100,116,139,.18);overflow:hidden}
-.mode-product .notification-progress span{display:block;height:100%;width:100%;background:var(--accent);transform-origin:left center;animation:notificationProgress 5.2s linear forwards}
-.mode-product .preflight-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:.75rem;margin-top:var(--space-m)}
-.mode-product .setup-view-wide .preflight-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
-.mode-product .preflight-item{display:flex;flex-direction:column;gap:.25rem;border:1px solid var(--border);border-left-width:5px;border-radius:var(--radius-s);padding:.75rem;background:var(--bg-surface)}
-.mode-product .preflight-item.status-ok{border-left-color:var(--success)}
-.mode-product .preflight-item.status-warn{border-left-color:var(--warning)}
-.mode-product .preflight-item.status-fail{border-left-color:var(--danger)}
-.mode-product .preflight-item span{font-weight:850;color:var(--text-primary)}
-.mode-product .preflight-item p{margin:0;color:var(--text-muted)}
-.mode-product .preflight-item small,.mode-product .helper-text,.mode-product .text-muted{color:var(--text-muted);font-size:.85rem}
-.mode-product .terminal-card{background:var(--bg-card);color:var(--text-primary)}
-.mode-product .log-window{display:block;white-space:normal;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--bg-main);color:var(--text-primary);padding:.35rem;min-height:18rem;max-height:clamp(18rem,52vh,42rem);overflow:auto}
-.mode-product .log-line{white-space:pre-wrap;overflow-wrap:anywhere;padding:.42rem .55rem;border-radius:6px}
-.mode-product .log-line:nth-child(odd){background:rgba(15,23,42,.035)}
-.mode-product .log-line:nth-child(even){background:rgba(193,18,31,.06)}
-html[data-theme=dark] .mode-product .log-line:nth-child(odd){background:rgba(248,250,252,.045)}
-html[data-theme=dark] .mode-product .log-line:nth-child(even){background:rgba(230,57,70,.12)}
-.mode-product .maintenance-danger-zone{background:#fff1f2;border:1px solid #b91c1c;border-left:6px solid #7f1d1d;border-radius:var(--radius-m);padding:var(--space-m);color:#0f172a;margin-top:var(--space-l)}
-.mode-product .maintenance-danger-zone h3,.mode-product .maintenance-danger-zone h4{color:#7f1d1d}
-@media(prefers-color-scheme:dark){.mode-product .maintenance-danger-zone{background:#2a1014;border-color:#f87171;border-left-color:#fca5a5;color:#f8fafc}.mode-product .maintenance-danger-zone h3,.mode-product .maintenance-danger-zone h4{color:#fecaca}}
-.mode-product pre{display:block;white-space:pre-wrap;overflow-wrap:anywhere;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--bg-main);color:var(--text-primary);padding:.75rem;min-height:10rem;max-height:clamp(18rem,52vh,42rem);overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85rem}
-.mode-product code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;background:var(--bg-main);border:1px solid var(--border);border-radius:6px;padding:.1rem .35rem;font-size:.78rem}
-.mode-product dl{display:grid;grid-template-columns:minmax(10rem,16rem)1fr;gap:.45rem 1rem}
-.mode-product dt{font-weight:900;color:var(--text-muted)}
-.mode-product dd{margin:0;color:var(--text-primary);overflow-wrap:anywhere}
-.mode-product ul,.mode-product ol{padding-left:1.2rem}
-.mode-product .sub-nav{padding-left:.3rem}
-.mode-product li+li{margin-top:.35rem}
-.mode-product .sub-nav li+li{margin-top:0}
-.mode-product .site-footer{border-top:0;margin-top:3rem;padding-block:clamp(1rem,2.4vw,1.5rem) clamp(1.4rem,3vw,2rem)}
-.mode-product .footer-nav{display:flex;flex-wrap:wrap;justify-content:center;gap:.35rem;width:fit-content;max-width:100%;margin-inline:auto;padding:.45rem;background:color-mix(in srgb,var(--bg-surface),var(--bg-main)30%);border:1px solid var(--border);border-radius:999px}
-.mode-product .footer-nav>a{color:var(--text-muted);font-weight:700;text-decoration:none;padding:.38rem .65rem;border-radius:999px;transition:background-color .18s ease,color .18s ease}
-.mode-product .footer-nav>a:hover,.mode-product .footer-nav>a:focus-visible{background:var(--accent-glow);color:var(--accent)}
-@keyframes notificationProgress{from{transform:scaleX(1)}to{transform:scaleX(0)}}@keyframes toggleSelect{0%{transform:scale(.96)}70%{transform:scale(1.025)}100%{transform:scale(1)}}@media(prefers-reduced-motion:reduce){.mode-product *{animation:none!important;transition:none!important}}
-@media(max-width:1100px){.mode-product .setup-view-wide .preflight-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:900px){.mode-product .setup-layout{grid-template-columns:1fr}}
-@media(max-width:850px){.mode-product .setup-view-wide .preflight-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:700px){.mode-product .container{width:min(100% - 1rem,1200px)}.mode-product .header{justify-content:center;text-align:center}.mode-product .brand{justify-content:center;width:100%;flex-direction:column;gap:.65rem}.mode-product .brand-logo{width:clamp(84px,24vw,116px)}.mode-product .brand-text{text-align:center}.mode-product .header-actions{width:100%;max-width:none;justify-content:center}.mode-product .ui-main-nav{width:100%;justify-content:center}.mode-product .card{padding:1rem}.mode-product .sub-nav{gap:.8rem;overflow-x:auto;flex-wrap:nowrap}.mode-product .setup-step-list .sub-nav-item{flex:0 0 auto;white-space:nowrap}.mode-product .action-bar{align-items:stretch}.mode-product .action-bar button{width:100%}.mode-product dl{grid-template-columns:1fr}.mode-product .footer-nav{border-radius:24px;width:100%}}
-@media(max-width:560px){.mode-product .setup-view-wide .preflight-grid{grid-template-columns:1fr}}' . "\n";
-    }
-
-    public function script(): string
-    {
-        if (!$this->text->productMode()) {
-            return '';
-        }
-
-        return '(() => {
-"use strict";
-const themeMedia = window.matchMedia("(prefers-color-scheme: dark)");
-const storageKey = "totman_theme_mode";
-const storageGet = key => { try { return localStorage.getItem(key); } catch (error) { return null; } };
-const storageSet = (key, value) => { try { localStorage.setItem(key, value); } catch (error) {} };
-const normalise = mode => ["light","dark"].includes(mode) ? mode : null;
-const systemMode = () => themeMedia.matches ? "dark" : "light";
-const applyTheme = mode => {
-  mode = normalise(mode);
-  const resolved = mode || systemMode();
-  document.documentElement.setAttribute("data-theme", resolved);
-  document.documentElement.dataset.themeMode = mode || "system";
-  const toggle = document.getElementById("theme-toggle");
-  if (toggle) {
-    toggle.dataset.themeResolved = resolved;
-    toggle.setAttribute("aria-pressed", resolved === "dark" ? "true" : "false");
-  }
-};
-const toggleTheme = () => {
-  const next = (document.documentElement.getAttribute("data-theme") || systemMode()) === "dark" ? "light" : "dark";
-  storageSet(storageKey, next);
-  applyTheme(next);
-};
-const langKey = "totman_ui_language";
-const applyLanguageLabel = value => {
-  const summary = document.querySelector("[data-language-current]");
-  const selected = document.querySelector(`[data-ui-lang="${CSS.escape(value)}"]`);
-  if (summary && selected) summary.textContent = selected.textContent || value;
-  document.querySelectorAll("[data-ui-lang]").forEach(button => button.setAttribute("aria-current", button.dataset.uiLang === value ? "true" : "false"));
-};
-applyTheme(storageGet(storageKey));
-themeMedia.addEventListener?.("change", () => { if (!normalise(storageGet(storageKey))) applyTheme(null); });
-document.getElementById("theme-toggle")?.addEventListener("click", toggleTheme);
-const storedLang = storageGet(langKey) || "en";
-applyLanguageLabel(storedLang);
-document.querySelectorAll("[data-ui-lang]").forEach(button => button.addEventListener("click", () => {
-  const value = button.dataset.uiLang || "en";
-  storageSet(langKey, value);
-  applyLanguageLabel(value);
-  button.closest("details")?.removeAttribute("open");
-}));
-document.querySelectorAll("[data-password-toggle]").forEach(button => {
-  const input = document.getElementById(button.dataset.passwordToggle || "");
-  if (!input) return;
-  const showLabel = button.dataset.showLabel || "Show";
-  const hideLabel = button.dataset.hideLabel || "Hide";
-  const sync = visible => {
-    input.type = visible ? "text" : "password";
-    button.textContent = visible ? hideLabel : showLabel;
-    button.setAttribute("aria-pressed", visible ? "true" : "false");
-  };
-  sync(input.type === "text");
-  button.addEventListener("click", () => sync(input.type === "password"));
-});
-const autoGrow = textarea => {
-  if (!(textarea instanceof HTMLTextAreaElement)) return;
-  textarea.style.height = "auto";
-  textarea.style.height = `${textarea.scrollHeight + 2}px`;
-};
-document.querySelectorAll("textarea.auto-grow").forEach(autoGrow);
-document.addEventListener("input", event => {
-  if (event.target instanceof HTMLTextAreaElement && event.target.classList.contains("auto-grow")) autoGrow(event.target);
-});
-document.querySelectorAll("[data-tab-scope]").forEach(scope => {
-  const scoped = selector => Array.from(scope.querySelectorAll(selector)).filter(element => element.closest("[data-tab-scope]") === scope);
-  const buttons = scoped("[data-tab-target]");
-  const panels = scoped("[data-tab-panel]");
-  if (buttons.length === 0 || panels.length === 0) return;
-  const activate = target => {
-    panels.forEach(panel => { panel.hidden = panel.dataset.tabPanel !== target; });
-    buttons.forEach(button => {
-      const selected = button.dataset.tabTarget === target;
-      button.classList.toggle("active", selected);
-      button.setAttribute("aria-selected", selected ? "true" : "false");
-    });
-  };
-  const selected = buttons.find(button => button.getAttribute("aria-selected") === "true") || buttons[0];
-  activate(selected.dataset.tabTarget || "");
-  buttons.forEach(button => button.addEventListener("click", () => activate(button.dataset.tabTarget || "")));
-});
-const notificationModal = document.getElementById("notification-modal");
-let notificationTimer = null;
-let notificationPreviousFocus = null;
-const hideNotificationModal = () => {
-  if (!notificationModal) return;
-  notificationModal.classList.add("hidden");
-  if (notificationTimer) window.clearTimeout(notificationTimer);
-  notificationTimer = null;
-  if (notificationPreviousFocus && typeof notificationPreviousFocus.focus === "function") notificationPreviousFocus.focus();
-  notificationPreviousFocus = null;
-};
-const showNotificationModal = items => {
-  if (!notificationModal || !Array.isArray(items) || items.length === 0) return;
-  const list = notificationModal.querySelector("[data-notification-items]");
-  const progress = notificationModal.querySelector("[data-notification-progress]");
-  if (!list) return;
-  list.innerHTML = "";
-  items.forEach(item => {
-    const entry = document.createElement("div");
-    const type = ["ok","warn","error"].includes(item.type) ? item.type : "warn";
-    entry.className = `notification-item ${type}`;
-    entry.textContent = item.message || "";
-    list.appendChild(entry);
-  });
-  if (progress) {
-    progress.style.animation = "none";
-    progress.offsetHeight;
-    progress.style.animation = "";
-  }
-  notificationPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-  notificationModal.classList.remove("hidden");
-  notificationModal.querySelector("[data-notification-close]")?.focus();
-  if (notificationTimer) window.clearTimeout(notificationTimer);
-  notificationTimer = window.setTimeout(hideNotificationModal, 5200);
-};
-if (notificationModal) {
-  let notificationItems = [];
-  try { notificationItems = JSON.parse(notificationModal.dataset.notifications || "[]"); } catch (error) { notificationItems = []; }
-  notificationModal.querySelector("[data-notification-close]")?.addEventListener("click", hideNotificationModal);
-  notificationModal.addEventListener("click", event => { if (event.target === notificationModal) hideNotificationModal(); });
-  document.addEventListener("keydown", event => { if (event.key === "Escape" && !notificationModal.classList.contains("hidden")) hideNotificationModal(); });
-  showNotificationModal(notificationItems);
-}
-})();' . "\n";
-    }
-
-    private function renderStylesheetLink(): string
-    {
-        if (!$this->text->productMode()) {
-            return '';
-        }
-
-        return '<link rel="stylesheet" href="' . $this->e($this->stylesheetUrl()) . '">';
-    }
-
-    private function renderScriptLink(): string
-    {
-        if (!$this->text->productMode()) {
-            return '';
-        }
-
-        return '<script src="' . $this->e($this->scriptUrl()) . '" defer></script>';
-    }
-
-    private function stylesheetUrl(): string
-    {
-        $version = substr(hash('sha256', $this->stylesheet()), 0, 12);
-
-        return $this->pageUrl() . '?totman_ui_asset=css&v=' . $version;
-    }
-
-    private function scriptUrl(): string
-    {
-        $version = substr(hash('sha256', $this->script()), 0, 12);
-
-        return $this->pageUrl() . '?totman_ui_asset=js&v=' . $version;
-    }
-
-    private function pageUrl(): string
-    {
-        return basename((string)($_SERVER['SCRIPT_NAME'] ?? 'totman-ui.php')) ?: 'totman-ui.php';
-    }
-
-    private function renderHeader(string $csrfToken, AdminAuthViewModel $adminAuth): string
-    {
-        if (!$this->text->productMode()) {
-            return '<header class="ui-header"><p class="ui-product">' . $this->e($this->text->get('product.name')) . '</p><h1>' . $this->e($this->text->get('page.title')) . '</h1></header>';
-        }
-
-        $signOut = '';
-        if ($adminAuth->showSignedIn()) {
-            $signOut = '<form method="post" class="header-logout-form"><input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '"><button type="submit" name="action" value="logout" class="btn-secondary compact-btn signout-btn">' . $this->e($this->text->get('admin.sign_out')) . '</button></form>';
-        }
-
-        return '<header class="header ui-header view-animate"><a class="brand brand-link" href="' . $this->e($this->pageUrl()) . '"><img class="brand-logo" src="' . self::PRODUCT_LOGO_DATA_URI . '" alt="" aria-hidden="true"><div class="brand-text"><h1>' . $this->e($this->text->get('product.name')) . '</h1><h2 class="tagline">A Deadman’s Switch for E-mail.</h2></div></a><div class="header-actions"><details class="language-menu"><summary aria-label="' . $this->e($this->text->get('header.language')) . '"><span data-language-current>English</span></summary><div class="language-options"><button type="button" data-ui-lang="en" aria-current="true">English</button><button type="button" data-ui-lang="de">Deutsch</button></div></details><button type="button" id="theme-toggle" class="btn-secondary compact-btn theme-toggle" aria-label="' . $this->e($this->text->get('header.toggle_theme')) . '" title="' . $this->e($this->text->get('header.toggle_theme')) . '"><span class="theme-icon theme-icon-light" aria-hidden="true">☀</span><span class="theme-icon theme-icon-dark" aria-hidden="true">◐</span></button>' . $signOut . '</div></header>';
-    }
-
-    private function renderFooter(): string
-    {
-        if (!$this->text->productMode()) {
-            return '';
-        }
-
-        return '<footer class="site-footer"><nav class="footer-nav" aria-label="' . $this->e($this->text->get('footer.label')) . '"><a href="https://github.com/MacSteini/totmannschalter">GitHub</a><a href="https://github.com/MacSteini/">MacSteini &copy; 2026</a><a href="https://github.com/MacSteini/totmannschalter/tree/main/docs">' . $this->e($this->text->get('footer.documentation')) . '</a></nav></footer>';
-    }
-
-    private function renderSection(string $key, string $title, string $content): string
-    {
-        $safeKey = preg_replace('/[^a-z0-9_-]/', '-', $key) ?? $key;
-        $titleId = 'section-' . $safeKey . '-title';
-
-        return '<section class="card ui-panel ui-panel-' . $this->e($key) . ' view-animate" data-section="' . $this->e($key) . '" aria-labelledby="' . $this->e($titleId) . '">
-<h2 id="' . $this->e($titleId) . '">' . $this->e($title) . '</h2>
-' . $content . '
-</section>';
-    }
-
-    private function renderSummary(FirstRunViewModel $view): string
-    {
-        $items = [
-            ['D', $this->text->get('summary.state_dir'), $this->summaryStateDir($view)],
-            ['M', $this->text->get('summary.mode'), $view->mode()],
-            ['S', $this->text->get('summary.current_step'), $this->stepTitle($view, $view->currentStep())],
-            ['P', $this->text->get('summary.preflight'), $view->preflightStatus()],
-            ['F', $this->text->get('summary.path_fields'), $view->pathFieldsReadOnly() ? $this->text->get('summary.paths_read_only') : $this->text->get('summary.paths_editable')],
-        ];
-
-        $cards = '';
-        foreach ($items as [$icon, $label, $value]) {
-            $cards .= '<article class="stat-card"><div class="stat-icon" aria-hidden="true">' . $this->e($icon) . '</div><div class="stat-content"><span class="stat-label">' . $this->e($label) . '</span><span class="stat-value">' . $this->e($value) . '</span></div></article>';
-        }
-
-        return '<div class="dashboard-grid ui-summary">' . $cards . '</div>';
-    }
-
-    private function renderSetupCodeField(): string
-    {
-        return $this->renderPlainInputGroup(
-            'setup-code',
-            'setup_code',
-            $this->text->get('wizard.setup_code'),
-            $this->text->get('wizard.setup_code_help'),
-        );
-    }
-
-    private function renderPlainInputGroup(
-        string $id,
-        string $name,
-        string $label,
-        string $hint,
-        string $type = 'text',
-        string $autocomplete = '',
-    ): string {
-        $describedBy = $id . '-help';
-        $autocompleteAttribute = $autocomplete !== '' ? ' autocomplete="' . $this->e($autocomplete) . '"' : '';
-
-        $input = '<input id="' . $this->e($id) . '" type="' . $this->e($type) . '" name="' . $this->e($name) . '"' . $autocompleteAttribute . ' aria-describedby="' . $this->e($describedBy) . '">';
-        if ($type === 'password') {
-            $input = '<div class="password-input-wrap">'
-                . $input
-                . '<button type="button" class="password-toggle" data-password-toggle="' . $this->e($id) . '" aria-controls="' . $this->e($id) . '" aria-pressed="false" data-show-label="' . $this->e($this->text->get('password.show')) . '" data-hide-label="' . $this->e($this->text->get('password.hide')) . '">' . $this->e($this->text->get('password.show')) . '</button>'
-                . '</div>';
-        }
-
-        return '<div class="input-group ui-field">'
-            . $this->labelRow($id, $label)
-            . $input
-            . $this->helperText($describedBy, $hint)
-            . '</div>';
-    }
-
-    private function renderReadonlyInputGroup(
-        string $id,
-        string $label,
-        string $value,
-        string $hint,
-        string $class = '',
-    ): string {
-        $describedBy = $id . '-help';
-        $classAttribute = trim('input-group ui-field ' . $class);
-
-        return '<div class="' . $this->e($classAttribute) . '">'
-            . $this->labelRow($id, $label)
-            . '<input id="' . $this->e($id) . '" type="text" value="' . $this->e($value) . '" readonly aria-describedby="' . $this->e($describedBy) . '">'
-            . $this->helperText($describedBy, $hint)
-            . '</div>';
-    }
-
-    private function renderCheckboxCard(
-        string $id,
-        string $name,
-        string $value,
-        string $label,
-        string $hint = '',
-        bool $checked = false,
-        string $class = '',
-        string $extraAttributes = '',
-    ): string {
-        $hintId = $id . '-help';
-        $classAttribute = trim('input-group ui-field checkbox-field checkbox-card ' . $class);
-        $describedBy = $hint !== '' ? ' aria-describedby="' . $this->e($hintId) . '"' : '';
-
-        return '<div class="' . $this->e($classAttribute) . '"><label class="checkbox-card-label" for="' . $this->e($id) . '">'
-            . '<input id="' . $this->e($id) . '" type="checkbox" name="' . $this->e($name) . '" value="' . $this->e($value) . '"'
-            . ($checked ? ' checked' : '') . $describedBy . $extraAttributes . '>'
-            . '<span class="checkbox-card-copy"><span class="checkbox-card-title">' . $this->e($label) . '</span>'
-            . ($hint !== '' ? '<span id="' . $this->e($hintId) . '" class="helper-text">' . $this->e($hint) . '</span>' : '')
-            . '</span></label></div>';
-    }
-
-    private function renderCommandAliasInput(string $command, string $phase): string
-    {
-        $id = 'admin-command-alias-' . preg_replace('/[^a-z0-9_-]/', '-', strtolower($command . '-' . $phase));
-        $hintId = $id . '-help';
-
-        return '<div class="input-group ui-field command-alias-field">'
-            . $this->labelRow($id, $this->text->get('danger.alias'))
-            . '<input id="' . $this->e($id) . '" name="admin_command_target_alias" aria-describedby="' . $this->e($hintId) . '">'
-            . $this->helperText($hintId, $this->text->get('danger.alias_help'))
-            . '</div>';
-    }
-
-    private function renderAdminAccess(string $csrfToken, AdminAuthViewModel $adminAuth): string
-    {
-        if ($adminAuth->showConfigBlocked()) {
-            return '<p>' . $this->e($this->text->get('admin.config_blocked')) . '</p>';
-        }
-
-        if ($adminAuth->showPrivateConfigBlocked()) {
-            return '<p>' . $this->e($this->text->get('admin.private_config_blocked')) . '</p>';
-        }
-
-        if ($adminAuth->showAdministrationDisabled()) {
-            return '<p>' . $this->e($this->text->get('admin.disabled')) . '</p>';
-        }
-
-        if ($adminAuth->showSignedIn()) {
-            return '<form method="post" class="form-grid">
-<input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-' . $this->renderPlainInputGroup('admin-reauth-password', 'reauth_password', $this->text->get('admin.reenter_password'), $this->text->get('admin.reauth_help'), 'password', 'current-password') . '
-<div class="action-bar full-width"><button type="submit" name="action" value="reauth" class="btn-primary">' . $this->e($this->text->get('admin.reauthenticate')) . '</button><button type="submit" name="action" value="logout" class="btn-secondary">' . $this->e($this->text->get('admin.sign_out')) . '</button></div>
-</form>';
-        }
-
-        if ($adminAuth->showLogin()) {
-            return '<form method="post" class="form-grid">
-<input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-' . $this->renderPlainInputGroup('admin-login-username', 'login_username', $this->text->get('admin.username'), $this->text->get('admin.username_help'), 'text', 'username') . '
-' . $this->renderPlainInputGroup('admin-login-password', 'login_password', $this->text->get('admin.password'), $this->text->get('admin.password_help'), 'password', 'current-password') . '
-<div class="action-bar full-width"><button type="submit" name="action" value="login" class="btn-primary">' . $this->e($this->text->get('admin.sign_in')) . '</button></div>
-</form>';
-        }
-
-        return '<form method="post" class="form-grid">
-<input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-' . $this->renderPlainInputGroup('admin-setup-code', 'setup_code', $this->text->get('admin.setup_code'), $this->text->get('wizard.setup_code_help')) . '
-' . $this->renderPlainInputGroup('admin-create-username', 'admin_username', $this->text->get('admin.create_username'), $this->text->get('admin.username_help'), 'text', 'username') . '
-' . $this->renderPlainInputGroup('admin-create-password', 'admin_password', $this->text->get('admin.create_password'), $this->text->get('admin.new_password_help'), 'password', 'new-password') . '
-' . $this->renderPlainInputGroup('admin-create-password-confirm', 'admin_password_confirm', $this->text->get('admin.repeat_password'), $this->text->get('admin.repeat_password_help'), 'password', 'new-password') . '
-<div class="action-bar full-width"><button type="submit" name="action" value="create_admin" class="btn-primary">' . $this->e($this->text->get('admin.create_access')) . '</button></div>
-</form>';
-    }
-
-    private function renderAdminInspection(string $csrfToken, AdminInspectionViewModel $inspection): string
-    {
-        if (!$inspection->available()) {
-            return '<p>' . $this->e($inspection->notice()) . '</p>';
-        }
-
-        $summary = $inspection->summary();
-        $logTail = $inspection->logTail();
-        $aliases = $inspection->fileAliases();
-        if ($summary === null || $logTail === null || $aliases === null) {
-            return '<p>' . $this->e($this->text->get('inspection.unavailable')) . '</p>';
-        }
-
-        return '<section>
-<h3>' . $this->e($this->text->get('inspection.summary')) . '</h3>
-<dl>
-<dt>' . $this->e($this->text->get('summary.mode')) . '</dt><dd>' . $this->e($summary->mode()) . '</dd>
-<dt>' . $this->e($this->text->get('inspection.main_source')) . '</dt><dd>' . $this->e($summary->mainSource()) . '</dd>
-<dt>' . $this->e($this->text->get('inspection.recipient_source')) . '</dt><dd>' . $this->e($summary->recipientSource()) . '</dd>
-<dt>' . $this->e($this->text->get('summary.preflight')) . '</dt><dd>' . $this->e($summary->preflight()->status()) . '</dd>
-<dt>' . $this->e($this->text->get('inspection.state_file')) . '</dt><dd>' . $this->e($summary->stateFile()->status()) . ' - ' . $this->e($summary->stateFile()->message()) . '</dd>
-</dl>
-' . $this->renderRuntimePaths($summary->paths()) . '
-<h3>' . $this->e($this->text->get('inspection.log_tail')) . '</h3>
-<p>' . $this->e($logTail->status()) . ': ' . $this->e($logTail->message()) . '</p>
-' . ($logTail->lines() !== [] ? '<div class="log-window terminal-card">' . $this->renderLogLines($logTail->lines()) . '</div>' : '') . '
-<h3>' . $this->e($this->text->get('inspection.file_aliases')) . '</h3>
-' . $this->renderFileAliases($aliases) . '
-<section class="maintenance-danger-zone">
-<h3>' . $this->e($this->text->get('danger.heading')) . '</h3>
-' . $this->renderDangerPreview($inspection) . '
-' . $this->renderDangerPreviewForms($csrfToken) . '
-</section>
-</section>';
-    }
-
-    /**
-     * @param array<string, string> $paths
-     */
-    private function renderRuntimePaths(array $paths): string
-    {
-        $items = '';
-        foreach ($paths as $key => $path) {
-            $items .= '<dt>' . $this->e($key) . '</dt><dd>' . $this->e($path) . '</dd>';
-        }
-
-        return '<h3>' . $this->e($this->text->get('inspection.paths')) . '</h3><dl>' . $items . '</dl>';
-    }
-
-    private function renderFileAliases(\Totman\RuntimeUi\Application\FileAliasInventory $aliases): string
-    {
-        $items = '';
-        foreach ($aliases->items() as $item) {
-            $fileState = $item->fileExists() ? $this->text->get('inspection.file_present') : $this->text->get('inspection.file_missing');
-            $items .= '<li><code>' . $this->e($item->alias()) . '</code> -> ' . $this->e($item->relativePath())
-                . ' <small>' . $this->e($this->text->get('inspection.alias_normal')) . ': ' . $item->normalReferences()
-                . ', ' . $this->e($this->text->get('inspection.alias_single_use')) . ': ' . $item->singleUseReferences()
-                . ', ' . $this->e($this->text->get('inspection.alias_file')) . ': ' . $this->e($fileState) . '</small>'
-                . ($item->issues() !== [] ? '<ul><li>' . $this->e(implode('</li><li>', $item->issues())) . '</li></ul>' : '')
-                . '</li>';
-        }
-
-        $issues = '';
-        foreach ($aliases->issues() as $issue) {
-            $issues .= '<li>' . $this->e($issue) . '</li>';
-        }
-
-        return '<p>' . $this->e($this->text->get('inspection.download_base_dir')) . ': ' . $this->e($aliases->downloadBaseDir()) . '</p>'
-            . ($items !== '' ? '<ul>' . $items . '</ul>' : '<p>' . $this->e($this->text->get('inspection.no_aliases')) . '</p>')
-            . ($issues !== '' ? '<ul role="alert">' . $issues . '</ul>' : '');
-    }
-
-    private function renderDangerPreview(AdminInspectionViewModel $inspection): string
-    {
-        $result = $inspection->maintenanceCommand();
-        if ($result === null) {
-            return '<p>' . $this->e($this->text->get('danger.none_selected')) . '</p>';
-        }
-
-        $blockers = '';
-        foreach ($result->blockers() as $blocker) {
-            $blockers .= '<li>' . $this->e($blocker) . '</li>';
-        }
-
-        $plan = '';
-        foreach ($result->plan() as $step) {
-            $plan .= '<li>' . $this->e($step) . '</li>';
-        }
-
-        $effects = '';
-        foreach ($result->effects() as $effect) {
-            $effects .= '<li>' . $this->e($effect) . '</li>';
-        }
-
-        return '<section><h4>' . $this->e($result->label()) . '</h4>'
-            . '<p>' . $this->e($this->text->get('danger.phase')) . ': ' . $this->e($result->phase()) . '</p>'
-            . '<p>' . $this->e($this->text->get('danger.status')) . ': ' . $this->e($this->maintenanceStatusLabel($result)) . '</p>'
-            . ($blockers !== '' ? '<ul role="alert">' . $blockers . '</ul>' : '')
-            . '<ol>' . $plan . '</ol>'
-            . ($effects !== '' ? '<h5>' . $this->e($this->text->get('danger.effects')) . '</h5><ul>' . $effects . '</ul>' : '')
-            . '</section>';
-    }
-
-    /**
-     * @param list<string>|null $onlyCommands
-     */
-    private function renderDangerPreviewForms(string $csrfToken, ?array $onlyCommands = null): string
-    {
-        $commands = [
-            AdminCommandCatalog::PREVIEW_HMAC_ROTATION => $this->text->get('danger.hmac_rotation'),
-            AdminCommandCatalog::PREVIEW_RUNTIME_RESET => $this->text->get('danger.runtime_reset'),
-            AdminCommandCatalog::PREVIEW_LOG_CLEAR => $this->text->get('danger.log_clear'),
-            AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION => $this->text->get('danger.file_alias_deletion'),
-        ];
-
-        $forms = '';
-        foreach ($commands as $command => $label) {
-            if ($onlyCommands !== null && !in_array($command, $onlyCommands, true)) {
-                continue;
-            }
-
-            $forms .= '<form class="action-bar" method="post">
-<input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-<input type="hidden" name="admin_command" value="' . $this->e($command) . '">
-<input type="hidden" name="admin_command_phase" value="' . MaintenanceCommandResult::PREVIEW . '">
-' . ($command === AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION ? $this->renderCommandAliasInput($command, MaintenanceCommandResult::PREVIEW) : '') . '
-<button type="submit" name="action" value="admin_command" class="btn-secondary">' . $this->e($label) . '</button>
-</form>
-<form class="action-bar danger-action-row" method="post">
-<input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
-<input type="hidden" name="admin_command" value="' . $this->e($command) . '">
-<input type="hidden" name="admin_command_phase" value="' . MaintenanceCommandResult::EXECUTE . '">
-' . ($command === AdminCommandCatalog::PREVIEW_FILE_ALIAS_DELETION ? $this->renderCommandAliasInput($command, MaintenanceCommandResult::EXECUTE) : '') . '
-' . $this->renderCheckboxCard(
-                'confirm-admin-command-' . (preg_replace('/[^a-z0-9_-]/', '-', strtolower($command)) ?? 'command'),
-                'confirm_admin_command',
-                '1',
-                $this->text->get('danger.confirm_execute'),
-                $this->text->get('danger.confirm_execute_help'),
-                false,
-                'danger-confirm-card',
-            ) . '
-<button type="submit" name="action" value="admin_command" class="btn-secondary danger">' . $this->e($this->text->get('danger.execute')) . ': ' . $this->e($label) . '</button>
-</form>';
-        }
-
-        return $forms;
-    }
-
-    /**
-     * @param list<string> $lines
-     */
-    private function renderLogLines(array $lines): string
-    {
-        $html = '';
-        foreach ($lines as $line) {
-            $html .= '<div class="log-line">' . $this->e($line) . '</div>';
-        }
-
-        return $html;
-    }
-
-    private function e(string $value): string
-    {
-        return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-    }
-
-    private function summaryStateDir(FirstRunViewModel $view): string
-    {
-        return $this->text->productMode() ? $this->text->get('summary.state_dir_hidden') : $view->stateDir();
-    }
-
-    private function renderField(FirstRunField $field): string
-    {
-        $readOnly = $field->readOnly() ? ' readonly' : '';
-        $requiredAttribute = $field->required() ? ' required aria-required="true"' : '';
-        $invalid = $field->errors() !== [] ? ' aria-invalid="true"' : '';
-        $describedBy = $field->describedBy() !== '' ? ' aria-describedby="' . $this->e($field->describedBy()) . '"' : '';
-        $required = $field->required() ? $this->text->get('field.required') : '';
-        $source = $this->text->get('field.source') . ': ' . $this->sourceLabel($field->source());
-        $meta = $this->text->productMode() ? '' : '<p class="field-meta">' . $this->e(trim($required . ($required !== '' ? ' · ' : '') . $source)) . '</p>';
-        $label = $this->labelRow($field->domId(), $field->label());
-
-        if ($field->control() === 'textarea') {
-            return '<div class="input-group ui-field">' . $label . '<textarea class="auto-grow" id="' . $this->e($field->domId())
-                . '" name="' . $this->e($field->key()) . '"' . $readOnly . $requiredAttribute . $invalid . $describedBy . '>'
-                . $this->e($field->value()) . '</textarea>' . $this->fieldHint($field) . $this->fieldErrors($field) . $meta . '</div>';
-        }
-
-        if ($field->control() === 'checkbox') {
-            $checked = $field->value() === '1' ? ' checked' : '';
-            if ($this->text->productMode()) {
-                return '<div class="input-group ui-field checkbox-field checkbox-card">'
-                    . '<label class="checkbox-card-label" for="' . $this->e($field->domId()) . '">'
-                    . '<input id="' . $this->e($field->domId())
-                    . '" type="checkbox" name="' . $this->e($field->key())
-                    . '" value="1"' . $checked . $requiredAttribute . $invalid . $describedBy . '>'
-                    . '<span class="checkbox-card-copy"><span class="checkbox-card-title">' . $this->e($field->label()) . '</span>'
-                    . ($field->hint() !== '' ? '<span id="' . $this->e($field->hintId()) . '" class="helper-text">' . $this->e($field->hint()) . '</span>' : '')
-                    . '</span></label>' . $this->fieldErrors($field) . $meta . '</div>';
-            }
-
-            return '<div class="input-group ui-field checkbox-field">' . $label . '<input id="' . $this->e($field->domId())
-                . '" type="checkbox" name="' . $this->e($field->key())
-                . '" value="1"' . $checked . $requiredAttribute . $invalid . $describedBy . '>' . $this->fieldHint($field) . $this->fieldErrors($field) . $meta . '</div>';
-        }
-
-        return '<div class="input-group ui-field">' . $label . '<input id="' . $this->e($field->domId())
-            . '" name="' . $this->e($field->key())
-            . '" value="' . $this->e($field->value()) . '"' . $readOnly . $requiredAttribute . $invalid . $describedBy
-            . '>' . $this->fieldHint($field) . $this->fieldErrors($field) . $meta . '</div>';
-    }
-
-    private function renderCurrentStep(FirstRunViewModel $view): string
-    {
-        if ($view->currentStep() === 'review') {
-            return $this->renderReview($view);
-        }
-
-        if ($view->currentStep() === 'preflight') {
-            return $this->renderPreflight($view);
-        }
-
-        if ($view->currentStep() === 'save') {
-            return $this->renderSaveStep($view);
-        }
-
-        if ($view->currentStep() === 'complete') {
-            return '<p role="status">' . $this->e($this->text->get('wizard.complete')) . '</p>';
-        }
-
-        $fields = $view->currentStepFields();
-        if ($fields === []) {
-            $emptyMessage = $this->text->productMode() ? '' : '<p>' . $this->e($this->text->get('wizard.no_fields')) . '</p>';
-
-            $legendClass = $this->text->productMode() ? ' class="sr-only"' : '';
-            $fieldsetClass = $this->text->productMode() ? 'full-width setup-fields' : 'full-width';
-            $description = $this->text->productMode() ? '' : $this->stepDescription($view, $view->currentStep());
-
-            return '<fieldset class="' . $fieldsetClass . '"><legend' . $legendClass . '>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</legend>' . $description . $emptyMessage . '</fieldset>';
-        }
-
-        $compactSingleFieldStep = $this->compactSingleFieldStep($view);
-        $hideLegend = $this->text->productMode() || $compactSingleFieldStep;
-        $legendClass = $hideLegend ? ' class="sr-only"' : '';
-        $description = $this->text->productMode() || $compactSingleFieldStep ? '' : $this->stepDescription($view, $view->currentStep());
-        $fieldsetClass = $this->text->productMode() ? 'full-width setup-fields' : 'full-width';
-        $inputs = '<fieldset class="' . $fieldsetClass . '"><legend' . $legendClass . '>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</legend>' . $description;
-        foreach ($fields as $field) {
-            $inputs .= $this->renderField($field);
-        }
-
-        return $inputs . '</fieldset>';
-    }
-
-    private function renderReview(FirstRunViewModel $view): string
-    {
-        $items = '';
-        foreach ($view->reviewFields() as $field) {
-            $source = $this->text->productMode() ? '' : ' <small>' . $this->e($this->text->get('field.source')) . ': ' . $this->e($this->sourceLabel($field->source())) . '</small>';
-            $items .= '<dt>' . $this->e($field->label()) . '</dt><dd>' . $this->e($this->reviewValue($field)) . $source . '</dd>';
-        }
-
-        return '<fieldset class="full-width"><legend>' . $this->e($this->text->get('wizard.review')) . '</legend><dl>' . $items . '</dl></fieldset>';
-    }
-
-    private function reviewValue(FirstRunField $field): string
-    {
-        if ($field->control() === 'checkbox') {
-            return $field->value() === '1' ? $this->text->get('review.enabled') : $this->text->get('review.disabled');
-        }
-
-        $value = trim($field->value());
-        return $value !== '' ? $value : $this->text->get('review.not_set');
-    }
-
-    private function renderPreflight(FirstRunViewModel $view): string
-    {
-        return '<fieldset class="preflight-card full-width"><legend>' . $this->e($this->text->get('wizard.preflight')) . '</legend><div class="preflight-grid">' . $this->preflightItems($view) . '</div></fieldset>';
-    }
-
-    private function renderSaveStep(FirstRunViewModel $view): string
-    {
-        return '<fieldset class="preflight-card full-width"><legend>' . $this->e($this->text->get('wizard.save')) . '</legend><p>' . $this->e($this->text->get('wizard.save_notice')) . '</p>'
-            . '<div class="preflight-grid">' . $this->preflightItems($view) . '</div>'
-            . $this->renderCheckboxCard('confirm-save', 'confirm_save', '1', $this->text->get('wizard.confirm_save'), $this->text->get('wizard.confirm_save_help'))
-            . '</fieldset>';
-    }
-
-    private function preflightItems(FirstRunViewModel $view): string
-    {
-        $checks = '';
-        foreach ($view->preflightChecks() as $check) {
-            $code = $this->text->productMode() ? '' : ' <code>' . $this->e($check->code()) . '</code>';
-            $checks .= '<div class="preflight-item status-' . $this->e(strtolower($check->status())) . '"><strong>' . $this->e($this->statusLabel($check->status())) . '</strong>'
-                . '<span>' . $this->e($this->preflightLabel($check->code())) . '</span>'
-                . '<p>' . $this->e($check->message()) . $code . '</p>'
-                . ($check->fix() !== '' ? ' <small>' . $this->e($this->text->get('preflight.fix')) . ': ' . $this->e($check->fix()) . '</small>' : '')
-                . '</div>';
-        }
-
-        return $checks;
-    }
-
-    private function renderActions(FirstRunViewModel $view, bool $showDraftActions = true): string
-    {
-        $buttons = '';
-        foreach ($view->actions() as $action) {
-            if (!$action->visible()) {
-                continue;
-            }
-            if (!$showDraftActions && in_array($action->key(), ['update_draft', 'discard_draft'], true)) {
-                continue;
-            }
-
-            $buttons .= '<button type="submit" name="action" value="' . $this->e($action->key()) . '" class="' . $this->e($this->actionClass($action->key())) . '"'
-                . ($action->disabled() ? ' disabled' : '')
-                . '>' . $this->e($action->label()) . '</button>';
-        }
-
-        return $buttons;
-    }
-
-    private function actionClass(string $key): string
-    {
-        return in_array($key, ['save_runtime', 'next_step'], true) ? 'btn-primary' : 'btn-secondary';
-    }
-
-    private function renderHiddenFields(FirstRunViewModel $view): string
-    {
-        $hidden = '';
-        foreach ($this->hiddenFieldPolicy->fieldsToPreserve($view) as $field) {
-            $hidden .= '<input type="hidden" name="' . $this->e($field->key()) . '" value="' . $this->e($field->value()) . '">';
-        }
-
-        return $hidden;
-    }
-
-    private function renderSteps(FirstRunViewModel $view): string
-    {
-        $items = '';
-        foreach ($view->steps() as $step) {
-            $marker = $step->current() ? ' aria-current="step"' : '';
-            $classes = ['sub-nav-item'];
-            if ($step->complete()) {
-                $classes[] = 'is-complete';
-            }
-            if ($step->blocked()) {
-                $classes[] = 'is-blocked';
-            }
-            $items .= '<li class="' . $this->e(implode(' ', $classes)) . '"' . $marker . '><strong>' . $this->e($step->title()) . '</strong> '
-                . '<small>' . $this->e($step->status()) . '</small>'
-                . '</li>';
-        }
-
-        return '<ol class="sub-nav setup-step-list">' . $items . '</ol>';
-    }
-
-    private function stepTitle(FirstRunViewModel $view, string $key): string
-    {
-        foreach ($view->steps() as $step) {
-            if ($step->key() === $key) {
-                return $step->title();
-            }
-        }
-
-        return $key;
-    }
-
-    private function compactSingleFieldStep(FirstRunViewModel $view): bool
-    {
-        if (!$this->text->productMode()) {
-            return false;
-        }
-
-        $fields = $view->currentStepFields();
-
-        return count($fields) === 1 && $fields[0]->label() === $this->stepTitle($view, $view->currentStep());
-    }
-
-    private function stepDescription(FirstRunViewModel $view, string $key): string
-    {
-        foreach ($view->steps() as $step) {
-            if ($step->key() === $key && $step->description() !== '') {
-                return '<p>' . $this->e($step->description()) . '</p>';
-            }
-        }
-
-        return '';
-    }
-
-    private function shortStepDescription(FirstRunViewModel $view, string $key): string
-    {
-        foreach ($view->steps() as $step) {
-            if ($step->key() === $key && $step->description() !== '') {
-                $description = $step->description();
-
-                return rtrim(strtok($description, '.') ?: $description, '.') . '.';
-            }
-        }
-
-        return $this->text->get('wizard.no_fields');
-    }
-
-    private function labelRow(string $id, string $label, string $tooltip = ''): string
-    {
-        return '<div class="field-label-row"><label for="' . $this->e($id) . '">' . $this->e($label) . '</label>'
-            . ($tooltip !== '' ? $this->helpTrigger($id, $tooltip) : '')
-            . '</div>';
-    }
-
-    private function helpTrigger(string $id, string $hint): string
-    {
-        return '<span class="help-wrap"><button type="button" class="help-trigger" aria-label="' . $this->e($hint) . '" aria-describedby="' . $this->e($id) . '-popover">?</button><span id="' . $this->e($id) . '-popover" class="help-popover" role="tooltip">' . $this->e($hint) . '</span></span>';
-    }
-
-    private function helperText(string $id, string $hint): string
-    {
-        return $hint !== '' ? '<p id="' . $this->e($id) . '" class="helper-text">' . $this->e($hint) . '</p>' : '';
-    }
-
-    private function fieldHint(FirstRunField $field): string
-    {
-        if ($field->hint() === '') {
-            return '';
-        }
-
-        return '<p id="' . $this->e($field->hintId()) . '" class="helper-text">' . $this->e($field->hint()) . '</p>';
-    }
-
-    private function fieldErrors(FirstRunField $field): string
-    {
-        if ($field->errors() === []) {
-            return '';
-        }
-
-        $items = '';
-        foreach ($field->errors() as $error) {
-            $items .= '<li>' . $this->e($error) . '</li>';
-        }
-
-        return '<ul id="' . $this->e($field->errorId()) . '" class="field-errors" role="alert">' . $items . '</ul>';
-    }
-
-    private function sourceLabel(string $source): string
-    {
-        return match ($source) {
-            'live' => $this->text->get('source.live'),
-            'dist' => $this->text->get('source.dist'),
-            'draft' => $this->text->get('source.draft'),
-            'generated' => $this->text->get('source.generated'),
-            'missing' => $this->text->get('source.missing'),
-            default => $source,
-        };
-    }
-
-    private function statusLabel(string $status): string
-    {
-        return match ($status) {
-            'OK' => $this->text->get('preflight.status_ok'),
-            'WARN' => $this->text->get('preflight.status_warn'),
-            'FAIL' => $this->text->get('preflight.status_fail'),
-            default => $status,
-        };
-    }
-
-    private function preflightLabel(string $code): string
-    {
-        return match ($code) {
-            'base_url' => 'Public URL',
-            'mail_from' => 'Sender mailbox',
-            'operator_mailbox' => 'Operator mailbox',
-            'delivery_command' => 'Mail delivery',
-            'hmac_will_generate', 'hmac_secret' => 'Security key',
-            'state_dir' => 'Data directory',
-            'download_base_dir' => 'Download directory',
-            'recipients' => 'Recipients and message',
-            default => $code,
-        };
-    }
-
-    private function maintenanceStatusLabel(MaintenanceCommandResult $result): string
-    {
-        if ($result->status() === MaintenanceCommandResult::BLOCKED) {
-            return $this->text->get('danger.blocked');
-        }
-
-        return $result->status();
-    }
-}
-
-namespace Totman\RuntimeUi\Http;
-
-final class RuntimeUiMode
-{
-    public const PROTOTYPE = 'prototype';
-    public const PRODUCT = 'product';
-
-    private function __construct()
-    {
-    }
-
-    public static function normalise(string $mode): string
-    {
-        return $mode === self::PRODUCT ? self::PRODUCT : self::PROTOTYPE;
-    }
-}
-
-namespace Totman\RuntimeUi\Preflight;
-
-use Totman\RuntimeUi\Config\ImportedField;
-use Totman\RuntimeUi\Config\MainConfigImport;
-use Totman\RuntimeUi\Config\RecipientConfigImport;
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-
-final class FirstRunPreflight
-{
-    public function check(MainConfigImport $main, RecipientConfigImport $recipients, DeploymentContext $context): PreflightResult
-    {
-        $checks = [
-            $this->fieldCheck($main->field('base_url'), 'base_url', 'Public URL is usable.', 'Set a real HTTPS public URL.', $context),
-            $this->fieldCheck($main->field('mail_from'), 'mail_from', 'Mail sender identity is usable.', 'Set one real sender mailbox.', $context),
-            $this->fieldCheck($main->field('to_self'), 'operator_mailbox', 'Operator mailbox is usable.', 'Set at least one real operator mailbox.', $context),
-            $this->fieldCheck($main->field('sendmail_path'), 'delivery_command', 'Mail delivery command is configured.', 'Configure sendmail or SMTP delivery.', $context),
-            $this->hmacCheck($main->field('hmac_secret_hex'), $context),
-            $this->pathCheck($main->field('state_dir'), 'state_dir', $context),
-            $this->pathCheck($main->field('download_base_dir'), 'download_base_dir', $context),
-            $this->recipientCheck($recipients, $context),
-        ];
-
-        return new PreflightResult($checks);
-    }
-
-    private function fieldCheck(ImportedField $field, string $code, string $okMessage, string $fix, DeploymentContext $context): PreflightCheck
-    {
-        if ($field->placeholder() || $field->invalid() || $field->source() === 'missing') {
-            return PreflightCheck::fail($code, $this->fieldLabel($field->key()) . ' is missing, invalid, or still uses a placeholder.', $fix, $context->kind());
-        }
-
-        return PreflightCheck::ok($code, $okMessage, $context->kind());
-    }
-
-    private function hmacCheck(ImportedField $field, DeploymentContext $context): PreflightCheck
-    {
-        if ($field->source() === 'missing' && $field->serverGeneratedAvailable()) {
-            return PreflightCheck::warn('hmac_will_generate', 'HMAC secret will be generated server-side before save.', 'Continue to save so the server can generate the HMAC secret.', $context->kind());
-        }
-
-        if ($field->invalid() || $field->placeholder()) {
-            return PreflightCheck::fail('hmac_secret', 'HMAC secret is invalid.', 'Generate a new server-side HMAC secret.', $context->kind());
-        }
-
-        return PreflightCheck::ok('hmac_secret', 'HMAC secret is present.', $context->kind());
-    }
-
-    private function pathCheck(ImportedField $field, string $code, DeploymentContext $context): PreflightCheck
-    {
-        if ($context->pathFieldsAreReadOnly()) {
-            return PreflightCheck::ok($code, $this->fieldLabel($field->key()) . ' is controlled by the deployment context.', $context->kind());
-        }
-
-        if ($field->invalid() || $field->placeholder() || $field->source() === 'missing') {
-            return PreflightCheck::fail($code, $this->fieldLabel($field->key()) . ' is missing or invalid.', 'Set a usable path for classic hosting.', $context->kind());
-        }
-
-        return PreflightCheck::ok($code, $this->fieldLabel($field->key()) . ' is configured.', $context->kind());
-    }
-
-    private function recipientCheck(RecipientConfigImport $recipients, DeploymentContext $context): PreflightCheck
-    {
-        if ($recipients->readyForFirstRecipient()) {
-            return PreflightCheck::ok('recipients', 'Recipient configuration is usable.', $context->kind());
-        }
-
-        return PreflightCheck::fail('recipients', 'Recipient configuration is incomplete or invalid.', 'Create at least one real recipient and message, then fix listed recipient issues.', $context->kind());
-    }
-
-    private function fieldLabel(string $key): string
-    {
-        return match ($key) {
-            'base_url' => 'Public URL',
-            'mail_from' => 'Sender mailbox',
-            'to_self' => 'Operator mailbox',
-            'sendmail_path' => 'Mail delivery command',
-            'state_dir' => 'Data directory',
-            'download_base_dir' => 'Download directory',
-            default => $key,
-        };
-    }
-}
-
-namespace Totman\RuntimeUi\Preflight;
-
-final class PreflightCheck
-{
-    public function __construct(
-        private readonly string $status,
-        private readonly string $code,
-        private readonly string $message,
-        private readonly string $fix,
-        private readonly string $context,
-    ) {
-    }
-
-    public static function ok(string $code, string $message, string $context): self
-    {
-        return new self('OK', $code, $message, '', $context);
-    }
-
-    public static function warn(string $code, string $message, string $fix, string $context): self
-    {
-        return new self('WARN', $code, $message, $fix, $context);
-    }
-
-    public static function fail(string $code, string $message, string $fix, string $context): self
-    {
-        return new self('FAIL', $code, $message, $fix, $context);
-    }
-
-    public function status(): string
-    {
-        return $this->status;
-    }
-
-    public function code(): string
-    {
-        return $this->code;
-    }
-
-    public function message(): string
-    {
-        return $this->message;
-    }
-
-    public function fix(): string
-    {
-        return $this->fix;
-    }
-
-    public function context(): string
-    {
-        return $this->context;
-    }
-}
-
-namespace Totman\RuntimeUi\Preflight;
-
-final class PreflightResult
-{
-    /**
-     * @param list<PreflightCheck> $checks
-     */
-    public function __construct(private readonly array $checks)
-    {
-    }
-
-    /**
-     * @return list<PreflightCheck>
-     */
-    public function checks(): array
-    {
-        return $this->checks;
-    }
-
-    public function status(): string
-    {
-        $status = 'OK';
-        foreach ($this->checks as $check) {
-            if ($check->status() === 'FAIL') {
-                return 'FAIL';
-            }
-
-            if ($check->status() === 'WARN') {
-                $status = 'WARN';
-            }
-        }
-
-        return $status;
-    }
-
-    public function hasCode(string $code): bool
-    {
-        foreach ($this->checks as $check) {
-            if ($check->code() === $code) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class AdminAuthInput
-{
-    public function __construct(
-        private readonly string $adminUsername = '',
-        private readonly string $adminPassword = '',
-        private readonly string $adminPasswordConfirm = '',
-        private readonly string $loginUsername = '',
-        private readonly string $loginPassword = '',
-        private readonly string $reauthPassword = '',
-    ) {
-    }
-
-    public function adminUsername(): string
-    {
-        return $this->adminUsername;
-    }
-
-    public function adminPassword(): string
-    {
-        return $this->adminPassword;
-    }
-
-    public function adminPasswordConfirm(): string
-    {
-        return $this->adminPasswordConfirm;
-    }
-
-    public function loginUsername(): string
-    {
-        return $this->loginUsername;
-    }
-
-    public function loginPassword(): string
-    {
-        return $this->loginPassword;
-    }
-
-    public function reauthPassword(): string
-    {
-        return $this->reauthPassword;
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class AdminAuthService
-{
-    public function __construct(
-        private readonly SetupCodeVerifier $setupCodeVerifier = new SetupCodeVerifier(),
-        private readonly SessionSecurity $sessionSecurity = new SessionSecurity(),
-    ) {
-    }
-
-    public function createAdmin(
-        UiPrivateConfigStore $store,
-        AdminAuthInput $input,
-        string $expectedSetupCode,
-        string $suppliedSetupCode,
-        SetupSessionState $setupSession,
-        AdminSessionState $adminSession,
-        ?string $now = null,
-    ): SetupAccessResult {
-        $configResult = $store->loadResult();
-        if ($configResult->blocksAdmin()) {
-            return SetupAccessResult::denied('private_ui_config_blocked', $configResult->message());
-        }
-
-        if ($configResult->config()->hasAdminCredential()) {
-            return SetupAccessResult::denied('admin_exists', 'Admin access already exists. Sign in instead.');
-        }
-
-        if ($expectedSetupCode === '' || !$this->setupCodeVerifier->verify($expectedSetupCode, $suppliedSetupCode)) {
-            return SetupAccessResult::denied('setup_code_required', 'A valid setup code is required before creating admin access.');
-        }
-
-        if ($input->adminPassword() !== $input->adminPasswordConfirm()) {
-            return SetupAccessResult::denied('admin_password_mismatch', 'Admin password confirmation does not match.');
-        }
-
-        try {
-            $credential = AdminCredential::create($input->adminUsername(), $input->adminPassword(), $now);
-        } catch (\InvalidArgumentException $exception) {
-            return SetupAccessResult::denied('admin_credentials_invalid', $exception->getMessage());
-        }
-
-        $store->save((new UiPrivateConfig())->withAdminCredential($credential));
-        $setupSession->markSetupVerified();
-        $adminSession->markAuthenticated($credential->username(), time());
-        $this->sessionSecurity->regenerateIfActive();
-
-        return SetupAccessResult::allow();
-    }
-
-    public function login(UiPrivateConfig $config, AdminAuthInput $input, AdminSessionState $adminSession): SetupAccessResult
-    {
-        $credential = $config->adminCredential();
-        if ($credential === null) {
-            return SetupAccessResult::denied('admin_missing', 'Admin access has not been created yet.');
-        }
-
-        if (!hash_equals($credential->username(), $input->loginUsername()) || !$credential->verifyPassword($input->loginPassword())) {
-            return SetupAccessResult::denied('login_failed', 'Admin username or password is incorrect.');
-        }
-
-        $adminSession->markAuthenticated($credential->username(), time());
-        $this->sessionSecurity->regenerateIfActive();
-
-        return SetupAccessResult::allow();
-    }
-
-    public function logout(AdminSessionState $adminSession): SetupAccessResult
-    {
-        $adminSession->clearAuthentication();
-        $this->sessionSecurity->regenerateIfActive();
-
-        return SetupAccessResult::allow();
-    }
-
-    public function reauth(UiPrivateConfig $config, AdminAuthInput $input, AdminSessionState $adminSession): SetupAccessResult
-    {
-        if (!$adminSession->authenticated()) {
-            return SetupAccessResult::denied('admin_auth_required', 'An authenticated admin session is required before reauthentication.');
-        }
-
-        $credential = $config->adminCredential();
-        if ($credential === null) {
-            return SetupAccessResult::denied('admin_missing', 'Admin access has not been created yet.');
-        }
-
-        if (!hash_equals($credential->username(), $adminSession->username()) || !$credential->verifyPassword($input->reauthPassword())) {
-            return SetupAccessResult::denied('reauth_failed', 'Admin password is incorrect.');
-        }
-
-        $adminSession->markReauthenticated(time());
-        $this->sessionSecurity->regenerateIfActive();
-
-        return SetupAccessResult::allow();
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class AdminCredential
-{
-    public const MIN_PASSWORD_LENGTH = 10;
-
-    public function __construct(
-        private readonly string $username,
-        private readonly string $passwordHash,
-        private readonly string $createdAt,
-        private readonly string $updatedAt,
-    ) {
-        if ($this->username === '') {
-            throw new \InvalidArgumentException('Admin username must not be empty.');
-        }
-
-        if ($this->passwordHash === '') {
-            throw new \InvalidArgumentException('Admin password hash must not be empty.');
-        }
-    }
-
-    public static function create(string $username, string $password, ?string $now = null): self
-    {
-        $username = trim($username);
-        if ($username === '') {
-            throw new \InvalidArgumentException('Admin username must not be empty.');
-        }
-
-        if (strlen($password) < self::MIN_PASSWORD_LENGTH) {
-            throw new \InvalidArgumentException('Admin password must contain at least 10 characters.');
-        }
-
-        $timestamp = $now ?? gmdate('c');
-        $hash = password_hash($password, PASSWORD_DEFAULT);
-
-        return new self($username, $hash, $timestamp, $timestamp);
-    }
-
-    /**
-     * @param array<string, mixed> $data
-     */
-    public static function fromArray(array $data): ?self
-    {
-        $username = $data['username'] ?? null;
-        $passwordHash = $data['password_hash'] ?? null;
-        $createdAt = $data['created_at'] ?? null;
-        $updatedAt = $data['updated_at'] ?? null;
-        if (!is_string($username) || !is_string($passwordHash) || !is_string($createdAt) || !is_string($updatedAt)) {
-            return null;
-        }
-
-        try {
-            return new self($username, $passwordHash, $createdAt, $updatedAt);
-        } catch (\InvalidArgumentException) {
-            return null;
-        }
-    }
-
-    public function username(): string
-    {
-        return $this->username;
-    }
-
-    public function passwordHash(): string
-    {
-        return $this->passwordHash;
-    }
-
-    public function createdAt(): string
-    {
-        return $this->createdAt;
-    }
-
-    public function updatedAt(): string
-    {
-        return $this->updatedAt;
-    }
-
-    public function verifyPassword(string $password): bool
-    {
-        return password_verify($password, $this->passwordHash);
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function toArray(): array
-    {
-        return [
-            'username' => $this->username,
-            'password_hash' => $this->passwordHash,
-            'created_at' => $this->createdAt,
-            'updated_at' => $this->updatedAt,
-        ];
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class AdminReauthPolicy
-{
-    public function __construct(private readonly int $ttlSeconds = 300)
-    {
-    }
-
-    public function evaluate(AdminSessionState $adminSession, int $now): SetupAccessResult
-    {
-        if (!$adminSession->authenticated()) {
-            return SetupAccessResult::denied('admin_auth_required', 'An authenticated admin session is required before reauthentication.');
-        }
-
-        if (!$adminSession->reauthenticatedWithin($now, $this->ttlSeconds)) {
-            return SetupAccessResult::denied('reauth_required', 'Recent admin reauthentication is required before this action.');
-        }
-
-        return SetupAccessResult::allow();
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class AdminSessionLoadResult
-{
-    public const LOADED = 'loaded';
-    public const MISSING = 'missing';
-    public const CORRUPT = 'corrupt';
-
-    public function __construct(
-        private readonly string $status,
-        private readonly AdminSessionState $state,
-        private readonly string $message = '',
-    ) {
-    }
-
-    public static function loaded(AdminSessionState $state): self
-    {
-        return new self(self::LOADED, $state);
-    }
-
-    public static function missing(): self
-    {
-        return new self(self::MISSING, new AdminSessionState());
-    }
-
-    public static function corrupt(string $message): self
-    {
-        return new self(self::CORRUPT, new AdminSessionState(), $message);
-    }
-
-    public function status(): string
-    {
-        return $this->status;
-    }
-
-    public function state(): AdminSessionState
-    {
-        return $this->state;
-    }
-
-    public function notice(): string
-    {
-        if ($this->status !== self::CORRUPT || $this->message === '') {
-            return '';
-        }
-
-        return $this->message;
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class AdminSessionState
-{
-    public function __construct(
-        private bool $authenticated = false,
-        private string $username = '',
-        private int $authenticatedAt = 0,
-        private int $reauthenticatedAt = 0,
-    ) {
-    }
-
-    public function authenticated(): bool
-    {
-        return $this->authenticated;
-    }
-
-    public function username(): string
-    {
-        return $this->username;
-    }
-
-    public function authenticatedAt(): int
-    {
-        return $this->authenticatedAt;
-    }
-
-    public function reauthenticatedAt(): int
-    {
-        return $this->reauthenticatedAt;
-    }
-
-    public function markAuthenticated(string $username, int $now): void
-    {
-        $this->authenticated = true;
-        $this->username = $username;
-        $this->authenticatedAt = $now;
-        $this->reauthenticatedAt = 0;
-    }
-
-    public function markReauthenticated(int $now): void
-    {
-        if (!$this->authenticated) {
-            return;
-        }
-
-        $this->reauthenticatedAt = $now;
-    }
-
-    public function reauthenticatedWithin(int $now, int $ttlSeconds): bool
-    {
-        if (!$this->authenticated || $this->reauthenticatedAt <= 0) {
-            return false;
-        }
-
-        return $this->reauthenticatedAt >= ($now - $ttlSeconds);
-    }
-
-    public function clearAuthentication(): void
-    {
-        $this->authenticated = false;
-        $this->username = '';
-        $this->authenticatedAt = 0;
-        $this->reauthenticatedAt = 0;
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class AdminSessionStore
-{
-    private const KEY_AUTHENTICATED = 'totman_ui_admin_authenticated';
-    private const KEY_USERNAME = 'totman_ui_admin_username';
-    private const KEY_AUTHENTICATED_AT = 'totman_ui_admin_authenticated_at';
-    private const KEY_REAUTHENTICATED_AT = 'totman_ui_admin_reauthenticated_at';
-
-    public function __construct(private ?AdminSessionState $fallbackState = null)
-    {
-    }
-
-    public function load(): AdminSessionState
-    {
-        return $this->loadResult()->state();
-    }
-
-    public function loadResult(): AdminSessionLoadResult
-    {
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            $keys = [
-                self::KEY_AUTHENTICATED,
-                self::KEY_USERNAME,
-                self::KEY_AUTHENTICATED_AT,
-                self::KEY_REAUTHENTICATED_AT,
-            ];
-            $hasAny = false;
-            foreach ($keys as $key) {
-                $hasAny = $hasAny || array_key_exists($key, $_SESSION);
-            }
-
-            if (!$hasAny) {
-                return AdminSessionLoadResult::missing();
-            }
-
-            $authenticated = $_SESSION[self::KEY_AUTHENTICATED] ?? false;
-            $username = $_SESSION[self::KEY_USERNAME] ?? '';
-            $authenticatedAt = $_SESSION[self::KEY_AUTHENTICATED_AT] ?? 0;
-            $reauthenticatedAt = $_SESSION[self::KEY_REAUTHENTICATED_AT] ?? 0;
-            if (!is_bool($authenticated) || !is_string($username) || !is_int($authenticatedAt) || !is_int($reauthenticatedAt)) {
-                return AdminSessionLoadResult::corrupt('Admin session state was unreadable and has been reset.');
-            }
-
-            return AdminSessionLoadResult::loaded(new AdminSessionState($authenticated, $username, $authenticatedAt, $reauthenticatedAt));
-        }
-
-        if ($this->fallbackState === null) {
-            $this->fallbackState = new AdminSessionState();
-            return AdminSessionLoadResult::missing();
-        }
-
-        return AdminSessionLoadResult::loaded($this->fallbackState);
-    }
-
-    public function save(AdminSessionState $state): void
-    {
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            $_SESSION[self::KEY_AUTHENTICATED] = $state->authenticated();
-            $_SESSION[self::KEY_USERNAME] = $state->username();
-            $_SESSION[self::KEY_AUTHENTICATED_AT] = $state->authenticatedAt();
-            $_SESSION[self::KEY_REAUTHENTICATED_AT] = $state->reauthenticatedAt();
-            return;
-        }
-
-        $this->fallbackState = $state;
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class CsrfTokens
-{
-    public function issue(): string
-    {
-        return bin2hex(random_bytes(32));
-    }
-
-    public function verify(string $expected, string $provided): bool
-    {
-        return $expected !== '' && $provided !== '' && hash_equals($expected, $provided);
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class HmacSecretGenerator
-{
-    public function generateHex(): string
-    {
-        return bin2hex(random_bytes(32));
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class InMemoryRateLimiter
-{
-    /** @var array<string, list<int>> */
-    private array $hits = [];
-
-    public function allow(string $key, int $limit, int $windowSeconds, int $now): bool
-    {
-        $cutoff = $now - $windowSeconds;
-        $this->hits[$key] = array_values(array_filter(
-            $this->hits[$key] ?? [],
-            static fn (int $timestamp): bool => $timestamp > $cutoff
-        ));
-
-        if (count($this->hits[$key]) >= $limit) {
-            return false;
-        }
-
-        $this->hits[$key][] = $now;
-
-        return true;
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-use Totman\RuntimeUi\Http\FirstRunRequest;
-
-final class PrototypeCsrfPolicy
-{
-    public function __construct(private readonly CsrfTokens $csrfTokens = new CsrfTokens())
-    {
-    }
-
-    public function ensureToken(SetupSessionState $sessionState): string
-    {
-        if ($sessionState->csrfToken() === '') {
-            $sessionState->setCsrfToken($this->csrfTokens->issue());
-        }
-
-        return $sessionState->csrfToken();
-    }
-
-    public function evaluate(FirstRunRequest $request, SetupSessionState $sessionState): SetupAccessResult
-    {
-        if (!$request->isStateChanging()) {
-            return SetupAccessResult::allow();
-        }
-
-        if (!$this->csrfTokens->verify($sessionState->csrfToken(), $request->csrfToken())) {
-            return SetupAccessResult::denied('csrf_required', 'A valid CSRF token is required before saving configuration.');
-        }
-
-        return SetupAccessResult::allow();
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-use Totman\RuntimeUi\Http\FirstRunRequest;
-
-final class PrototypeRateLimitPolicy
-{
-    public function __construct(
-        private readonly InMemoryRateLimiter $rateLimiter = new InMemoryRateLimiter(),
-        private readonly int $limit = 5,
-        private readonly int $windowSeconds = 60,
-    ) {
-    }
-
-    public function evaluate(FirstRunRequest $request, string $scope, int $now): SetupAccessResult
-    {
-        if (!$request->isStateChanging() || $request->isLogout()) {
-            return SetupAccessResult::allow();
-        }
-
-        [$bucket, $message] = $this->bucket($request);
-        $key = 'totman-ui-' . $bucket . ':' . hash('sha256', $scope);
-        if (!$this->rateLimiter->allow($key, $this->limit, $this->windowSeconds, $now)) {
-            return SetupAccessResult::denied('rate_limited', $message);
-        }
-
-        return SetupAccessResult::allow();
-    }
-
-    /**
-     * @return array{0: string, 1: string}
-     */
-    private function bucket(FirstRunRequest $request): array
-    {
-        if ($request->isUpdateDraft()) {
-            return ['draft-update', 'Too many draft update attempts. Try again later.'];
-        }
-
-        if ($request->isRuntimeSave()) {
-            return ['runtime-save', 'Too many runtime-save attempts. Try again later.'];
-        }
-
-        if ($request->isCreateAdmin()) {
-            return ['admin-create', 'Too many admin creation attempts. Try again later.'];
-        }
-
-        if ($request->isLogin() || $request->isReauth()) {
-            return ['auth-attempts', 'Too many auth attempts. Try again later.'];
-        }
-
-        if ($request->isAdminCommand()) {
-            return ['admin-command', 'Too many admin command attempts. Try again later.'];
-        }
-
-        return ['state-change', 'Too many state-changing attempts. Try again later.'];
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-use Totman\RuntimeUi\Http\FirstRunRequest;
-
-final class PrototypeSaveIntentPolicy
-{
-    public function evaluate(FirstRunRequest $request): SetupAccessResult
-    {
-        if (!$request->isRuntimeSave()) {
-            return SetupAccessResult::allow();
-        }
-
-        if (!$request->confirmSave()) {
-            return SetupAccessResult::denied('save_confirmation_required', 'Explicit save confirmation is required before writing runtime configuration.');
-        }
-
-        return SetupAccessResult::allow();
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class SecretRedactor
-{
-    private const REDACTED = '[redacted]';
-
-    /**
-     * @param array<mixed> $data
-     * @return array<mixed>
-     */
-    public function redactArray(array $data): array
-    {
-        $redacted = [];
-        foreach ($data as $key => $value) {
-            if (is_string($key) && $this->isSensitiveKey($key)) {
-                $redacted[$key] = self::REDACTED;
-                continue;
-            }
-
-            $redacted[$key] = is_array($value) ? $this->redactArray($value) : $value;
-        }
-
-        return $redacted;
-    }
-
-    public function redactText(string $text): string
-    {
-        $text = preg_replace('/((?:secret|password|token|setup_code|hmac)[a-z0-9_-]*\s*[:=]\s*)[^\s]+/i', '$1' . self::REDACTED, $text) ?? $text;
-
-        return preg_replace('/\b[a-f0-9]{64}\b/i', self::REDACTED, $text) ?? $text;
-    }
-
-    private function isSensitiveKey(string $key): bool
-    {
-        $lower = strtolower($key);
-
-        return str_contains($lower, 'secret')
-            || str_contains($lower, 'password')
-            || str_contains($lower, 'token')
-            || str_contains($lower, 'setup_code');
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class SessionSecurity
-{
-    public function regenerateIfActive(): bool
-    {
-        if (session_status() !== PHP_SESSION_ACTIVE) {
-            return false;
-        }
-
-        return session_regenerate_id(true);
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-use Totman\RuntimeUi\Config\DiscoveryResult;
-use Totman\RuntimeUi\Http\FirstRunRequest;
-
-final class SetupAccessPolicy
-{
-    public function __construct(
-        private readonly SetupCodeVerifier $setupCodeVerifier = new SetupCodeVerifier(),
-        private readonly SessionSecurity $sessionSecurity = new SessionSecurity(),
-    ) {
-    }
-
-    public function evaluate(
-        DiscoveryResult $discovered,
-        FirstRunRequest $request,
-        string $expectedSetupCode = '',
-        ?SetupSessionState $sessionState = null,
-        ?AdminSessionState $adminSessionState = null,
-    ): SetupAccessResult {
-        $sessionState ??= new SetupSessionState();
-        $adminSessionState ??= new AdminSessionState();
-
-        if ($discovered->mode() === 'fresh' || !$discovered->mainLiveStatus()->loaded()) {
-            if (!$request->isRuntimeSave()) {
-                return SetupAccessResult::allow();
-            }
-
-            if ($sessionState->setupVerified()) {
-                return SetupAccessResult::allow();
-            }
-
-            if ($adminSessionState->authenticated()) {
-                return SetupAccessResult::allow();
-            }
-
-            if ($expectedSetupCode === '' || !$this->setupCodeVerifier->verify($expectedSetupCode, $request->setupCode())) {
-                return SetupAccessResult::denied('setup_code_required', 'A valid setup code is required before saving first-run configuration.');
-            }
-
-            $sessionState->markSetupVerified();
-            $this->sessionSecurity->regenerateIfActive();
-
-            return SetupAccessResult::allow();
-        }
-
-        if ($discovered->mode() === 'blocked') {
-            return SetupAccessResult::denied('config_blocked', 'Configuration discovery is blocked by an unreadable or invalid runtime config.');
-        }
-
-        if (($discovered->effectiveMainConfig()['web_ui_enabled'] ?? null) !== true) {
-            return SetupAccessResult::denied('administration_disabled', 'Browser administration is disabled by web_ui_enabled.');
-        }
-
-        if (!$adminSessionState->authenticated()) {
-            return SetupAccessResult::denied('admin_auth_required', 'An authenticated admin session is required before browser administration.');
-        }
-
-        return SetupAccessResult::allow();
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class SetupAccessResult
-{
-    public function __construct(
-        private readonly bool $allowed,
-        private readonly string $code = 'allowed',
-        private readonly string $message = '',
-    ) {
-    }
-
-    public static function allow(): self
-    {
-        return new self(true);
-    }
-
-    public static function denied(string $code, string $message): self
-    {
-        return new self(false, $code, $message);
-    }
-
-    public function allowed(): bool
-    {
-        return $this->allowed;
-    }
-
-    public function code(): string
-    {
-        return $this->code;
-    }
-
-    public function message(): string
-    {
-        return $this->message;
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class SetupCodeVerifier
-{
-    public function verify(string $expected, string $provided): bool
-    {
-        return $expected !== '' && $provided !== '' && hash_equals($expected, $provided);
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class SetupSessionLoadResult
-{
-    public const LOADED = 'loaded';
-    public const MISSING = 'missing';
-    public const CORRUPT = 'corrupt';
-
-    public function __construct(
-        private readonly string $status,
-        private readonly SetupSessionState $state,
-        private readonly string $message = '',
-    ) {
-    }
-
-    public static function loaded(SetupSessionState $state): self
-    {
-        return new self(self::LOADED, $state);
-    }
-
-    public static function missing(): self
-    {
-        return new self(self::MISSING, new SetupSessionState());
-    }
-
-    public static function corrupt(string $message): self
-    {
-        return new self(self::CORRUPT, new SetupSessionState(), $message);
-    }
-
-    public function status(): string
-    {
-        return $this->status;
-    }
-
-    public function state(): SetupSessionState
-    {
-        return $this->state;
-    }
-
-    public function notice(): string
-    {
-        if ($this->status !== self::CORRUPT || $this->message === '') {
-            return '';
-        }
-
-        return $this->message;
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class SetupSessionState
-{
-    public function __construct(
-        private bool $setupVerified = false,
-        private string $csrfToken = '',
-    ) {
-    }
-
-    public function setupVerified(): bool
-    {
-        return $this->setupVerified;
-    }
-
-    public function markSetupVerified(): void
-    {
-        $this->setupVerified = true;
-    }
-
-    public function csrfToken(): string
-    {
-        return $this->csrfToken;
-    }
-
-    public function setCsrfToken(string $csrfToken): void
-    {
-        $this->csrfToken = $csrfToken;
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class SetupSessionStore
-{
-    private const KEY_SETUP_VERIFIED = 'totman_ui_setup_verified';
-    private const KEY_CSRF_TOKEN = 'totman_ui_csrf_token';
-
-    public function __construct(private ?SetupSessionState $fallbackState = null)
-    {
-    }
-
-    public function load(): SetupSessionState
-    {
-        return $this->loadResult()->state();
-    }
-
-    public function loadResult(): SetupSessionLoadResult
-    {
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            $hasVerified = array_key_exists(self::KEY_SETUP_VERIFIED, $_SESSION);
-            $hasCsrf = array_key_exists(self::KEY_CSRF_TOKEN, $_SESSION);
-            if (!$hasVerified && !$hasCsrf) {
-                return SetupSessionLoadResult::missing();
-            }
-
-            $verified = $_SESSION[self::KEY_SETUP_VERIFIED] ?? false;
-            $csrf = $_SESSION[self::KEY_CSRF_TOKEN] ?? '';
-            if (!is_bool($verified) || !is_string($csrf)) {
-                return SetupSessionLoadResult::corrupt('Setup session state was unreadable and has been reset.');
-            }
-
-            return SetupSessionLoadResult::loaded(new SetupSessionState($verified, $csrf));
-        }
-
-        if ($this->fallbackState === null) {
-            $this->fallbackState = new SetupSessionState();
-            return SetupSessionLoadResult::missing();
-        }
-
-        return SetupSessionLoadResult::loaded($this->fallbackState);
-    }
-
-    public function save(SetupSessionState $state): void
-    {
-        if (session_status() === PHP_SESSION_ACTIVE) {
-            $_SESSION[self::KEY_SETUP_VERIFIED] = $state->setupVerified();
-            $_SESSION[self::KEY_CSRF_TOKEN] = $state->csrfToken();
-            return;
-        }
-
-        $this->fallbackState = $state;
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class UiPrivateConfig
-{
-    public function __construct(private readonly ?AdminCredential $adminCredential = null)
-    {
-    }
-
-    /**
-     * @param array<string, mixed> $data
-     */
-    public static function fromArray(array $data): self
-    {
-        $admin = $data['admin'] ?? null;
-        if (!is_array($admin)) {
-            return new self(self::legacyAdminCredential($data));
-        }
-
-        return new self(AdminCredential::fromArray($admin));
-    }
-
-    public function hasAdminCredential(): bool
-    {
-        return $this->adminCredential !== null;
-    }
-
-    public function adminCredential(): ?AdminCredential
-    {
-        return $this->adminCredential;
-    }
-
-    public function withAdminCredential(AdminCredential $credential): self
-    {
-        return new self($credential);
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function toArray(): array
-    {
-        return [
-            'admin' => $this->adminCredential?->toArray(),
-        ];
-    }
-
-    /**
-     * @param array<string, mixed> $data
-     */
-    private static function legacyAdminCredential(array $data): ?AdminCredential
-    {
-        if (
-            !is_string($data['username'] ?? null)
-            || !is_string($data['password_hash'] ?? null)
-            || !is_string($data['state_dir'] ?? null)
-            || $data['state_dir'] === ''
-        ) {
-            return null;
-        }
-
-        return AdminCredential::fromArray([
-            'username' => $data['username'],
-            'password_hash' => $data['password_hash'],
-            'created_at' => is_string($data['created_at'] ?? null) ? $data['created_at'] : '',
-            'updated_at' => is_string($data['updated_at'] ?? null) ? $data['updated_at'] : '',
-        ]);
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class UiPrivateConfigLoadResult
-{
-    public const LOADED = 'loaded';
-    public const MISSING = 'missing';
-    public const CORRUPT = 'corrupt';
-    public const UNAVAILABLE = 'unavailable';
-
-    public function __construct(
-        private readonly string $status,
-        private readonly UiPrivateConfig $config,
-        private readonly string $message = '',
-    ) {
-    }
-
-    public static function loaded(UiPrivateConfig $config): self
-    {
-        return new self(self::LOADED, $config);
-    }
-
-    public static function missing(): self
-    {
-        return new self(self::MISSING, new UiPrivateConfig());
-    }
-
-    public static function corrupt(string $message): self
-    {
-        return new self(self::CORRUPT, new UiPrivateConfig(), $message);
-    }
-
-    public static function unavailable(string $message): self
-    {
-        return new self(self::UNAVAILABLE, new UiPrivateConfig(), $message);
-    }
-
-    public function status(): string
-    {
-        return $this->status;
-    }
-
-    public function config(): UiPrivateConfig
-    {
-        return $this->config;
-    }
-
-    public function blocksAdmin(): bool
-    {
-        return $this->status === self::CORRUPT || $this->status === self::UNAVAILABLE;
-    }
-
-    public function message(): string
-    {
-        return $this->message;
-    }
-}
-
-namespace Totman\RuntimeUi\Security;
-
-final class UiPrivateConfigStore
-{
-    public const DEFAULT_FILE_NAME = '.totman-ui.php';
-
-    /**
-     * @param list<string> $fallbackPaths
-     */
-    public function __construct(private readonly string $path, private readonly array $fallbackPaths = [])
-    {
-    }
-
-    /**
-     * @param list<string> $fallbackPaths
-     */
-    public static function forStateDir(string $stateDir, array $fallbackPaths = []): self
-    {
-        return new self(rtrim($stateDir, '/') . '/' . self::DEFAULT_FILE_NAME, $fallbackPaths);
-    }
-
-    public function path(): string
-    {
-        return $this->path;
-    }
-
-    public function load(): UiPrivateConfig
-    {
-        return $this->loadResult()->config();
-    }
-
-    public function loadResult(): UiPrivateConfigLoadResult
-    {
-        foreach ($this->candidatePaths() as $path) {
-            if (!is_file($path)) {
-                continue;
-            }
-
-            return $this->loadPath($path);
-        }
-
-        return UiPrivateConfigLoadResult::missing();
-    }
-
-    private function loadPath(string $path): UiPrivateConfigLoadResult
-    {
-        if (!is_readable($path)) {
-            return UiPrivateConfigLoadResult::unavailable('Private UI config is not readable.');
-        }
-
-        try {
-            $data = (static function (string $path): mixed {
-                return require $path;
-            })($path);
-        } catch (\Throwable) {
-            return UiPrivateConfigLoadResult::corrupt('Private UI config could not be parsed.');
-        }
-
-        if (!is_array($data)) {
-            return UiPrivateConfigLoadResult::corrupt('Private UI config did not return an array.');
-        }
-
-        return UiPrivateConfigLoadResult::loaded(UiPrivateConfig::fromArray($data));
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function candidatePaths(): array
-    {
-        $paths = [$this->path, ...$this->fallbackPaths];
-        $normalised = [];
-        foreach ($paths as $path) {
-            if ($path === '' || isset($normalised[$path])) {
-                continue;
-            }
-
-            $normalised[$path] = $path;
-        }
-
-        return array_values($normalised);
-    }
-
-    public function save(UiPrivateConfig $config): void
-    {
-        $dir = dirname($this->path);
-        if (!is_dir($dir) && !mkdir($dir, 0700, true) && !is_dir($dir)) {
-            throw new \RuntimeException('Could not create private UI config directory: ' . $dir);
-        }
-
-        $tmp = tempnam($dir, '.totman-ui.');
-        if ($tmp === false) {
-            throw new \RuntimeException('Could not create private UI config temporary file.');
-        }
-
-        $content = "<?php\n\n"
-            . "declare(strict_types=1);\n\n"
-            . "// Generated by the totman runtime UI. Do not commit this private file.\n"
-            . 'return ' . var_export($config->toArray(), true) . ";\n";
-
-        if (file_put_contents($tmp, $content, LOCK_EX) === false) {
-            @unlink($tmp);
-            throw new \RuntimeException('Could not write private UI config temporary file.');
-        }
-
-        @chmod($tmp, 0600);
-        if (!rename($tmp, $this->path)) {
-            @unlink($tmp);
-            throw new \RuntimeException('Could not replace private UI config atomically.');
-        }
-
-        @chmod($this->path, 0600);
-    }
-}
-
-namespace Totman\RuntimeUi\Setup;
-
-final class FirstRunFlow
-{
-    /**
-     * @param list<string> $steps
-     */
-    public function __construct(
-        private readonly string $mode,
-        private readonly string $currentStep,
-        private readonly array $steps,
-        private readonly bool $canSave,
-        private readonly bool $administrationEnabledAfterSetup,
-        private readonly string $preflightStatus,
-    ) {
-    }
-
-    public function mode(): string
-    {
-        return $this->mode;
-    }
-
-    public function currentStep(): string
-    {
-        return $this->currentStep;
-    }
-
-    /**
-     * @return list<string>
-     */
-    public function steps(): array
-    {
-        return $this->steps;
-    }
-
-    public function canSave(): bool
-    {
-        return $this->canSave;
-    }
-
-    public function administrationEnabledAfterSetup(): bool
-    {
-        return $this->administrationEnabledAfterSetup;
-    }
-
-    public function preflightStatus(): string
-    {
-        return $this->preflightStatus;
-    }
-}
-
-namespace Totman\RuntimeUi\Setup;
-
-use Totman\RuntimeUi\Config\DiscoveryResult;
-use Totman\RuntimeUi\Config\MainConfigImport;
-use Totman\RuntimeUi\Config\RecipientConfigImport;
-use Totman\RuntimeUi\Preflight\PreflightResult;
-
-final class FirstRunOrchestrator
-{
-    public function __construct(private readonly FirstRunStepCatalog $stepCatalog = new FirstRunStepCatalog())
-    {
-    }
-
-    public function evaluate(
-        DiscoveryResult $discovery,
-        MainConfigImport $main,
-        RecipientConfigImport $recipients,
-        PreflightResult $preflight
-    ): FirstRunFlow {
-        if ($discovery->mode() === 'blocked') {
-            return new FirstRunFlow(
-                'blocked',
-                FirstRunStepCatalog::REPAIR_BLOCKING_PROBLEM,
-                $this->stepCatalog->stepsForMode('blocked'),
-                false,
-                false,
-                $preflight->status()
-            );
-        }
-
-        $mode = $discovery->mode() === 'fresh' ? 'fresh' : 'existing';
-        $currentStep = $this->currentStep($mode, $main, $recipients, $preflight);
-        $webUiEnabled = $main->field('web_ui_enabled')->value() === true;
-
-        return new FirstRunFlow(
-            $mode,
-            $currentStep,
-            $this->stepCatalog->stepsForMode($mode),
-            $preflight->status() !== 'FAIL',
-            $webUiEnabled,
-            $preflight->status()
-        );
-    }
-
-    private function currentStep(string $mode, MainConfigImport $main, RecipientConfigImport $recipients, PreflightResult $preflight): string
-    {
-        if ($mode === 'fresh') {
-            return FirstRunStepCatalog::PUBLIC_URL;
-        }
-
-        foreach ($main->fieldsNeedingOperatorInput() as $field) {
-            return match ($field->key()) {
-                'base_url' => FirstRunStepCatalog::PUBLIC_URL,
-                'mail_from', 'sendmail_path' => FirstRunStepCatalog::MAIL_DELIVERY,
-                'to_self' => FirstRunStepCatalog::OPERATOR_MAILBOX,
-                default => FirstRunStepCatalog::REVIEW,
-            };
-        }
-
-        if (!$recipients->readyForFirstRecipient()) {
-            return FirstRunStepCatalog::FIRST_RECIPIENT;
-        }
-
-        if ($preflight->status() === 'FAIL') {
-            return FirstRunStepCatalog::PREFLIGHT;
-        }
-
-        return FirstRunStepCatalog::SAVE;
-    }
-}
-
-namespace Totman\RuntimeUi\Setup;
-
-use Totman\RuntimeUi\Config\DiscoveryResult;
-use Totman\RuntimeUi\Deployment\DeploymentContext;
-
-final class FirstRunPlanner
-{
-    public function __construct(private readonly FirstRunStepCatalog $stepCatalog = new FirstRunStepCatalog())
-    {
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    public function plan(DiscoveryResult $discovery, DeploymentContext $context): array
-    {
-        return [
-            'mode' => $discovery->mode(),
-            'deployment_context' => $context->kind(),
-            'path_fields_read_only' => $context->pathFieldsAreReadOnly(),
-            'fixed_state_dir' => $context->fixedStateDir(),
-            'fixed_download_dir' => $context->fixedDownloadDir(),
-            'browser_setup_expected' => $context->capabilities()->browserSetupExpected(),
-            'manual_volume_edits_expected' => $context->capabilities()->manualVolumeEditsExpected(),
-            'setup_sources' => $context->capabilities()->setupSources(),
-            'steps' => $this->stepCatalog->stepsForMode($discovery->mode()),
-            'issues' => $discovery->issues(),
-        ];
-    }
-}
-
-namespace Totman\RuntimeUi\Setup;
-
-final class FirstRunStepCatalog
-{
-    public const DISCOVER = 'discover';
-    public const REPAIR_BLOCKING_PROBLEM = 'repair-blocking-problem';
-    public const CREATE_OR_IMPORT = 'create-or-import';
-    public const PUBLIC_URL = 'public-url';
-    public const MAIL_DELIVERY = 'mail-delivery';
-    public const OPERATOR_MAILBOX = 'operator-mailbox';
-    public const FIRST_RECIPIENT = 'first-recipient';
-    public const FIRST_MESSAGE = 'first-message';
-    public const OPTIONAL_DOWNLOAD = 'optional-download';
-    public const REVIEW = 'review';
-    public const PREFLIGHT = 'preflight';
-    public const SAVE = 'save';
-    public const COMPLETE = 'complete';
-
-    /** @return list<string> */
-    public function stepsForMode(string $mode): array
-    {
-        if ($mode === 'blocked') {
-            return [
-                self::REPAIR_BLOCKING_PROBLEM,
-            ];
-        }
-
-        return [
-            self::PUBLIC_URL,
-            self::MAIL_DELIVERY,
-            self::OPERATOR_MAILBOX,
-            self::FIRST_RECIPIENT,
-            self::FIRST_MESSAGE,
-            self::OPTIONAL_DOWNLOAD,
-            self::REVIEW,
-            self::PREFLIGHT,
-            self::SAVE,
-            self::COMPLETE,
-        ];
-    }
-
-    public function title(string $key): string
-    {
-        return match ($key) {
-            self::DISCOVER => 'Discover runtime',
-            self::REPAIR_BLOCKING_PROBLEM => 'Repair blocking problem',
-            self::CREATE_OR_IMPORT => 'Create or import',
-            self::PUBLIC_URL => 'Public URL',
-            self::MAIL_DELIVERY => 'Mail delivery',
-            self::OPERATOR_MAILBOX => 'Operator mailbox',
-            self::FIRST_RECIPIENT => 'First recipient',
-            self::FIRST_MESSAGE => 'First message',
-            self::OPTIONAL_DOWNLOAD => 'Optional download',
-            self::REVIEW => 'Review',
-            self::PREFLIGHT => 'Preflight',
-            self::SAVE => 'Save runtime files',
-            self::COMPLETE => 'Complete',
-            default => $key,
-        };
-    }
-}
-
-namespace Totman\RuntimeUi\Bundle;
-
-use Totman\RuntimeUi\Application\PrototypeApplicationFactory;
-use Totman\RuntimeUi\Application\RuntimeUiTextCatalog;
-use Totman\RuntimeUi\Http\ProductRuntimeContextAdapter;
-use Totman\RuntimeUi\Http\PrototypeEnvironmentFactory;
-
-use Totman\RuntimeUi\Http\PrototypeRenderer;
-
+namespace Totman\RuntimeUi\Bundle {
 
 final class BundleManifest
 {
@@ -10298,115 +20,10 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'd09cad2',
+  'source_revision' => 'c232ab8',
   'source_files' =>
   array (
-    0 => 'src/Application/AdminAuthApplicationResult.php',
-    1 => 'src/Application/AdminAuthApplicationService.php',
-    2 => 'src/Application/AdminAuthViewModel.php',
-    3 => 'src/Application/AdminAuthViewModelBuilder.php',
-    4 => 'src/Application/AdminCommand.php',
-    5 => 'src/Application/AdminCommandAccessPolicy.php',
-    6 => 'src/Application/AdminCommandCatalog.php',
-    7 => 'src/Application/AdminInspectionViewModel.php',
-    8 => 'src/Application/DangerCommandDryRunService.php',
-    9 => 'src/Application/DangerCommandPreview.php',
-    10 => 'src/Application/FileAliasInventory.php',
-    11 => 'src/Application/FileAliasInventoryItem.php',
-    12 => 'src/Application/FileAliasInventoryReader.php',
-    13 => 'src/Application/FirstRunAction.php',
-    14 => 'src/Application/FirstRunDraftLoadResult.php',
-    15 => 'src/Application/FirstRunDraftPreflightGate.php',
-    16 => 'src/Application/FirstRunDraftPreflightResult.php',
-    17 => 'src/Application/FirstRunDraftState.php',
-    18 => 'src/Application/FirstRunDraftStore.php',
-    19 => 'src/Application/FirstRunField.php',
-    20 => 'src/Application/FirstRunFieldFormatValidator.php',
-    21 => 'src/Application/FirstRunHiddenFieldPolicy.php',
-    22 => 'src/Application/FirstRunInput.php',
-    23 => 'src/Application/FirstRunInputValidator.php',
-    24 => 'src/Application/FirstRunSaveResult.php',
-    25 => 'src/Application/FirstRunSetupService.php',
-    26 => 'src/Application/FirstRunStep.php',
-    27 => 'src/Application/FirstRunStepValidator.php',
-    28 => 'src/Application/FirstRunViewModel.php',
-    29 => 'src/Application/FirstRunViewModelBuilder.php',
-    30 => 'src/Application/FirstRunWizardApplicationService.php',
-    31 => 'src/Application/FirstRunWizardCommand.php',
-    32 => 'src/Application/FirstRunWizardNavigationResult.php',
-    33 => 'src/Application/FirstRunWizardNavigator.php',
-    34 => 'src/Application/FirstRunWizardResult.php',
-    35 => 'src/Application/MainConfigDraftBuilder.php',
-    36 => 'src/Application/MaintenanceCommandResult.php',
-    37 => 'src/Application/MaintenanceCommandService.php',
-    38 => 'src/Application/MaintenanceRuntimeMutator.php',
-    39 => 'src/Application/PrototypeApplicationFactory.php',
-    40 => 'src/Application/PrototypePageApplicationService.php',
-    41 => 'src/Application/PrototypePageResult.php',
-    42 => 'src/Application/RecipientConfigDraft.php',
-    43 => 'src/Application/RecipientConfigDraftBuilder.php',
-    44 => 'src/Application/RuntimeLogReader.php',
-    45 => 'src/Application/RuntimeLogTail.php',
-    46 => 'src/Application/RuntimeStateFileStatus.php',
-    47 => 'src/Application/RuntimeSummary.php',
-    48 => 'src/Application/RuntimeSummaryReader.php',
-    49 => 'src/Application/RuntimeUiTextCatalog.php',
-    50 => 'src/Config/ConfigCoverageResult.php',
-    51 => 'src/Config/ConfigDiscovery.php',
-    52 => 'src/Config/ConfigFileStatus.php',
-    53 => 'src/Config/DiscoveryIssue.php',
-    54 => 'src/Config/DiscoveryResult.php',
-    55 => 'src/Config/ImportedField.php',
-    56 => 'src/Config/MainConfigCoverage.php',
-    57 => 'src/Config/MainConfigImport.php',
-    58 => 'src/Config/MainConfigImporter.php',
-    59 => 'src/Config/MainConfigWriter.php',
-    60 => 'src/Config/RecipientConfigCoverage.php',
-    61 => 'src/Config/RecipientConfigImport.php',
-    62 => 'src/Config/RecipientConfigImporter.php',
-    63 => 'src/Config/RecipientConfigWriter.php',
-    64 => 'src/Contracts/RuntimeFileNames.php',
-    65 => 'src/Deployment/DeploymentCapabilities.php',
-    66 => 'src/Deployment/DeploymentContext.php',
-    67 => 'src/Http/FirstRunRequest.php',
-    68 => 'src/Http/FirstRunRequestMapper.php',
-    69 => 'src/Http/ProductRuntimeContextAdapter.php',
-    70 => 'src/Http/PrototypeController.php',
-    71 => 'src/Http/PrototypeEnvironment.php',
-    72 => 'src/Http/PrototypeEnvironmentFactory.php',
-    73 => 'src/Http/PrototypeRenderer.php',
-    74 => 'src/Http/RuntimeUiMode.php',
-    75 => 'src/Preflight/FirstRunPreflight.php',
-    76 => 'src/Preflight/PreflightCheck.php',
-    77 => 'src/Preflight/PreflightResult.php',
-    78 => 'src/Security/AdminAuthInput.php',
-    79 => 'src/Security/AdminAuthService.php',
-    80 => 'src/Security/AdminCredential.php',
-    81 => 'src/Security/AdminReauthPolicy.php',
-    82 => 'src/Security/AdminSessionLoadResult.php',
-    83 => 'src/Security/AdminSessionState.php',
-    84 => 'src/Security/AdminSessionStore.php',
-    85 => 'src/Security/CsrfTokens.php',
-    86 => 'src/Security/HmacSecretGenerator.php',
-    87 => 'src/Security/InMemoryRateLimiter.php',
-    88 => 'src/Security/PrototypeCsrfPolicy.php',
-    89 => 'src/Security/PrototypeRateLimitPolicy.php',
-    90 => 'src/Security/PrototypeSaveIntentPolicy.php',
-    91 => 'src/Security/SecretRedactor.php',
-    92 => 'src/Security/SessionSecurity.php',
-    93 => 'src/Security/SetupAccessPolicy.php',
-    94 => 'src/Security/SetupAccessResult.php',
-    95 => 'src/Security/SetupCodeVerifier.php',
-    96 => 'src/Security/SetupSessionLoadResult.php',
-    97 => 'src/Security/SetupSessionState.php',
-    98 => 'src/Security/SetupSessionStore.php',
-    99 => 'src/Security/UiPrivateConfig.php',
-    100 => 'src/Security/UiPrivateConfigLoadResult.php',
-    101 => 'src/Security/UiPrivateConfigStore.php',
-    102 => 'src/Setup/FirstRunFlow.php',
-    103 => 'src/Setup/FirstRunOrchestrator.php',
-    104 => 'src/Setup/FirstRunPlanner.php',
-    105 => 'src/Setup/FirstRunStepCatalog.php',
+    0 => 'resources/product-ui/totman-ui.php',
   ),
   'excluded' =>
   array (
@@ -10420,85 +37,3916 @@ array (
     }
 }
 
-final class PrototypeBundle
-{
-    public static function run(): void
-    {
-        $runtimeUiMode ='product';
-
-        if (($_GET['totman_ui_asset'] ?? '') === 'css') {
-            self::sendSecurityHeaders();
-            self::serveStylesheet($runtimeUiMode);
-            return;
-        }
-
-        if (($_GET['totman_ui_asset'] ?? '') === 'js') {
-            self::sendSecurityHeaders();
-            self::serveScript($runtimeUiMode);
-            return;
-        }
-
-        self::sendSecurityHeaders();
-        self::startSession();
-
-        $env =[
-            'TOTMAN_UI_DEPLOYMENT_CONTEXT' => getenv('TOTMAN_UI_DEPLOYMENT_CONTEXT') ?: '',
-            'TOTMAN_STATE_DIR' => getenv('TOTMAN_STATE_DIR') ?: '',
-            'TOTMAN_UI_SETUP_CODE' => getenv('TOTMAN_UI_SETUP_CODE') ?: \Totman\RuntimeUi\Config\TOTMAN_UI_SETUP_CODE,
-        ];
-        $environmentFactory = new PrototypeEnvironmentFactory();
-        $environment = $runtimeUiMode === 'product'
-            ? (new ProductRuntimeContextAdapter($environmentFactory))->fromArrays($_SERVER, $_POST, $env)
-            : $environmentFactory->fromArrays($_GET, $_SERVER, $_POST, $env, __DIR__ . '/var/runtime', $runtimeUiMode);
-        $environmentFactory->ensureStateDirectory($environment->stateDir());
-
-        $controller = (new PrototypeApplicationFactory(
-            expectedSetupCode: $environment->expectedSetupCode(),
-            runtimeUiMode: $runtimeUiMode,
-            privateConfigFallbackPaths: $runtimeUiMode === 'product' ? [__DIR__ . '/.totman-ui.php'] : []
-        ))->controller();
-        echo $controller->handle($environment->stateDir(), $environment->context(), $environment->method(), $environment->post());
-    }
-
-    private static function serveStylesheet(string $runtimeUiMode): void
-    {
-        header('Content-Type: text/css; charset=UTF-8');
-        header('Cache-Control: no-store, max-age=0');
-        header('X-Content-Type-Options: nosniff');
-        echo (new PrototypeRenderer(text: new RuntimeUiTextCatalog($runtimeUiMode)))->stylesheet();
-    }
-
-    private static function serveScript(string $runtimeUiMode): void
-    {
-        header('Content-Type: application/javascript; charset=UTF-8');
-        header('Cache-Control: no-store, max-age=0');
-        header('X-Content-Type-Options: nosniff');
-        echo (new PrototypeRenderer(text: new RuntimeUiTextCatalog($runtimeUiMode)))->script();
-    }
-
-    private static function sendSecurityHeaders(): void
-    {
-        header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
-        header('X-Frame-Options: DENY');
-        header('X-Content-Type-Options: nosniff');
-        header('Referrer-Policy: no-referrer');
-    }
-
-    private static function startSession(): void
-    {
-        if (session_status() !== PHP_SESSION_NONE) {
-            return;
-        }
-
-        session_set_cookie_params([
-            'httponly' => true,
-            'samesite' => 'Strict',
-            'secure' => !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off',
-        ]);
-        session_start();
-    }
 }
 
-if (!defined('TOTMAN_RUNTIME_UI_BUNDLE_NO_RUN')) {
-    PrototypeBundle::run();
+namespace {
+if (defined('TOTMAN_RUNTIME_UI_BUNDLE_NO_RUN')) {
+    return;
+}
+
+/**
+ * totman - single-file Web UI add-on
+ * Project: https://github.com/macsteini/totmannschalter
+ * Licence: MIT (see LICENCE)
+ * Deployment: distributed as totman-ui.php, may be renamed on the server.
+ * The generated .totman-ui.php should live outside public web access.
+ */
+
+/* USER CONFIGURATION
+ * Set TOTMAN_UI_SETUP_CODE before first setup. Docker and managed hosting may
+ * instead set TOTMAN_UI_SETUP_CODE in the server environment.
+ * The other values tune session lifetime, brute-force throttling, response
+ * delay after failed auth, and backup retention.
+ */
+const TOTMAN_UI_SETUP_CODE = '';
+const UI_SESSION_IDLE_SECONDS = 1800;
+const UI_SESSION_ABSOLUTE_SECONDS = 43200;
+const UI_THROTTLE_BASE_SECONDS = 2;
+const UI_THROTTLE_MAX_SECONDS = 300;
+const UI_THROTTLE_TTL_SECONDS = 3600;
+const UI_THROTTLE_MAX_ENTRIES = 80;
+const UI_AUTH_FAILURE_DELAY_MICROS = 250000;
+const UI_BACKUP_RETENTION = 10;
+const UI_LOG_PAGE_LINES = 120;
+const UI_LOG_MAX_PAGE_LINES = 200;
+
+/* STOP: Do not edit below this line unless you understand the security, parsing, and deployment model of this single-file admin UI. */
+const UI_DISTRIBUTED_FILE = 'totman-ui.php';
+const UI_DEFAULT_CONFIG_FILE = '/var/lib/totman/.totman-ui.php';
+const LOGO_DATA_URI = 'data:image/png;base64,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';
+ini_set('session.use_strict_mode', '1');
+function secure_cookie_enabled(): bool
+{
+    $env = getenv('TOTMAN_UI_SECURE_COOKIE');
+    if (is_string($env) && $env !== '') {
+        return in_array(strtolower($env), ['1','true','yes','on'], true);
+    }
+    if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+        return true;
+    }
+    $host = strtolower((string)($_SERVER['HTTP_HOST'] ?? ''));
+    $host = preg_replace('/:\d+$/', '', $host) ?? $host;
+    return!in_array($host, ['localhost','127.0.0.1','[::1]'], true);
+}
+$pwa = (string)($_GET['pwa'] ?? '');
+if ($pwa !== '') {
+    pwa_response($pwa);
+}
+session_set_cookie_params(['lifetime' => 0,'path' => '','secure' => secure_cookie_enabled(),'httponly' => true,'samesite' => 'Strict',]);
+session_start();
+$bootstrapError = '';
+try {
+    $uiConfig = ui_load_config();
+} catch (Throwable $e) {
+    $uiConfig = null;
+    $bootstrapError = $e->getMessage();
+}
+if (isset($_GET['lang']) && is_string($_GET['lang'])) {
+    $_SESSION['ui_lang'] = normalise_lang((string)$_GET['lang']);
+}
+if (!isset($_SESSION['ui_lang'])) {
+    $_SESSION['ui_lang'] = normalise_lang((string)($uiConfig['ui_lang'] ?? 'en'));
+}
+$asset = (string)($_GET['totman_ui_asset'] ?? $_GET['asset'] ?? '');
+if ($asset === 'css') {
+    header('Content-Type: text/css; charset=UTF-8');
+    header('Cache-Control: no-store, max-age=0');
+    header('X-Content-Type-Options: nosniff');
+    echo css();
+    exit;
+}
+if ($asset === 'js') {
+    header('Content-Type: application/javascript; charset=UTF-8');
+    header('Cache-Control: no-store, max-age=0');
+    header('X-Content-Type-Options: nosniff');
+    echo js();
+    exit;
+}
+header('Content-Type: text/html; charset=UTF-8');
+header('Cache-Control: no-store, max-age=0');
+header('Pragma: no-cache');
+header('X-Content-Type-Options: nosniff');
+header('Referrer-Policy: no-referrer');
+header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+header('X-Frame-Options: DENY');
+if (secure_cookie_enabled()) {
+    header('Strict-Transport-Security: max-age=31536000; includeSubDomains');
+}
+function h(string $value): string
+{
+    return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+}
+function supported_languages(): array
+{
+    return['en' => 'English','de' => 'Deutsch'];
+}
+function normalise_lang(string $lang): string
+{
+    return array_key_exists($lang, supported_languages()) ? $lang : 'en';
+}
+function translations(): array
+{
+    return['de' => ['A Deadman’s Switch for E-mail.' => 'Ein Totmannschalter für E-Mail.','Toggle theme' => 'Darstellung umschalten','Language' => 'Sprache','Footer' => 'Fußbereich','Documentation' => 'Dokumentation','Sign out' => 'Abmelden','Initial setup' => 'Ersteinrichtung','Setup Code' => 'Einrichtungscode','Username' => 'Anmeldename','Password' => 'Passwort','Repeat Password' => 'Passwort wiederholen','Data directory' => 'Datenverzeichnis','Create access' => 'Zugang erstellen','Sign in' => 'Anmelden','Configuration' => 'Konfiguration','Recipients' => 'Empfänger:innen','Activity Log' => 'Logging','General' => 'Allgemein','Schedule' => 'Zeitplan','Delivery' => 'Versand','Core Paths & Secrets' => 'Pfade & Geheimnisse','Security & Web' => 'Sicherheit & Web','Downloads' => 'Downloads','Logging' => 'Logging','Log entries' => 'Logeinträge','Load older entries' => 'Ältere Einträge laden','Loading older entries...' => 'Ältere Einträge werden geladen...','Technical Filenames' => 'Dateinamen','Rotate HMAC Secret' => 'HMAC-Secret rotieren','Current HMAC Secret' => 'Aktuelles HMAC-Secret','Pending Generated Secret' => 'Vorbereitetes neues Secret','Generated and waiting' => 'Erzeugt und bereit','none' => 'keins','Confirm password' => 'Passwort bestätigen','Generate Secret' => 'Secret erzeugen','Rotate HMAC and Reset State' => 'HMAC rotieren und Zyklus neu starten','Save' => 'Speichern','Save Configuration' => 'Speichern','Save Recipients & Content' => 'Speichern','Preflight' => 'Systemprüfung','Status' => 'Status','Ready' => 'Bereit','Needs attention' => 'Prüfung nötig','Not ready' => 'Nicht bereit','First issue: {item}' => 'Erstes Problem: {item}','Go-live review: {item}' => 'Prüfpunkt vor dem Start: {item}','All checks completed successfully.' => 'Alle Prüfungen waren erfolgreich.','Recovery needed' => 'Wiederherstellung nötig','Data directory check' => 'Datenverzeichnis prüfen','The required configuration files are missing or unreadable. Recovery requires a backup, the original package, or the hosting file manager/SFTP.' => 'Die benötigten Konfigurationsdateien fehlen oder sind nicht lesbar. Die Wiederherstellung benötigt ein Backup, das Originalpaket oder den Hosting-Dateimanager/SFTP.','Configured path' => 'Konfigurierter Pfad','No path configured.' => 'Kein Pfad konfiguriert.','Directory exists' => 'Verzeichnis existiert','Directory was found.' => 'Verzeichnis wurde gefunden.','Directory is missing.' => 'Verzeichnis fehlt.','Directory readable' => 'Verzeichnis lesbar','Directory writable' => 'Verzeichnis beschreibbar','PHP cannot read this directory.' => 'PHP kann dieses Verzeichnis nicht lesen.','Read permission for the PHP user is required.' => 'Leserechte für die PHP-Nutzerkennung sind erforderlich.','Write permission for PHP is required before saving.' => 'Schreibzugriff für PHP ist vor dem Speichern erforderlich.','Data directory exposure' => 'Sichtbarkeit des Datenverzeichnisses','The data directory appears to be inside the public web root.' => 'Das Datenverzeichnis scheint innerhalb des öffentlich erreichbaren Web-Verzeichnisses zu liegen.','Data directory is not inside the detected web root.' => 'Das Datenverzeichnis liegt nicht im erkannten öffentlichen Web-Verzeichnis.','state_dir should be outside the web root. If that is impossible, direct web access to the data directory and its backups must be blocked in the hosting panel.' => 'state_dir sollte außerhalb des Web-Verzeichnisses liegen. Falls das nicht möglich ist, muss direkter Webzugriff auf Datenverzeichnis und Backups im Hosting-Panel blockiert werden.','Backup storage' => 'Backup-Speicher','Backups are retained locally with restricted file permissions.' => 'Backups werden lokal mit eingeschränkten Dateirechten aufbewahrt.','Backup folder will be created on first save.' => 'Der Backup-Ordner wird beim ersten Speichern erstellt.','Backup folder exists but PHP cannot write to it.' => 'Der Backup-Ordner existiert, aber PHP kann nicht hineinschreiben.','The backup folder should stay outside public web access; old backups should be pruned regularly.' => 'Der Backup-Ordner sollte außerhalb des öffentlichen Webzugriffs liegen; alte Backups sollten regelmäßig entfernt werden.','Session cookie' => 'Session-Cookie','Secure cookie mode is active.' => 'Secure-Cookie-Modus ist aktiv.','Secure cookie mode is not active.' => 'Secure-Cookie-Modus ist nicht aktiv.','Production requires HTTPS or TOTMAN_UI_SECURE_COOKIE=1 behind a TLS proxy.' => 'Produktion benötigt HTTPS oder TOTMAN_UI_SECURE_COOKIE=1 hinter einem TLS-Proxy.','state_dir in the generated UI config must point to the folder that contains the existing configuration files.' => 'state_dir in der generierten UI-Konfiguration muss auf den Ordner mit den vorhandenen Konfigurationsdateien zeigen.','The directory must exist in the hosting panel or state_dir must point to the correct folder.' => 'Das Verzeichnis muss im Hosting-Panel existieren oder state_dir muss auf den korrekten Ordner zeigen.','The exact absolute path can be verified with the hosting file manager or SFTP. Missing configuration files must be restored from backup or the original package. After file, path, or permission fixes, the page can be reloaded.' => 'Der exakte absolute Pfad kann mit dem Hosting-Dateimanager oder per SFTP geprüft werden. Fehlende Konfigurationsdateien müssen aus Backup oder Originalpaket wiederhergestellt werden. Nach korrigierten Dateien, Pfaden oder Rechten kann die Seite neu geladen werden.','Repair data directory' => 'Datenverzeichnis reparieren','Recovery applies only when the configured data directory is wrong or moved. It changes the folder path only; deleted live configuration files are not recreated. The recovery code is the same one-time setup code configured in {script} or the server environment.' => 'Wiederherstellung gilt nur bei falschem oder verschobenem Datenverzeichnis. Sie ändert nur den Ordnerpfad; gelöschte Live-Konfigurationsdateien werden nicht neu erstellt. Der Wiederherstellungscode ist derselbe einmalige Einrichtungscode aus {script} oder der Serverumgebung.','Recovery Code' => 'Wiederherstellungscode','New data directory' => 'Neues Datenverzeichnis','Recovery is locked until a setup code is configured server-side.' => 'Die Wiederherstellung ist gesperrt, bis serverseitig ein Einrichtungscode konfiguriert ist.','Password required before data directory changes.' => 'Passwort vor Änderungen am Datenverzeichnis erforderlich.','Required for data directory changes.' => 'Erforderlich für Änderungen am Datenverzeichnis.','Update data directory' => 'Datenverzeichnis aktualisieren','Advanced technical details' => 'Erweiterte technische Details','The generated UI config can also be edited with the hosting file manager or SFTP; state_dir must be the absolute path that contains the existing configuration files.' => 'Die generierte UI-Konfiguration kann alternativ mit dem Hosting-Dateimanager oder per SFTP bearbeitet werden; state_dir muss der absolute Pfad mit den vorhandenen Konfigurationsdateien sein.','Data directory updated. Configuration will be loaded from the new path.' => 'Datenverzeichnis aktualisiert. Die Konfiguration wird aus dem neuen Pfad geladen.','How to fix:' => 'Lösung:','System State' => 'Systemstatus','Cycle' => 'Zyklus','Next confirmation window' => 'Nächstes Bestätigungsfenster','Confirm by' => 'Bestätigung spätestens bis','Last confirmation' => 'Letzte Bestätigung','No confirmation yet' => 'Noch keine','Configured' => 'Konfiguriert','No State' => 'Keine Daten','Not initialised' => 'Nicht initialisiert','Base URL (HTTPS)' => 'Base URL (HTTPS)','Web address (HTTPS)' => 'Web-Adresse (HTTPS)','Data Directory' => 'Datenverzeichnis','Authentication Key' => 'Authentifizierungsschlüssel','Neutral on Invalid' => 'Neutral bei ungültig','Neutral on Stale' => 'Neutral bei veraltet','IP Handling' => 'IP-Verarbeitung','Trusted Proxies' => 'Vertrauenswürdige Proxies','Proxy Header' => 'Proxy-Header','Web Rate Limit' => 'Anfragebegrenzung Web','Maximum Requests' => 'Maximale Anfragen','Window' => 'Fenster','Rate Limit Directory' => 'Verzeichnis für Anfragebegrenzung','Success Details' => 'Erfolgsdetails','Show' => 'Anzeigen','Hide' => 'Ausblenden','Show password' => 'Passwort anzeigen','Hide password' => 'Passwort ausblenden','Expiry Period' => 'Gültigkeitsdauer','Download Data Root' => 'Download-Datenverzeichnis','Download Rate Limit' => 'Anfragebegrenzung Downloads','Download Maximum Requests' => 'Maximale Download-Anfragen','Download Window' => 'Download-Fenster','Download Lease' => 'Download-Sperrfrist','Log Mode' => 'Log-Modus','Alert Interval' => 'Alarm-Intervall','Log Path' => 'Log-Pfad','Library File' => 'Library-Datei','Translation Directory' => 'Übersetzungsverzeichnis','Lock File' => 'Lock-Datei','Log Name' => 'Log-Name','State File' => 'Statusdatei','Web Endpoint' => 'Web-Endpunkt','Web Stylesheet' => 'Web-Stylesheet','Recipients Config' => 'Empfänger:innen-Konfiguration','Cycle (Check Every)' => 'Zyklus (prüfen alle)','Cycle interval' => 'Zyklusintervall','Window (Confirm within)' => 'Fenster (bestätigen innerhalb)','Confirmation window' => 'Bestätigungsfenster','Reminder Freq (Self)' => 'Reminder-Frequenz (selbst)','Self-reminder interval' => 'Intervall für eigene Erinnerungen','Grace Period' => 'Karenzzeit','Delay before escalation' => 'Verzögerung vor der Eskalation','Tolerance' => 'Toleranz','Recipient Receipt Confirmation' => 'Empfangsbestätigung nach Eskalation','Final e-mail receipt acknowledgement' => 'Empfangsbestätigung für finale E-Mails','Receipt Reminder every' => 'Erinnerung zur Empfangsbestätigung alle','Receipt reminder interval' => 'Intervall für Empfangs-Erinnerungen','Maximum Receipt Reminders' => 'Maximale Erinnerungen zur Empfangsbestätigung','To Self (one per line)' => 'An sich selbst (eine Adresse pro Zeile)','Reminder addresses' => 'Erinnerungsadressen','Mail Delivery' => 'Mail-Zustellung','Region & Format' => 'Region & Format','From Address' => 'Absenderadresse','Reply-To Address' => 'Reply-To-Adresse','Sendmail Path' => 'Sendmail-Pfad','Timezone' => 'Zeitzone','Date Format' => 'Datumsformat','Time Format' => 'Zeitformat','Full DateTime Override' => 'Vollständiges Datums-/Zeitformat','Combined date/time format' => 'Kombiniertes Datums-/Zeitformat','Reminder Template' => 'Vorlage für eigene Erinnerungen','Subject' => 'Betreff','Body Template' => 'Nachrichtentext-Vorlage','List' => 'Liste','Messages' => 'Nachrichten','Files' => 'Dateien','Add Recipient' => 'Empfänger:in hinzufügen','New Template' => 'Neue Vorlage','File Alias Registry' => 'Datei-Alias-Register','Add Alias' => 'Alias hinzufügen','Reset unsaved changes' => 'Ungespeicherte Änderungen zurücksetzen','Unsaved changes will be discarded; last saved data will be reloaded.' => 'Ungespeicherte Änderungen werden verworfen; zuletzt gespeicherter Stand wird neu geladen.','Recipient' => 'Empfänger:in','Alias' => 'Alias','Path' => 'Pfad','Action' => 'Aktion','Name' => 'Name','Mailbox' => 'E-Mail-Adresse','Template' => 'Vorlage','Downloads (Normal)' => 'Downloads (normal)','Downloads (Single-use)' => 'Downloads (einmalig)','Key' => 'Schlüssel','Body' => 'Nachrichtentext','Single-use Notice' => 'Einmal-Hinweis','Remove recipient' => 'Empfänger:in entfernen','Remove message template' => 'Nachrichtenvorlage entfernen','Remove file alias' => 'Datei-Alias entfernen','Seconds' => 'Sekunden','Minutes' => 'Minuten','Hours' => 'Stunden','Days' => 'Tage','Weeks' => 'Wochen','Yes' => 'Ja','No' => 'Nein','Help for' => 'Hilfe zu','Configuration and cycle data are readable.' => 'Konfiguration und Zyklusdaten sind lesbar.','Cycle data is not available yet.' => 'Zyklusdaten sind noch nicht verfügbar.','Missed' => 'Verpasst','Missed cycles before escalation' => 'Verpasste Zyklen bis zur Eskalation','When confirmation opens' => 'Bestätigung ab diesem Zeitpunkt möglich','Click the link before this time' => 'Link muss spätestens bis dahin geklickt werden','Receive the final escalation e-mails' => 'Personen, die im Eskalationsfall benachrichtigt werden','Most recent confirmation link click' => 'Zuletzt geklickter Bestätigungslink','Danger Zone' => 'Gefahrenbereich','Reset Runtime State' => 'Zyklus zurücksetzen','Clear log' => 'Log leeren','Cycle reset.' => 'Zyklus wurde zurückgesetzt.','Log cleared.' => 'Log wurde geleert.','Resetting the cycle starts fresh, creates a new token, clears escalation progress, and removes one-time download leases. Configuration and recipients stay unchanged.' => 'Das Zurücksetzen startet den Zyklus neu, erzeugt ein neues Token, leert den Eskalationsstand und entfernt Einmal-Download-Sperrfristen. Konfiguration und Empfänger:innen bleiben unverändert.','Clearing the log removes the current entries only. Configuration, recipients, cycle data, and physical download files stay unchanged.' => 'Das Leeren des Logs entfernt nur die aktuellen Einträge. Konfiguration, Empfänger:innen, Zyklusdaten und physische Download-Dateien bleiben unverändert.','Really reset the cycle? Existing confirmation links and one-time download leases will stop matching the current cycle.' => 'Zyklus wirklich zurücksetzen? Bestehende Bestätigungslinks und Einmal-Download-Sperrfristen passen danach nicht mehr zum aktuellen Zyklus.','Really clear the log? This cannot be undone here.' => 'Log wirklich leeren? Das kann hier nicht rückgängig gemacht werden.','Approval needed' => 'Freigabe erforderlich','Cancel' => 'Abbrechen','Run action' => 'Ausführen','Close' => 'Schließen','Save anyway?' => 'Trotzdem speichern?','Continue?' => 'Fortfahren?','Configuration unavailable' => 'Konfiguration nicht verfügbar','The generated UI config and state_dir require review. The directory must contain the existing configuration files; the Web UI does not rebuild deleted live configuration after setup.' => 'Die generierte UI-Konfiguration und state_dir müssen geprüft werden. Das Verzeichnis muss die vorhandenen Konfigurationsdateien enthalten; die Web UI baut gelöschte Live-Konfiguration nach der Einrichtung nicht neu auf.','Setup is locked. TOTMAN_UI_SETUP_CODE must be set in {script}; the same code unlocks setup after page reload.' => 'Die Einrichtung ist gesperrt. TOTMAN_UI_SETUP_CODE muss in {script} gesetzt sein; derselbe Code entsperrt die Einrichtung nach dem Neuladen.','One-time code configured in this file or the server environment.' => 'Einmaliger Code aus dieser Datei oder der Serverumgebung.','Minimum length: 10 characters.' => 'Mindestlänge: 10 Zeichen.','Password repetition catches typing mistakes.' => 'Passwortwiederholung erkennt Tippfehler.','Existing folder with configuration files and saved cycle data.' => 'Vorhandener Ordner mit Konfigurationsdateien und gespeicherten Zyklusdaten.','Public confirmation URL.' => 'Öffentliche URL für den Bestätigungslink.','Active signing secret.' => 'Aktives Secret zum Signieren der Links.','Secret ready to write.' => 'Secret bereit zum Schreiben.','One-time setup code.' => 'Einmaliger Einrichtungscode.','At least 10 characters.' => 'Mindestens 10 Zeichen.','Folder with configuration files and cycle data.' => 'Ordner mit Konfigurationsdateien und Zyklusdaten.','Setup or recovery code.' => 'Einrichtungs- oder Wiederherstellungscode.','New data folder.' => 'Neuer Datenordner.','Password required.' => 'Passwort erforderlich.','Response for invalid tokens.' => 'Antwort bei ungültigen Tokens.','Response for stale tokens.' => 'Antwort bei veralteten Tokens.','Source for visitor IP addresses.' => 'Quelle für Besucher:innen-IP-Adressen.','Proxy IPs allowed to pass client addresses.' => 'Proxy-IPs, die Client-Adressen weitergeben dürfen.','Header read in trusted proxy mode.' => 'Header im Trusted-Proxy-Modus.','Limits repeated web requests.' => 'Begrenzt wiederholte Web-Anfragen.','Allowed web requests per window.' => 'Erlaubte Web-Anfragen pro Fenster.','Counting window for web requests.' => 'Zählfenster für Web-Anfragen.','Custom rate-limit folder, or blank for default.' => 'Eigener Rate-Limit-Ordner oder leer für Standard.','Details shown after successful confirmation.' => 'Details nach erfolgreicher Bestätigung.','How long download links work.' => 'So lange funktionieren Download-Links.','Folder containing downloadable files.' => 'Ordner mit Download-Dateien.','Limits repeated downloads.' => 'Begrenzt wiederholte Downloads.','Allowed download requests per window.' => 'Erlaubte Download-Anfragen pro Fenster.','Counting window for downloads.' => 'Zählfenster für Downloads.','Short lock for single-use downloads.' => 'Kurze Sperre für Einmal-Downloads.','Where log entries are written.' => 'Wohin Logeinträge geschrieben werden.','Pause between repeated operator alerts.' => 'Pause zwischen wiederholten Warnmails.','Custom log path, or blank for default.' => 'Eigener Logpfad oder leer für Standard.','Active recipients file.' => 'Aktive Empfänger:innen-Datei.','How often a new cycle starts.' => 'Intervall, in dem ein neuer Zyklus startet.','How long confirmation stays open.' => 'So lange bleibt die Bestätigung offen.','How often reminders are sent.' => 'So oft werden Erinnerungen versendet.','Extra delay before escalation.' => 'Zusätzliche Wartezeit vor der Eskalation.','Missed cycles before escalation.' => 'Verpasste Zyklen vor der Eskalation.','Receipt acknowledgement for final e-mails.' => 'Empfangsbestätigung für finale E-Mails.','How often receipt reminders are sent.' => 'Intervall für Erinnerungen zur Empfangsbestätigung.','Maximum receipt reminders.' => 'Maximale Empfangs-Erinnerungen.','Addresses for self-reminders.' => 'Adressen für eigene Erinnerungen.','Sender address for outgoing mail.' => 'Absenderadresse für ausgehende E-Mails.','Optional reply address.' => 'Optionale Antwortadresse.','Server path to sendmail.' => 'Serverpfad zu sendmail.','Timezone for message timestamps.' => 'Zeitzone für Zeitangaben in Nachrichten.','Date format in messages.' => 'Datumsformat in Nachrichten.','Time format in messages.' => 'Zeitformat in Nachrichten.','Optional combined date/time format.' => 'Optionales kombiniertes Datums-/Zeitformat.','Subject for self-reminders.' => 'Betreff für eigene Erinnerungen.','Body for self-reminders.' => 'Text für eigene Erinnerungen.','Used for the {RECIPIENT_NAME} placeholder in messages.' => 'Wird für den Platzhalter {RECIPIENT_NAME} in Nachrichten genutzt.','Display name for messages.' => 'Anzeigename für Nachrichten.','Accepted formats: user@example.com, Name <user@example.com>, or "Name" <user@example.com>.' => 'Erlaubte Formate: user@example.com, Name <user@example.com> oder "Name" <user@example.com>.','E-mail address plus optional display name.' => 'E-Mail-Adresse plus optionaler Anzeigename.','Configured message required.' => 'Konfigurierte Nachricht erforderlich.','Message for this recipient.' => 'Nachricht für diese:n Empfänger:in.','One or more aliases from File Alias Registry can be selected. These links remain reusable.' => 'Ein oder mehrere Aliasse aus dem Datei-Alias-Register können ausgewählt werden. Diese Links bleiben wiederverwendbar.','Reusable download aliases for this recipient.' => 'Wiederverwendbare Download-Aliasse für diese:n Empfänger:in.','Allowed characters: lowercase letters, numbers, underscore, and hyphen. Recipients reference this value.' => 'Erlaubte Zeichen: Kleinbuchstaben, Zahlen, Unterstrich und Bindestrich. Empfänger:innen referenzieren diesen Wert.','Stable key used by recipients.' => 'Stabiler Schlüssel für Empfänger:innen.','Plain text subject line. Short wording improves display in common mail clients.' => 'Klartext-Betreffzeile. Kurze Formulierungen verbessern die Anzeige in gängigen Mailclients.','Subject line sent to recipients.' => 'Betreffzeile, die an Empfänger:innen gesendet wird.','May contain placeholders such as {RECIPIENT_NAME}, {ACK_BLOCK}, and {DOWNLOAD_LINKS}. Placeholder names must remain unchanged.' => 'Darf Platzhalter wie {RECIPIENT_NAME}, {ACK_BLOCK} und {DOWNLOAD_LINKS} enthalten. Platzhalternamen unverändert lassen.','Message body for this template.' => 'Nachrichtentext für diese Vorlage.','Allowed characters: lowercase letters, numbers, underscore, and hyphen. Recipients reference this alias in download lists.' => 'Erlaubte Zeichen: Kleinbuchstaben, Zahlen, Unterstrich und Bindestrich. Empfänger:innen nutzen diesen Alias in Download-Listen.','Short name used in recipient download lists.' => 'Kurzname in Download-Listen der Empfänger:innen.','Relative path below Download Data Root. Leading slash and .. parent segments are not allowed.' => 'Relativer Pfad unterhalb des Download-Datenverzeichnisses. Nicht mit Slash beginnen und keine ..-Segmente verwenden.','Relative path below the download root.' => 'Relativer Pfad unter dem Download-Ordner.','Normal download aliases' => 'Normale Download-Aliasse','Single-use download aliases' => 'Einmal-Download-Aliasse','No template selected' => 'Vorlage wählen','No file aliases configured yet.' => 'Noch keine Datei-Aliasse konfiguriert.','errors' => 'Fehler','warnings' => 'Warnungen','Public HTTPS URL for the confirmation link endpoint.' => 'Öffentliche HTTPS-URL für die Bestätigungslinks.','Valid IANA timezone required, for example Europe/London.' => 'Gültige IANA-Zeitzone erforderlich, zum Beispiel Europe/London.','One mailbox per line. These addresses receive self-reminders.' => 'Eine E-Mail-Adresse pro Zeile. Diese Adressen erhalten eigene Erinnerungen.','Message body for self-reminders. Placeholders such as {CONFIRM_URL} stay unchanged.' => 'Nachrichtentext für Selbst-Reminder. Platzhalter wie {CONFIRM_URL} bleiben unverändert.','Folder where physical download files already exist. Upload files manually via Terminal/SFTP.' => 'Ordner, in dem physische Download-Dateien bereits liegen. Dateien werden manuell per Terminal/SFTP hochgeladen.','Recipient config renames need a dedicated migration flow; normal saves keep the active filename.' => 'Umbenennungen der Empfänger:innen-Konfiguration brauchen einen eigenen Migrationsablauf; normales Speichern behält den aktiven Dateinamen.','This path comes from the generated UI config. Moving it requires a UI config edit or setup recovery.' => 'Dieser Pfad kommt aus .totman-ui.php. Ändere diese Datei oder starte die Einrichtung neu, um ihn umzuziehen.','Positive whole number plus unit: seconds, minutes, hours, days, or weeks. Months and years are intentionally not available.' => 'Positive ganze Zahl plus Einheit: Sekunden, Minuten, Stunden, Tage oder Wochen. Monate und Jahre gibt es absichtlich nicht.','Positive whole number plus unit: seconds, minutes, hours, days, or weeks. Months and years are not available. Values are saved as seconds.' => 'Positive ganze Zahl plus Einheit: Sekunden, Minuten, Stunden, Tage oder Wochen. Monate und Jahre gibt es nicht. Gespeichert wird in Sekunden.','Must start with https:// and include the public endpoint path, for example https://example.org/totman.php.' => 'Muss mit https:// beginnen und den öffentlichen Endpunkt enthalten, zum Beispiel https://example.org/totman.php.','Read-only here. The generated UI config changes or setup recovery move the data folder.' => 'Hier schreibgeschützt. Ändere .totman-ui.php oder starte die Einrichtung neu, um den Datenordner umzuziehen.','Rotate only with the HMAC buttons. Rotation invalidates existing confirmation tokens.' => 'Nur mit den HMAC-Buttons rotieren. Rotation macht bestehende Bestätigungslinks ungültig.','Generated by the server. It is written only after confirmed rotation.' => 'Wird serverseitig erzeugt und erst nach bestätigter Rotation geschrieben.','TOTMAN_UI_SETUP_CODE must be configured in {script} or in the server environment before setup.' => 'Setze vor der Einrichtung TOTMAN_UI_SETUP_CODE in {script} oder TOTMAN_UI_SETUP_CODE in der Serverumgebung.','The folder must already exist and contain a Web-UI-enabled totman configuration. Recovery never recreates deleted live configuration files.' => 'Der Ordner muss bereits existieren und für PHP lesbar und schreibbar sein. Bei der Ersteinrichtung können fehlende Starter-Vorlagen hier erstellt werden. Runtime-Skripte und echte Produktivdaten müssen separat installiert oder wiederhergestellt werden.','Yes returns a neutral page for invalid tokens. No can reveal more detail to visitors.' => 'Ja zeigt bei ungültigen Tokens eine neutrale Seite. Nein kann Besucher:innen mehr Details zeigen.','Yes keeps stale-token responses neutral. No makes expired or old states easier to recognise.' => 'Ja hält Antworten auf veraltete Tokens neutral. Nein macht abgelaufene oder alte Zustände leichter erkennbar.','REMOTE_ADDR uses the web server address. Trusted Proxy reads the configured header only from trusted proxy IPs.' => 'REMOTE_ADDR nutzt die Webserver-Adresse. Trusted Proxy liest den Header nur von vertrauenswürdigen Proxy-IPs.','JSON array such as ["127.0.0.1"] or comma-separated IPs. Used only in trusted proxy mode.' => 'JSON-Array wie ["127.0.0.1"] oder kommagetrennte IPs. Gilt nur im Trusted-Proxy-Modus.','Header name such as X-Forwarded-For. Used only for requests from trusted proxies.' => 'Headername wie X-Forwarded-For. Gilt nur für Anfragen über vertrauenswürdige Proxies.','When enabled, request count and window must both be valid.' => 'Wenn aktiv, müssen Anzahl und Zeitfenster gültig sein.','Positive whole number, for example 30.' => 'Positive ganze Zahl, zum Beispiel 30.','Blank or null uses {state_dir}/ratelimit. Custom values must be absolute server paths. 0 is invalid.' => 'Leer lassen oder null eintragen für {state_dir}/ratelimit. Eigene Werte müssen absolute Serverpfade sein. 0 ist ungültig.','Positive whole number plus unit: days or weeks. Stored as whole days.' => 'Positive ganze Zahl plus Einheit: Tage oder Wochen. Gespeichert wird in ganzen Tagen.','Absolute server path required. File upload, moving, and renaming happen manually via Terminal/SFTP.' => 'Absoluter Serverpfad erforderlich. Dateien werden manuell per Terminal/SFTP hochgeladen, verschoben und umbenannt.','Positive whole number, for example 20.' => 'Positive ganze Zahl, zum Beispiel 20.','Must not be longer than the download validity period.' => 'Darf nicht länger als die Download-Gültigkeit sein.','File writes the configured log file. Syslog uses server syslog. File & Syslog writes both. None disables logging.' => 'File schreibt in die konfigurierte Logdatei. Syslog nutzt das Server-Syslog. File & Syslog schreibt beides. None deaktiviert Logging.','Whole hours from 1 to 24.' => 'Ganze Stunden von 1 bis 24.','Blank or null uses the default data-folder log. Custom values must be writable paths.' => 'Leer lassen oder null eintragen für das Standardlog im Datenordner. Eigene Werte müssen beschreibbare Pfade sein.','Read-only here. Renaming this file needs a migration flow so recipients are not silently moved.' => 'Hier schreibgeschützt. Umbenennen braucht eine Migration, damit Empfänger:innen nicht still verschoben werden.','Reminder frequency must not be longer than this window.' => 'Die Erinnerungsfrequenz darf nicht länger als dieses Fenster sein.','Must not be longer than the confirmation window.' => 'Darf nicht länger als das Bestätigungsfenster sein.','Positive whole number. Higher values delay escalation after missed cycles.' => 'Positive ganze Zahl. Höhere Werte verzögern die Eskalation nach verpassten Zyklen.','When enabled, final e-mails can include an acknowledgement link. A submitted acknowledgement stops further escalation e-mails for the current escalation event; the cycle is not reset.' => 'Wenn aktiv, können finale E-Mails einen Empfangslink enthalten. Eine gesendete Empfangsbestätigung stoppt weitere Eskalationsmails für dieses Eskalationsereignis; der Zyklus wird nicht zurückgesetzt.','Whole number, zero or higher. Zero means no repeated receipt reminders after the first escalation notice.' => 'Ganze Zahl ab 0. 0 bedeutet keine wiederholten Erinnerungen zur Empfangsbestätigung nach der ersten Eskalationsnachricht.','One address per line. ' => 'Eine Adresse pro Zeile. ','Executable server path required, for example /usr/sbin/sendmail or /usr/lib/sendmail.' => 'Ausführbarer Serverpfad erforderlich, zum Beispiel /usr/sbin/sendmail oder /usr/lib/sendmail.','IANA timezone required, for example Europe/London or Europe/Berlin. Invalid values are rejected.' => 'IANA-Zeitzone erforderlich, zum Beispiel Europe/London oder Europe/Berlin. Ungültige Werte werden abgelehnt.','PHP DateTime format, for example j F Y or Y-m-d. Tokens are not translated.' => 'PHP-DateTime-Format, zum Beispiel j F Y oder Y-m-d. Tokens werden nicht übersetzt.','PHP DateTime format, for example H:i:s or H:i. Tokens are not translated.' => 'PHP-DateTime-Format, zum Beispiel H:i:s oder H:i. Tokens werden nicht übersetzt.','Optional PHP DateTime format for combined output. Empty value combines date and time formats.' => 'Optionales PHP-DateTime-Format für kombinierte Ausgabe. Leer lassen, um Datum und Uhrzeit zu kombinieren.','Allowed placeholders: {CONFIRM_URL}, {DEADLINE_ISO}, {CYCLE_START_ISO}. Placeholder names must remain unchanged.' => 'Erlaubte Platzhalter: {CONFIRM_URL}, {DEADLINE_ISO}, {CYCLE_START_ISO}. Namen unverändert lassen.','Existing tokens become invalid and a new cycle starts. Secret generation prepares rotation; rotation writes the secret. The secret is generated by the server and is never typed manually.' => 'Bestehende Tokens werden ungültig und ein neuer Zyklus startet. Secret-Erzeugung bereitet die Rotation vor; Rotation schreibt das Secret. Das Secret wird serverseitig erzeugt und nie manuell eingetippt.','Active token-signing secret. Rotation is the only supported change path here.' => 'Aktives Secret zum Signieren der Tokens. Rotation ist hier der einzige unterstützte Änderungsweg.','Secret generation creates this value server-side. HMAC rotation writes it and invalidates old tokens.' => 'Secret-Erzeugung erstellt diesen Wert serverseitig. HMAC-Rotation schreibt ihn und macht alte Tokens ungültig.','A new secret is ready for rotation.' => 'Ein neues Secret ist für die Rotation bereit.','No generated secret is waiting yet.' => 'Es wartet noch kein erzeugtes Secret.','Physical files are uploaded, moved, and renamed only via Terminal/SFTP. Removing a saved file alias deletes the referenced physical file.' => 'Physische Dateien werden nur per Terminal/SFTP hochgeladen, verschoben und umbenannt. Das Entfernen eines gespeicherten Datei-Alias löscht die referenzierte physische Datei.','Path is read-only after saving. File moves or renames happen via Terminal/SFTP; a new alias can then be created if needed.' => 'Der Pfad ist nach dem Speichern schreibgeschützt. Datei-Verschiebung oder Umbenennung erfolgt per Terminal/SFTP; danach kann bei Bedarf ein neuer Alias angelegt werden.','This removes the alias and deletes the physical file. This cannot be undone here.' => 'Dies entfernt den Alias und löscht die physische Datei. Das kann hier nicht rückgängig gemacht werden.','No action needed.' => 'Keine Aktion nötig.','Make the configured data directory writable by PHP.' => 'Mache das konfigurierte Datenverzeichnis für PHP beschreibbar.','.totman-ui.php must contain the correct state_dir; after correction, the page can be reloaded.' => '.totman-ui.php muss den korrekten state_dir enthalten; nach der Korrektur kann die Seite neu geladen werden.','Secret generation and HMAC rotation are required.' => 'Secret-Erzeugung und HMAC-Rotation sind erforderlich.','Cycle data is created by HMAC rotation or the first confirmation-endpoint request.' => 'Zyklusdaten entstehen durch HMAC-Rotation oder den ersten Aufruf des Bestätigungs-Endpunkts.','Correct sendmail path or sendmail installation/configuration is required on the server.' => 'Korrekte Sendmail-Konfiguration oder Installation auf dem Server erforderlich.','Create the directory and upload files manually, then make it readable by PHP.' => 'Das Verzeichnis muss existieren, Dateien müssen manuell hochgeladen werden und PHP benötigt Leserechte.','Create the log directory or adjust permissions for the PHP user.' => 'Das Log-Verzeichnis muss existieren oder die Rechte für das PHP-Systemkonto müssen angepasst werden.','Upload the files manually below download_base_dir or adjust the alias paths.' => 'Dateien müssen manuell unterhalb von download_base_dir liegen oder die Alias-Pfade müssen angepasst werden.','Recipient display name used in message placeholders.' => 'Anzeigename dieser Person für Platzhalter in Nachrichten.','E-mail address with optional display name.' => 'E-Mail-Adresse mit optionalem Anzeigenamen.','Message template key that this recipient receives.' => 'Schlüssel der Nachrichtenvorlage, die diese Person erhält.','One or more aliases from the File Alias Registry can be selected.' => 'Ein oder mehrere Aliasse aus dem Datei-Alias-Register können ausgewählt werden.','Available placeholders:' => 'Verfügbare Platzhalter:','Save this file straight away. This download link works only once.' => 'Sofortiges Speichern erforderlich. Dieser Download-Link funktioniert nur einmal.','Comma-separated aliases for reusable downloads.' => 'Ausgewählte Aliasse für wiederverwendbare Downloads.','Comma-separated aliases that should work only once.' => 'Ausgewählte Aliasse, die nur einmal funktionieren sollen.','Stable template key referenced by recipients.' => 'Stabiler Vorlagenschlüssel, auf den Empfänger:innen verweisen.','Message body. Placeholders such as {DOWNLOAD_LINKS} stay unchanged.' => 'Nachrichtentext. Platzhalter wie {DOWNLOAD_LINKS} bleiben unverändert.','Required when this template is used with single-use downloads.' => 'Erforderlich, wenn diese Vorlage mit Einmal-Downloads verwendet wird.','Short alias used in recipient download lists.' => 'Kurzer Alias für Download-Listen der Empfänger:innen.','Relative path below the configured download data root.' => 'Relativer Pfad unterhalb des konfigurierten Download-Datenverzeichnisses.','Public URL where the current cycle is confirmed.' => 'Öffentliche URL, über die der aktuelle Zyklus bestätigt wird.','Configured data directory.' => 'Konfiguriertes Datenverzeichnis.','Active token-signing secret.' => 'Aktives Secret zum Signieren der Tokens.','Generated replacement secret waiting for rotation.' => 'Erzeugtes Ersatz-Secret, das auf Rotation wartet.','One-time code that unlocks first setup.' => 'Einmaliger Code, der die Ersteinrichtung entsperrt.','One-time code used to unlock recovery.' => 'Einmaliger Code, der die Wiederherstellung entsperrt.','Password.' => 'Passwort.','Folder for configuration and saved cycle data.' => 'Verzeichnis für Konfiguration und gespeicherte Zyklusdaten.','New folder for configuration and saved cycle data.' => 'Neues Verzeichnis für Konfiguration und gespeicherte Zyklusdaten.','Repeat the password.' => 'Passwort wiederholen.','Password required for saving.' => 'Passwort zum Speichern erforderlich.','Password required for recovery.' => 'Passwort zur Wiederherstellung erforderlich.','Controls the response to invalid tokens.' => 'Steuert die Antwort auf ungültige Tokens.','Controls the response to stale tokens.' => 'Steuert die Antwort auf veraltete Tokens.','Source used to determine the visitor IP address.' => 'Quelle zur Ermittlung der Client-IP-Adresse.','Proxy IPs allowed to pass the real client address.' => 'Proxy-IPs, die echte Client-Adressen weitergeben dürfen.','HTTP header read when trusted proxy mode is active.' => 'HTTP-Header, der im Trusted-Proxy-Modus gelesen wird.','Limits repeated requests to the web endpoint.' => 'Begrenzt wiederholte Anfragen an den Web-Endpunkt.','Maximum web requests allowed per window.' => 'Maximale Web-Anfragen pro Fenster.','Time window for web request counting.' => 'Zeitfenster für die Web-Anfragen-Zählung.','Folder for temporary web rate-limit files.' => 'Ordner für temporäre Dateien der Web-Anfragebegrenzung.','Empty value uses the default rate-limit directory.' => 'Leer lassen, um das Standardverzeichnis für die Anfragebegrenzung zu verwenden.','Empty value or null uses {state_dir}/ratelimit. A custom value must be an absolute server path such as /var/lib/totman/ratelimit. The value 0 is not valid.' => 'Leer lassen nutzt {state_dir}/ratelimit. null nutzt denselben Standard. Ein eigener Wert muss ein absoluter Serverpfad sein, zum Beispiel /var/lib/totman/ratelimit. Der Wert 0 ist ungültig.','Controls how much detail success pages reveal.' => 'Steuert, wie viele Details Erfolgsseiten anzeigen.','How long generated download links remain valid.' => 'Gültigkeitsdauer erzeugter Download-Links.','Folder where downloadable files already exist.' => 'Ordner, in dem Download-Dateien bereits liegen.','Limits repeated download requests.' => 'Begrenzt wiederholte Download-Anfragen.','Maximum download requests allowed per window.' => 'Maximale Download-Anfragen pro Fenster.','Time window for download request counting.' => 'Zeitfenster für die Download-Anfragen-Zählung.','Short lock period for single-use downloads.' => 'Kurze Sperrfrist für Einmal-Downloads.','Destination for activity logs.' => 'Ziel für Aktivitätslogs.','Minimum delay between operator alerts.' => 'Mindestabstand zwischen Betriebsalarmen.','Optional custom path for the log file.' => 'Optionaler eigener Pfad zur Logdatei.','PHP library filename.' => 'Dateiname der PHP-Bibliothek.','Directory name for translation files.' => 'Verzeichnisname für Übersetzungsdateien.','Lock filename.' => 'Dateiname der Lock-Datei.','Default log filename inside the data directory.' => 'Standard-Logdateiname im Datenverzeichnis.','Cycle data JSON filename.' => 'Dateiname der Zyklusdaten-JSON.','Public confirmation endpoint filename.' => 'Dateiname des öffentlichen Bestätigungs-Endpunkts.','Public confirmation stylesheet filename.' => 'Dateiname des öffentlichen Bestätigungs-Stylesheets.','Active recipients config filename.' => 'Dateiname der aktiven Empfänger:innen-Konfiguration.','How long confirmation remains possible.' => 'Zeitraum, in dem die Bestätigung möglich bleibt.','How often self-reminders are sent.' => 'Intervall für eigene Erinnerungen.','Extra delay before escalation starts.' => 'Zusätzliche Verzögerung vor der Eskalation.','Missed cycles allowed before escalation.' => 'Erlaubte verpasste Zyklen vor der Eskalation.','Requires recipient acknowledgement after escalation.' => 'Erfordert eine Empfangsbestätigung nach der Eskalation.','Requires one recipient to confirm that the escalation mail arrived.' => 'Erfordert, dass ein:e Empfänger:in den Eingang der Eskalationsmail bestätigt.','Maximum number of receipt reminders.' => 'Maximale Anzahl von Erinnerungen zur Empfangsbestätigung.','Addresses that receive self-reminders.' => 'Adressen, die eigene Erinnerungen erhalten.','Sender address used for outgoing mail.' => 'Absenderadresse für ausgehende E-Mails.','Reply-To address used for outgoing mail.' => 'Reply-To-Adresse für ausgehende E-Mails.','Server path to the sendmail binary.' => 'Serverpfad zum sendmail-Binary.','Timezone used in outgoing messages.' => 'Zeitzone für ausgehende Nachrichten.','Date format used in outgoing messages.' => 'Datumsformat für ausgehende Nachrichten.','Time format used in outgoing messages.' => 'Zeitformat für ausgehende Nachrichten.','Subject line for self-reminders.' => 'Betreffzeile für eigene Erinnerungen.','Message body for self-reminders.' => 'Nachrichtentext für eigene Erinnerungen.','Must start with https:// and point to the public confirmation endpoint, for example https://example.org/totman.php.' => 'Muss mit https:// beginnen und auf den öffentlichen Bestätigungs-Endpunkt zeigen, zum Beispiel https://example.org/totman.php.','Read-only here. The path comes from .totman-ui.php; moving it requires .totman-ui.php changes or setup recovery.' => 'Hier schreibgeschützt. Dieser Pfad kommt aus .totman-ui.php; ändere diese Datei oder starte die Einrichtung neu, um ihn umzuziehen.','Read-only here. Rotate it only with the HMAC buttons; changing it invalidates existing confirmation tokens.' => 'Hier schreibgeschützt. Rotiere es nur über die HMAC-Buttons; eine Änderung macht bestehende Bestätigungstokens ungültig.','Server-generated after Generate Secret. Written only after successful Rotate HMAC and Reset Cycle.' => 'Wird nach „Secret erzeugen“ serverseitig erstellt. Geschrieben wird es erst, wenn „HMAC rotieren und Zyklus neu starten“ erfolgreich ist.','TOTMAN_UI_SETUP_CODE must be set in {script} or in the server environment before setup opens.' => 'TOTMAN_UI_SETUP_CODE muss in {script} oder in der Serverumgebung gesetzt sein, bevor die Einrichtung geöffnet wird.','Sign-in name.' => 'Anmeldename für die Anmeldung.','Same password repeated.' => 'Dasselbe Passwort wiederholt.','Must exist and be readable and writable by PHP. Missing starter templates such as totman.inc.dist.php and totman-recipients.dist.php can be created here. The actual PHP scripts must still be uploaded separately.' => 'Muss existieren und für PHP lesbar und schreibbar sein. Fehlende Startvorlagen wie totman.inc.dist.php und totman-recipients.dist.php können hier erzeugt werden. Die eigentlichen PHP-Skripte müssen separat hochgeladen werden.','Name created during setup.' => 'Anmeldename aus der Einrichtung.','Setup/recovery code configured in {script} or the server environment.' => 'Einrichtungs-/Wiederherstellungscode aus {script} oder der Serverumgebung.','Must exist and be readable and writable by PHP. Missing starter templates can be created here, but PHP scripts must be uploaded separately.' => 'Muss existieren und für PHP lesbar und schreibbar sein. Fehlende Startvorlagen können hier erzeugt werden, PHP-Skripte müssen aber separat hochgeladen werden.','Yes returns a neutral response for invalid tokens. No may expose more detail to users and logs.' => 'Ja gibt bei ungültigen Tokens eine neutrale Antwort zurück. Nein kann Personen und Logs mehr Details zeigen.','Yes keeps stale-token responses neutral. No can make expired or stale states easier to distinguish.' => 'Ja hält Antworten auf veraltete Tokens neutral. Nein kann abgelaufene oder veraltete Zustände unterscheidbarer machen.','REMOTE_ADDR reads the web server client IP. Trusted Proxy reads a configured header only from trusted proxy IPs.' => 'REMOTE_ADDR liest die Client-IP des Webservers. Trusted Proxy liest einen konfigurierten Header nur von vertrauenswürdigen Proxy-IPs.','Allowed formats: JSON array ["127.0.0.1"] or comma-separated IPs. Used only when IP Handling is Trusted Proxy.' => 'Erlaubte Formate: JSON-Array ["127.0.0.1"] oder kommagetrennte IPs. Wird nur genutzt, wenn IP-Verarbeitung auf Trusted Proxy steht.','Header name such as X-Forwarded-For. Used only for requests coming through Trusted Proxies.' => 'Header-Name wie X-Forwarded-For. Wird nur für Anfragen über vertrauenswürdige Proxies genutzt.','When enabled, Maximum Requests and Window must both be valid. The detail fields stay disabled while this is No.' => 'Wenn aktiv, müssen Maximale Anfragen und Fenster gültig sein. Die Detailfelder bleiben deaktiviert, solange hier Nein steht.','Positive whole number. Example: 30 allows 30 web endpoint requests per configured Window.' => 'Positive ganze Zahl. Beispiel: 30 erlaubt 30 Web-Endpunkt-Anfragen pro konfiguriertem Fenster.','Positive whole number plus unit: days or weeks. This value is saved as whole days.' => 'Positive ganze Zahl plus Einheit: Tage oder Wochen. Dieser Wert wird als ganze Tage gespeichert.','Empty or null uses the default data-directory location. Otherwise, a writable server directory path is required.' => 'Leer oder null nutzt den Standardort im Datenverzeichnis. Andernfalls einen schreibbaren Server-Verzeichnispfad eintragen.','Show includes more confirmation context on success pages. Hide keeps the response smaller and more neutral.' => 'Anzeigen zeigt auf Erfolgsseiten mehr Bestätigungskontext. Ausblenden hält die Antwort kleiner und neutraler.','Absolute server directory path required. Files must be uploaded manually; aliases only point to existing paths.' => 'Absoluter Server-Verzeichnispfad erforderlich. Dateien müssen manuell hochgeladen werden; Aliasse verweisen nur auf vorhandene Pfade.','When enabled, Download Maximum Requests and Download Window must both be valid. The detail fields stay disabled while this is No.' => 'Wenn aktiv, müssen Maximale Download-Anfragen und Download-Fenster gültig sein. Die Detailfelder bleiben deaktiviert, solange hier Nein steht.','Positive whole number. Example: 20 allows 20 download requests per configured Download Window.' => 'Positive ganze Zahl. Beispiel: 20 erlaubt 20 Download-Anfragen pro konfiguriertem Download-Fenster.','Positive whole number plus unit: seconds, minutes, hours, days, or weeks. Months and years are not available. Values are saved as seconds. Must not be longer than Expiry Period.' => 'Positive ganze Zahl plus Einheit: Sekunden, Minuten, Stunden, Tage oder Wochen. Monate und Jahre gibt es nicht. Gespeichert wird in Sekunden. Darf nicht länger als die Gültigkeitsdauer sein.','File writes the configured log file. Syslog uses the server syslog. File & Syslog writes both. None disables logging.' => 'Datei schreibt in die konfigurierte Logdatei. Syslog nutzt das Server-Syslog. Datei & Syslog schreibt beides. Keine deaktiviert Logging.','Whole hours from 1 to 24. This value throttles repeated operator alerts.' => 'Ganze Stunden von 1 bis 24. Dieser Wert drosselt wiederholte Betriebsalarme.','Null or an empty value uses the default data-directory log. Otherwise, an absolute writable log path is required.' => 'null oder leer nutzt die Standard-Logdatei im Datenverzeichnis. Andernfalls einen absoluten schreibbaren Logpfad eintragen.','Filename only: no slashes, backslashes, parent directory segments, or control characters.' => 'Nur einen Dateinamen verwenden: keine Slashes, Backslashes, übergeordneten Verzeichnisse oder Steuerzeichen.','Read-only here. Renaming this file needs a separate migration flow so recipients are not silently moved.' => 'Hier schreibgeschützt. Das Umbenennen braucht einen separaten Migrationsablauf, damit Empfänger:innen nicht still verschoben werden.','Positive whole number plus unit: seconds, minutes, hours, days, or weeks. Months and years are not available. Values are saved as seconds. Self-reminder interval must not be longer than this window.' => 'Positive ganze Zahl plus Einheit: Sekunden, Minuten, Stunden, Tage oder Wochen. Monate und Jahre gibt es nicht. Gespeichert wird in Sekunden. Die Reminder-Frequenz darf nicht länger als dieses Fenster sein.','Positive whole number plus unit: seconds, minutes, hours, days, or weeks. Months and years are not available. Values are saved as seconds. Must not be longer than the confirmation window.' => 'Positive ganze Zahl plus Einheit: Sekunden, Minuten, Stunden, Tage oder Wochen. Monate und Jahre gibt es nicht. Gespeichert wird in Sekunden. Darf nicht länger als das Bestätigungsfenster sein.','When enabled, recipients receive receipt reminders after escalation until one recipient confirms receipt or the maximum is reached.' => 'Wenn aktiv, erhalten Empfänger:innen nach der Eskalation Erinnerungen zur Empfangsbestätigung, bis ein:e Empfänger:in den Eingang bestätigt oder das Maximum erreicht ist.','When enabled, recipients receive receipt reminders after escalation until one recipient confirms receipt or the maximum is reached. Technical config key: escalate_ack_enabled.' => 'Wenn aktiv, erhalten Empfänger:innen nach der Eskalation Erinnerungen zur Empfangsbestätigung, bis ein:e Empfänger:in den Eingang bestätigt oder das Maximum erreicht ist. Technischer Konfigurationsschlüssel: escalate_ack_enabled.','One address per line. Accepted formats: user@example.com, Name <user@example.com>, or "Name" <user@example.com>.' => 'Eine Adresse pro Zeile. Erlaubte Formate: user@example.com, Name <user@example.com> oder "Name" <user@example.com>.','IANA timezone from the list required, for example Europe/London or Europe/Berlin. Free-form invalid values are rejected.' => 'IANA-Zeitzone aus der Liste erforderlich, zum Beispiel Europe/London oder Europe/Berlin. Freie ungültige Werte werden abgelehnt.','PHP date() format, for example j F Y or Y-m-d. Format tokens are not translated.' => 'PHP-date()-Format, zum Beispiel j F Y oder Y-m-d. Format-Tokens werden nicht übersetzt.','PHP date() format, for example H:i:s or H:i. Format tokens are not translated.' => 'PHP-date()-Format, zum Beispiel H:i:s oder H:i. Format-Tokens werden nicht übersetzt.','Optional PHP date() format for combined output. Empty value combines Date Format and Time Format.' => 'Optionales PHP-date()-Format für kombinierte Ausgabe. Leer lassen, um Datumsformat und Zeitformat zu kombinieren.','Plain text subject. Placeholders are not required here.' => 'Klartext-Betreff. Platzhalter sind hier nicht erforderlich.','May contain placeholders such as {CONFIRM_URL}, {DEADLINE_ISO}, and {CYCLE_START_ISO}. Placeholder names must remain unchanged.' => 'Darf Platzhalter wie {CONFIRM_URL}, {DEADLINE_ISO} und {CYCLE_START_ISO} enthalten. Platzhalternamen unverändert lassen.','Allowed value depends on the configuration field. Placeholders, filenames, and technical tokens must remain unchanged.' => 'Der erlaubte Wert hängt vom Konfigurationsfeld ab. Platzhalter, Dateinamen und technische Tokens unverändert lassen.','Must match a message template Key below.' => 'Nachrichtenvorlagen-Schlüssel aus der Liste.','Template key this recipient receives.' => 'Vorlagenschlüssel für diese:n Empfänger:in.','Comma- or space-separated file aliases. Each alias must exist in File Alias Registry.' => 'Vorhandene Datei-Aliasse aus dem Datei-Alias-Register.','Relative file path below the download root.' => 'Relativer Dateipfad unterhalb des Download-Verzeichnisses.','Data directory writes' => 'Schreibzugriff auf Datenverzeichnis','Main config' => 'Hauptkonfiguration','Main configuration files' => 'Konfiguration','Recipient configuration files' => 'E-Mail-Konfiguration','HMAC secret' => 'HMAC-Secret','Cycle data' => 'Zyklusdaten','Sendmail' => 'Sendmail','Download directory' => 'Download-Verzeichnis','Log file' => 'Logdatei','File alias' => 'Datei-Alias','Using {path}' => 'Verwendet {path}','Writable by PHP.' => 'Für PHP schreibbar.','PHP cannot write to this directory.' => 'PHP kann nicht in dieses Verzeichnis schreiben.','Live and template files exist: {live}, {dist}.' => 'Live-Datei und Vorlage existieren: {live}, {dist}.','Live file exists, template is missing: {live}.' => 'Live-Datei existiert, Vorlage fehlt: {live}.','Template exists, live file will be created on save: {dist}.' => 'Vorlage existiert, Live-Datei wird beim Speichern erzeugt: {dist}.','No live or template file was found.' => 'Weder Live-Datei noch Vorlage wurde gefunden.','A real HMAC secret must be generated and rotated before saving live configuration.' => 'Ein echtes Secret muss vor dem Speichern der Live-Konfiguration erzeugt und rotiert werden.','Configured.' => 'Konfiguriert.','Cycle data is readable.' => 'Zyklusdaten sind lesbar.','Cycle data file is not initialised yet: {path}' => 'Zyklusdatei ist noch nicht initialisiert: {path}','Sendmail path exists.' => 'Sendmail-Pfad existiert.','Sendmail path is missing or not executable.' => 'Sendmail-Pfad fehlt oder ist nicht ausführbar.','Download base is readable.' => 'Download-Basis ist lesbar.','Download base is missing or unreadable.' => 'Download-Basis fehlt oder ist nicht lesbar.','Log directory is writable.' => 'Log-Verzeichnis ist schreibbar.','Log directory is missing or not writable.' => 'Log-Verzeichnis fehlt oder ist nicht schreibbar.','Missing file below download_base_dir: {path}' => 'Datei unterhalb von download_base_dir fehlt: {path}','Live Activity' => 'Logeinträge','Main views' => 'Hauptansichten','Configuration sections' => 'Konfigurationsbereiche','Recipients sections' => 'Empfänger:innenbereiche','File only' => 'Nur Datei','Syslog only' => 'Nur Syslog','File & Syslog' => 'Datei & Syslog','None' => 'Keine','Template recovery requires the installation package. Existing live values remain active.' => 'Vorlagen-Wiederherstellung benötigt das Installationspaket. Vorhandene Live-Werte bleiben aktiv.','Log target' => 'Log-Ziel','Log display' => 'Log-Anzeige','Activity log can be displayed safely.' => 'Das Log kann sicher angezeigt werden.','Activity log is outside the safe display area.' => 'Das Aktivitätslog liegt außerhalb des sicheren Anzeigebereichs.','The log should be inside the data directory and avoid PHP, backup, dotfile, secret, token, or key filenames.' => 'Das Log sollte im Datenverzeichnis liegen und PHP-, Backup-, Dotfile-, Secret-, Token- oder Key-Dateinamen vermeiden.','# Log path is outside the safe display area.' => '# Log-Pfad liegt außerhalb des sicheren Anzeigebereichs.','File aliases' => 'Datei-Aliasse','Sendmail path requires review before production: {path}' => 'Sendmail-Pfad muss vor dem Produktivbetrieb geprüft werden: {path}','Directory is missing or unreadable: {path}' => 'Verzeichnis fehlt oder ist nicht lesbar: {path}','Log directory permissions require review: {path}' => 'Rechte des Log-Verzeichnisses müssen geprüft werden: {path}','Sendmail is executable.' => 'Sendmail ist ausführbar.','Readable.' => 'Lesbar.','Configured file aliases resolve to readable files.' => 'Konfigurierte Datei-Aliasse verweisen auf lesbare Dateien.','Missing or unreadable aliases: {aliases}' => 'Fehlende oder nicht lesbare Aliasse: {aliases}','Configuration save is locked until a real HMAC secret exists.' => 'Das Speichern der Konfiguration ist gesperrt, bis ein echtes HMAC-Secret existiert.','# Log file is not readable here.' => '# Die Logdatei ist hier nicht lesbar.','Recipient name' => 'Name dieser Person','Recipient mailbox' => 'E-Mail-Adresse dieser Person','Recipient message' => 'Nachrichtenvorlage dieser Person','Message key' => 'Nachrichtenschlüssel','Message subject' => 'Nachrichtenbetreff','Message body' => 'Nachrichtentext','Single-use notice' => 'Einmal-Hinweis','Relative file path' => 'Relativer Dateipfad','unit' => 'Einheit','Trusted Proxy' => 'Vertrauenswürdiger Proxy','Security check failed. Page reload required before retry.' => 'Sicherheitsprüfung fehlgeschlagen. Seiten-Reload vor erneutem Versuch erforderlich.','Setup is locked. TOTMAN_UI_SETUP_CODE must be set in {script} before first use.' => 'Die Einrichtung ist gesperrt. TOTMAN_UI_SETUP_CODE muss vor der ersten Nutzung in {script} gesetzt sein.','Setup code is incorrect.' => 'Der Einrichtungscode ist falsch.','Setup needs a readable and writable data directory.' => 'Die Einrichtung braucht ein lesbares und beschreibbares Datenverzeichnis.','No data directory is configured.' => 'Es ist kein Datenverzeichnis konfiguriert.','The configured data directory is not readable: {path}' => 'Das konfigurierte Datenverzeichnis ist nicht lesbar: {path}','Neither totman.inc.php nor totman.inc.dist.php exists in the data directory.' => 'Weder totman.inc.php noch totman.inc.dist.php existiert im Datenverzeichnis.','Recipients file must return files, messages, and recipients arrays.' => 'Die Empfänger:innen-Datei muss files-, messages- und recipients-Arrays zurückgeben.','Duration must not be empty.' => 'Die Zeitangabe darf nicht leer sein.','Invalid duration unit.' => 'Ungültige Zeiteinheit.','Invalid duration: {value}' => 'Ungültige Zeitangabe: {value}','{label} must be a positive whole number.' => 'Im Feld {label} muss eine positive ganze Zahl eingetragen werden.','{label} must be a whole number.' => 'Im Feld {label} muss eine ganze Zahl eingetragen werden.','{label} must be at least {min}.' => 'Der Wert im Feld {label} muss mindestens {min} sein.','{label} must be at most {max}.' => 'Der Wert im Feld {label} darf höchstens {max} sein.','Invalid day value: {value}' => 'Ungültiger Tageswert: {value}','{key} must be a safe filename.' => 'Ungültiger Dateiname für {key}.','Invalid self-recipient: {value}' => 'Ungültige Adresse für eigene Erinnerungen: {value}','Invalid file alias or path at row {row}.' => 'Ungültiger Datei-Alias oder Pfad in Zeile {row}.','File aliases must be 64 characters or fewer.' => 'Datei-Aliasse dürfen höchstens 64 Zeichen lang sein.','Invalid file path. Required: relative path below the download data root, without /, .., or backslashes.' => 'Ungültiger Dateipfad. Erforderlich: relativer Pfad unterhalb des Download-Datenverzeichnisses, ohne / am Anfang, .. oder Backslashes.','File path for alias {alias} is read-only.' => 'Der Dateipfad für Alias {alias} ist schreibgeschützt.','Unknown file alias deletion request: {alias}' => 'Unbekannte Löschanforderung für Datei-Alias: {alias}','File deletion path mismatch for alias {alias}.' => 'Der Löschpfad für Datei-Alias {alias} stimmt nicht mit der gespeicherten Konfiguration überein.','Deleted file alias cannot be re-added in the same save: {alias}' => 'Gelöschter Datei-Alias kann nicht im selben Speichervorgang neu angelegt werden: {alias}','Deleted file for alias {alias}: {path}' => 'Datei für Alias {alias} gelöscht: {path}','File for alias {alias} was already missing: {path}' => 'Datei für Alias {alias} fehlte bereits: {path}','Download file for alias {alias} is not safe to delete.' => 'Die Download-Datei für Alias {alias} ist nicht sicher löschbar.','Could not delete download file for alias {alias}: {path}' => 'Download-Datei für Alias {alias} konnte nicht gelöscht werden: {path}','Recipients configuration saved, but download file deletion needs manual review: {error}' => 'Empfänger:innen-Konfiguration gespeichert, aber das Löschen der Download-Datei benötigt manuelle Prüfung: {error}','Duplicate file alias at row {row}: {alias}' => 'Doppelter Datei-Alias in Zeile {row}: {alias}','Invalid message at row {row}.' => 'Ungültige Nachrichtenvorlage in Zeile {row}.','Duplicate message template key at row {row}: {key}' => 'Doppelter Nachrichtenvorlagen-Schlüssel in Zeile {row}: {key}','Invalid recipient at row {row}.' => 'Ungültiger Empfänger:innen-Eintrag in Zeile {row}.','Recipient name is missing at row {row}.' => 'In Zeile {row} fehlt der Name.','Recipient e-mail address is invalid at row {row}.' => 'In Zeile {row} ist die E-Mail-Adresse ungültig.','Reminder addresses line {row} must contain exactly one valid e-mail address.' => 'Eigene Erinnerungsadresse in Zeile {row} muss genau eine gültige E-Mail-Adresse enthalten.','{label} must contain exactly one valid e-mail address, optionally with a display name.' => '{label} muss genau eine gültige E-Mail-Adresse enthalten, optional mit Anzeigename.','{label} must be one absolute executable path without spaces or arguments.' => '{label} muss ein absoluter Pfad zu einer ausführbaren Datei sein, ohne Leerzeichen oder Argumente.','{label} must point to an executable file.' => '{label} muss auf eine ausführbare Datei zeigen.','Template is missing or unknown at recipient row {row}.' => 'In Zeile {row} fehlt die Vorlage oder sie ist unbekannt.','Recipient {address} references unknown file alias {alias}.' => 'Der Empfänger:innen-Eintrag {address} verweist auf den unbekannten Datei-Alias {alias}.','Single-use notice is required for message template {key}.' => 'Nachrichtenvorlage {key} braucht einen Einmal-Hinweis.','Invalid file alias: {alias}' => 'Ungültiger Datei-Alias: {alias}','Directory is not writable: {path}' => 'Verzeichnis ist nicht beschreibbar: {path}','Could not create temporary file in {path}' => 'Temporäre Datei konnte nicht in {path} erstellt werden.','Could not write temporary file: {path}' => 'Temporäre Datei konnte nicht geschrieben werden: {path}','Could not replace file: {path}' => 'Datei konnte nicht ersetzt werden: {path}','Could not create backup directory: {path}' => 'Backup-Verzeichnis konnte nicht erstellt werden: {path}','Could not create backup for {path}' => 'Backup konnte nicht erstellt werden für {path}','Could not remove partially written file: {path}' => 'Teilweise geschriebene Datei konnte nicht entfernt werden: {path}','Could not restore backup for {path}' => 'Backup konnte nicht wiederhergestellt werden für {path}','Missing or unreadable {label}: {path}' => '{label} fehlt oder ist nicht lesbar: {path}','{label} must return an array.' => 'Für {label} muss ein Array zurückgegeben werden.','{label} must not be 0. Empty value uses the default.' => 'Im Feld {label} darf nicht 0 eingetragen werden. Leer lassen nutzt den Standard.','{label} must be empty, null, or an absolute server path.' => 'Im Feld {label} muss entweder nichts, null oder ein absoluter Serverpfad eingetragen werden.','{label} must not contain parent directory segments.' => 'Im Feld {label} dürfen keine übergeordneten Pfadsegmente eingetragen werden.','{label} must be an absolute server path.' => 'Im Feld {label} muss ein absoluter Serverpfad eingetragen werden.','{label} must not be 0. Empty value is allowed only when the field description allows the default.' => 'Im Feld {label} darf nicht 0 eingetragen werden. Ein leerer Wert ist nur erlaubt, wenn die Feldbeschreibung einen Standardwert erlaubt.','{label} must be an absolute server path without parent directory segments.' => 'Im Feld {label} muss ein absoluter Serverpfad ohne übergeordnete Pfadsegmente eingetragen werden.','{label} must be a valid e-mail address, optionally with a display name.' => 'Im Feld {label} muss eine gültige E-Mail-Adresse eingetragen werden, optional mit Anzeigename.','Lock file could not be opened: {path}' => 'Lock-Datei konnte nicht geöffnet werden: {path}','Invalid log path: {path}' => 'Ungültiger Log-Pfad: {path}','Log directory is not writable: {path}' => 'Log-Verzeichnis ist nicht beschreibbar: {path}','Log file is not writable: {path}' => 'Logdatei ist nicht beschreibbar: {path}','Log file could not be opened: {path}' => 'Logdatei konnte nicht geöffnet werden: {path}','Could not lock log file: {path}' => 'Logdatei konnte nicht gesperrt werden: {path}','Could not clear log file: {path}' => 'Logdatei konnte nicht geleert werden: {path}','HMAC rotation failed and rollback also failed: {error}' => 'HMAC-Rotation fehlgeschlagen; auch der Rollback ist fehlgeschlagen: {error}','HMAC rotation failed; previous configuration was restored. Original error: {error}' => 'HMAC-Rotation fehlgeschlagen; die vorherige Konfiguration wurde wiederhergestellt. Ursprünglicher Fehler: {error}','Rate limit directory must be empty, null, or an absolute server path.' => 'Das Verzeichnis für die Anfragebegrenzung muss leer, null oder ein absoluter Serverpfad sein.','Rate limit directory must not be 0. Empty value uses the default.' => 'Das Verzeichnis für die Anfragebegrenzung darf nicht 0 sein. Leer lassen nutzt den Standard.','Rate limit directory must not contain parent directory segments.' => 'Das Verzeichnis für die Anfragebegrenzung darf keine ..-Segmente enthalten.','Base URL must start with https://.' => 'Die Web-Adresse muss mit https:// beginnen.','Invalid log mode.' => 'Ungültiger Log-Modus.','Invalid IP mode.' => 'Ungültiger IP-Modus.','Invalid timezone. Valid IANA timezone required, for example Europe/London.' => 'Ungültige Zeitzone. Gültige IANA-Zeitzone erforderlich, zum Beispiel Europe/London.','At least one self-recipient is required.' => 'Mindestens eine Adresse für eigene Erinnerungen ist erforderlich.','At least one message and one recipient are required.' => 'Mindestens eine Nachricht und ein:e Empfänger:in sind erforderlich.','HMAC secret must be hex encoded and at least 32 characters long.' => 'Das HMAC-Secret muss hex-kodiert und mindestens 32 Zeichen lang sein.','Too many attempts. Temporary wait before retry.' => 'Zu viele Versuche. Kurze Wartezeit vor erneutem Versuch.','Session expired. Sign-in required again.' => 'Sitzung abgelaufen. Erneute Anmeldung erforderlich.','Password required for this sensitive action.' => 'Passwort für diese sensible Aktion erforderlich.','Setup failed. Setup code and form values require review.' => 'Einrichtung fehlgeschlagen. Einrichtungscode und Formularwerte müssen geprüft werden.','Setup is already locked. Existing access or server-side recovery is required.' => 'Die Einrichtung ist bereits gesperrt. Vorhandener Zugang oder serverseitige Wiederherstellung ist erforderlich.','Trusted proxies must contain only IP addresses or CIDR ranges.' => 'Vertrauenswürdige Proxies dürfen nur IP-Adressen oder CIDR-Bereiche enthalten.','Log path must be an absolute server path without parent directory segments.' => 'Der Log-Pfad muss ein absoluter Serverpfad ohne übergeordnete Pfadsegmente sein.','From address must be a valid e-mail address, optionally with a display name.' => 'Die Absenderadresse muss eine gültige E-Mail-Adresse sein, optional mit Anzeigename.','Reply-To address must be a valid e-mail address, optionally with a display name.' => 'Die Reply-To-Adresse muss eine gültige E-Mail-Adresse sein, optional mit Anzeigename.','Invalid HMAC secret.' => 'Ungültiges HMAC-Secret.','Could not acquire state lock.' => 'Statussperre konnte nicht gesetzt werden.','Setup needs a username and a password with at least 10 characters.' => 'Die Einrichtung braucht einen Anmeldenamen und ein Passwort mit mindestens 10 Zeichen.','Password confirmation does not match.' => 'Die Passwortwiederholung stimmt nicht überein.','Setup saved.' => 'Einrichtung gespeichert.','Login failed.' => 'Anmeldung fehlgeschlagen.','Signed in.' => 'Angemeldet.','Sign-in required first.' => 'Anmeldung zuerst erforderlich.','Main config changed on disk. Reload required before saving.' => 'Die Hauptkonfiguration wurde auf dem Datenträger geändert. Neuladen vor dem Speichern erforderlich.','Main configuration saved to totman.inc.php.' => 'Hauptkonfiguration in totman.inc.php gespeichert.','Recipients config changed on disk. Reload required before saving.' => 'Die Empfänger:innen-Konfiguration wurde auf dem Datenträger geändert. Neuladen vor dem Speichern erforderlich.','Recipients configuration saved.' => 'Empfänger:innen-Konfiguration gespeichert.','Template {old} was renamed to {new}; {count} recipient entries now use it.' => 'Vorlage {old} wurde in {new} umbenannt; {count} Empfänger:innen-Einträge nutzen sie jetzt.','New HMAC secret generated. Rotation writes it and starts a new cycle.' => 'Neues HMAC-Secret erzeugt. Rotation schreibt es und startet einen neuen Zyklus.','Main config changed on disk. Reload required before HMAC rotation.' => 'Die Hauptkonfiguration wurde auf dem Datenträger geändert. Neuladen vor der HMAC-Rotation erforderlich.','HMAC secret rotated and cycle restarted.' => 'HMAC-Secret rotiert und Zyklus neu gestartet.','Authentication required.' => 'Authentifizierung erforderlich.','This is the active token-signing secret. The full value is masked.' => 'Dies ist das aktive Secret zum Signieren der Tokens. Der vollständige Wert wird maskiert.','Password required before HMAC rotation.' => 'Passwort vor HMAC-Rotation erforderlich.','Required for writing the secret and starting a new cycle.' => 'Erforderlich zum Schreiben des Secrets und Starten eines neuen Zyklus.','Password required before dangerous maintenance actions.' => 'Passwort vor gefährlichen Wartungsaktionen erforderlich.','Password required before clearing the activity log.' => 'Passwort vor dem Leeren des Aktivitätslogs erforderlich.','Required for cycle reset.' => 'Erforderlich zum Zurücksetzen des Zyklus.','Required for clearing the log.' => 'Erforderlich zum Leeren des Logs.','The activity log can only be cleared when the log file is inside the configured data directory. The log must be moved there or external logs cleared with hosting tools.' => 'Das Aktivitätslog kann nur geleert werden, wenn die Logdatei im konfigurierten Datenverzeichnis liegt. Das Log muss dorthin verschoben werden; externe Logs werden mit Hosting-Werkzeugen geleert.','The activity log path is not safe for maintenance here. A log file inside the data directory with a non-sensitive filename is required.' => 'Der Aktivitätslog-Pfad ist für die Wartung hier nicht sicher. Eine Logdatei im Datenverzeichnis mit einem nicht sensiblen Dateinamen ist erforderlich.','The configured log file is outside the data directory.' => 'Die konfigurierte Logdatei liegt außerhalb des Datenverzeichnisses.','External log files are not cleared here. The log must be inside the data directory, or external logs must be cleared with hosting tools.' => 'Externe Logdateien werden hier nicht geleert. Das Log muss im Datenverzeichnis liegen oder mit Hosting-Werkzeugen geleert werden.','Download data root must be an absolute server path.' => 'Das Download-Datenverzeichnis muss ein absoluter Serverpfad sein.','Download data root must not be 0. Empty value is allowed only when the field description allows the default.' => 'Das Download-Datenverzeichnis darf nicht 0 sein. Ein leerer Wert ist nur erlaubt, wenn die Feldbeschreibung einen Standardwert erlaubt.','Download data root must be an absolute server path without parent directory segments.' => 'Das Download-Datenverzeichnis muss ein absoluter Serverpfad ohne übergeordnete Pfadsegmente sein.','Sendmail path must be an absolute server path.' => 'Der Sendmail-Pfad muss ein absoluter Serverpfad sein.','Sendmail path must not be 0. Empty value is allowed only when the field description allows the default.' => 'Der Sendmail-Pfad darf nicht 0 sein. Ein leerer Wert ist nur erlaubt, wenn die Feldbeschreibung einen Standardwert erlaubt.','Sendmail path must be an absolute server path without parent directory segments.' => 'Der Sendmail-Pfad muss ein absoluter Serverpfad ohne übergeordnete Pfadsegmente sein.','Self-reminder interval must not be longer than the confirmation window.' => 'Das Intervall für eigene Erinnerungen darf nicht länger sein als das Bestätigungsfenster.','Download lease must not be longer than the download expiry period.' => 'Die Download-Sperrfrist darf nicht länger sein als die Download-Gültigkeitsdauer.','Enabled web rate limiting needs at least one request and a window of at least one minute.' => 'Aktive Anfragebegrenzung für den Web-Endpunkt braucht mindestens eine Anfrage und ein Fenster von mindestens einer Minute.','Enabled download rate limiting needs at least one request and a window of at least one minute.' => 'Aktive Anfragebegrenzung für Downloads braucht mindestens eine Anfrage und ein Fenster von mindestens einer Minute.']];
+}
+function current_lang(): string
+{
+    return normalise_lang((string)($_SESSION['ui_lang'] ?? 'en'));
+}
+function translation_overrides(): array
+{
+    return['de' => ['Public HTTPS base address.' => 'Öffentliche HTTPS-Basisadresse.','Must start with https:// and must not include the web endpoint filename. Example: https://example.org/totman when Web Endpoint is totman.php.' => 'Muss mit https:// beginnen und darf den Web-Endpunkt-Dateinamen nicht enthalten. Beispiel: https://example.org/totman, wenn der Web-Endpunkt totman.php ist.','Base URL must not include the web endpoint filename. Web Endpoint is configured separately.' => 'Die Web-Adresse darf den Web-Endpunkt-Dateinamen nicht enthalten. Der Web-Endpunkt wird separat konfiguriert.','Base URL includes the web endpoint filename: {file}.' => 'Die Web-Adresse enthält den Web-Endpunkt-Dateinamen: {file}.','{file} must be removed from Base URL. The runtime appends Web Endpoint automatically.' => '{file} muss aus der Web-Adresse entfernt werden. Der Runtime-Endpunkt hängt den Web-Endpunkt automatisch an.','Log path must be empty, null, an absolute path, or a safe relative path without parent directory segments or backslashes.' => 'Der Log-Pfad muss leer, null, ein absoluter Pfad oder ein sicherer relativer Pfad ohne übergeordnete Pfadsegmente oder Backslashes sein.','Relative log path is accepted by the runtime: {path}' => 'Relativer Log-Pfad wird vom Runtime-Code akzeptiert: {path}','An absolute path inside the data directory is required for Web UI display or clearing.' => 'Ein absoluter Pfad im Datenverzeichnis ist für Anzeige oder Leerung durch die Web UI erforderlich.','Blank or null uses the default data-folder log. Absolute paths and safe relative paths are runtime-compatible; display and clear stay limited by the Web UI safety policy.' => 'Leer oder null nutzt das Standard-Log im Datenverzeichnis. Absolute und sichere relative Pfade sind mit dem Runtime-Code kompatibel; Anzeigen und Leeren bleiben durch die Sicherheitsregeln der Web UI begrenzt.','File alias is missing at row {row}.' => 'In Zeile {row} fehlt der Datei-Alias.','File path is missing at row {row}.' => 'In Zeile {row} fehlt der Dateipfad.','File alias at row {row} must be 64 characters or fewer.' => 'Der Datei-Alias in Zeile {row} darf höchstens 64 Zeichen lang sein.','File alias at row {row} uses invalid characters. Allowed characters: lowercase letters, numbers, underscore, and hyphen.' => 'Der Datei-Alias in Zeile {row} enthält ungültige Zeichen. Erlaubt sind Kleinbuchstaben, Zahlen, Unterstrich und Bindestrich.','File path at row {row} must be a safe relative path below the download root.' => 'Der Dateipfad in Zeile {row} muss ein sicherer relativer Pfad unterhalb des Download-Verzeichnisses sein.','Message template is incomplete at row {row}.' => 'Die Nachrichtenvorlage in Zeile {row} ist unvollständig.','No message templates remain. Saving this non-runtime-ready configuration needs explicit approval.' => 'Es sind keine Nachrichtenvorlagen mehr vorhanden. Das Speichern dieser noch nicht versandbereiten Konfiguration braucht ausdrückliche Freigabe.','No recipients remain. Saving a configuration without notifications needs explicit approval.' => 'Es sind keine Empfänger:innen mehr vorhanden. Das Speichern einer Konfiguration ohne Benachrichtigungen braucht ausdrückliche Freigabe.','Recipient row {row} has no message template because no templates remain.' => 'Empfänger:innen-Zeile {row} hat keine Nachrichtenvorlage, weil keine Vorlagen mehr vorhanden sind.','No message templates remain. This configuration stays non-runtime-ready until at least one message template exists and each recipient uses one. Save this state?' => 'Es sind keine Nachrichtenvorlagen mehr vorhanden. Diese Konfiguration bleibt noch nicht versandbereit, bis mindestens eine Nachrichtenvorlage vorhanden ist und jede Empfänger:innen-Zeile eine Vorlage nutzt. Diesen Stand speichern?','No recipients remain. This configuration cannot notify anyone until at least one recipient exists. Save this state?' => 'Es sind keine Empfänger:innen mehr vorhanden. Diese Konfiguration benachrichtigt niemanden, bis mindestens ein:e Empfänger:in angelegt ist. Diesen Stand speichern?','Template is missing or unknown at recipient row {row}.' => 'In Zeile {row} fehlt die Nachrichtenvorlage oder sie ist unbekannt.','Recipient name is missing at row {row}.' => 'In Zeile {row} fehlt der Name.','Recipient e-mail address is invalid at row {row}.' => 'In Zeile {row} ist die E-Mail-Adresse ungültig.','Invalid message at row {row}.' => 'Die Nachrichtenvorlage in Zeile {row} ist ungültig.','Invalid file alias or path at row {row}.' => 'Datei-Alias oder Dateipfad in Zeile {row} ist ungültig.','Theme' => 'Darstellung','System' => 'System','Light' => 'Hell','Dark' => 'Dunkel','Undo' => 'Rückgängig','Deletion occurs on save.' => 'Wird beim Speichern gelöscht.','This alias and its file will be deleted on save. Undo is available before saving.' => 'Dieser Alias und die Datei werden beim Speichern gelöscht. Rückgängig ist bis dahin verfügbar.']];
+}
+function t(string $key, array $params = []): string
+{
+    $lang = current_lang();
+    $recent = ['de' => [
+        'Only for files that should be available once. After the first successful opening, the same link stops working.' => 'Nur für Dateien verwenden, die genau einmal abrufbar sein sollen. Nach dem ersten erfolgreichen Öffnen funktioniert derselbe Link nicht mehr.',
+        'One-time links for files that should be saved immediately.' => 'Einmal-Links für Dateien, die sofort gespeichert werden sollen.',
+        'Required when this message is used with Downloads (Single-use). The text should state that files must be saved immediately because each one-time link works only once.' => 'Erforderlich, wenn diese Nachricht mit Downloads (einmalig) genutzt wird. Der Text sollte sofortiges Speichern nennen, weil jeder Einmal-Link nur einmal funktioniert.',
+        'Shown above one-time links; immediate file saving should be stated.' => 'Wird über Einmal-Links angezeigt; sofortiges Speichern sollte genannt werden.',
+        'The saved path is locked here. File moves or renames happen via Terminal/SFTP; a new alias can then be created if needed.' => 'Der gespeicherte Pfad ist hier gesperrt. Datei-Verschiebung oder Umbenennung erfolgt per Terminal/SFTP; danach kann bei Bedarf ein neuer Alias angelegt werden.',
+        'Relative path of a manually uploaded file. Leading slash and .. parent segments are not allowed.' => 'Relativer Pfad einer manuell hochgeladenen Datei. Führender Slash und ..-Segmente sind nicht erlaubt.',
+        'Read-only after saving.' => 'Nach dem Speichern schreibgeschützt.',
+        'Relative path below the download folder.' => 'Relativer Pfad unterhalb des Download-Ordners.',
+        'Base URL must be a valid HTTPS address without query string, fragment, username, or password.' => 'Die Web-Adresse muss eine gültige HTTPS-Adresse ohne Query-String, Fragment, Benutzername oder Passwort sein.',
+        'Proxy header must be a valid HTTP header name.' => 'Der Proxy-Header muss ein gültiger HTTP-Header-Name sein.',
+        'Trusted proxy mode requires at least one trusted proxy.' => 'Der Trusted-Proxy-Modus benötigt mindestens einen vertrauenswürdigen Proxy.',
+        '{label} must be a non-empty single-line value.' => 'Das Feld {label} muss einen einzeiligen Wert enthalten.',
+        'Combined date/time format must be a single-line value.' => 'Das kombinierte Datums-/Zeitformat muss einzeilig sein.',
+        'Reminder message must include {CONFIRM_URL}.' => 'Die Nachrichtentext-Vorlage muss {CONFIRM_URL} enthalten.',
+        'Single-use notice in row {row} must be a single-line value.' => 'Der Einmal-Hinweis in Zeile {row} muss einzeilig sein.',
+        'A real HMAC secret must be generated and rotated before saving live configuration.' => 'Ein echtes HMAC-Secret muss vor dem Speichern der Live-Konfiguration erzeugt und rotiert werden.',
+        'This is the active token-signing secret. The full value is masked.' => 'Dies ist das aktive Secret zum Signieren der Tokens. Der vollständige Wert wird maskiert.',
+        'Secret generation creates this value server-side. HMAC rotation writes it and invalidates old tokens.' => 'Secret-Erzeugung erstellt diesen Wert serverseitig. HMAC-Rotation schreibt ihn und macht alte Tokens ungültig.',
+        'Existing tokens become invalid and a new cycle starts. Secret generation prepares rotation; rotation writes the secret. The secret is generated by the server and is never typed manually.' => 'Vorhandene Tokens werden ungültig und ein neuer Zyklus startet. Secret-Erzeugung bereitet die Rotation vor; Rotation schreibt das Secret. Das Secret wird serverseitig erzeugt und nicht manuell eingetragen.',
+        'A new secret is ready for rotation.' => 'Ein neues Secret ist zur Rotation vorbereitet.',
+        'No generated secret is waiting yet.' => 'Noch kein neues Secret vorbereitet.',
+        'Configuration save is locked until a real HMAC secret exists.' => 'Speichern ist gesperrt, bis ein echtes HMAC-Secret vorhanden ist.',
+        'Active signing secret.' => 'Aktives Signatur-Secret.',
+        'Secret ready to write.' => 'Secret bereit zum Schreiben.',
+        'The body template must include {CONFIRM_URL}.' => 'Die Nachrichtentext-Vorlage muss {CONFIRM_URL} enthalten.',
+        'Reminder addresses must contain at least one address.' => 'Erinnerungsadressen müssen mindestens eine Adresse enthalten.',
+        'Reminder addresses line {row} must contain exactly one valid e-mail address.' => 'Erinnerungsadressen: Zeile {row} muss genau eine gültige E-Mail-Adresse enthalten.',
+        'Self-reminder interval must not be longer than the confirmation window.' => 'Das Intervall für eigene Erinnerungen darf nicht länger sein als das Bestätigungsfenster.',
+        '{key} must be a safe filename.' => '{key} muss ein sicherer Dateiname sein.',
+        'Log Mode has an invalid value.' => 'Log-Modus enthält einen ungültigen Wert.',
+        'IP Handling has an invalid value.' => 'IP-Verarbeitung enthält einen ungültigen Wert.',
+        'Timezone must be a valid IANA timezone such as Europe/London.' => 'Zeitzone muss eine gültige IANA-Zeitzone wie Europe/London sein.',
+        'Template is missing or unknown at recipient row {row}.' => 'In Empfänger:innen-Zeile {row} fehlt die Vorlage oder sie ist unbekannt.',
+        'Single-use notice is required for message template {key}.' => 'Der Einmal-Hinweis ist für Nachrichtenvorlage {key} erforderlich.',
+        "Accepted formats:\nuser@example.com\nName <user@example.com>\n\"Name\" <user@example.com>" => "Erlaubte Formate:\nuser@example.com\nName <user@example.com>\n\"Name\" <user@example.com>",
+        "One address per line. Accepted formats:\nuser@example.com\nName <user@example.com>\n\"Name\" <user@example.com>" => "Eine Adresse pro Zeile. Erlaubte Formate:\nuser@example.com\nName <user@example.com>\n\"Name\" <user@example.com>",
+        'Only needed when the separate Date Format and Time Format fields are not enough. Empty value uses those two fields.' => 'Nur ausfüllen, wenn Datumsformat und Zeitformat nicht ausreichen. Leer lassen, um diese beiden Felder zu nutzen.',
+        'Template recovery requires the installation package. Existing live values remain active.' => 'Vorlagen-Wiederherstellung benötigt das Installationspaket. Vorhandene Live-Werte bleiben aktiv.',
+        'The next successful save creates the live file from the template-backed values.' => 'Der nächste erfolgreiche Speichervorgang erzeugt die Live-Datei aus den Vorlagenwerten.',
+        'Restore the live file or template from backup or installation package before the Web UI can manage this configuration.' => 'Live-Datei oder Vorlage müssen aus Backup oder Installationspaket wiederhergestellt werden, bevor die Web UI diese Konfiguration verwalten kann.',
+        'Sendmail path is not executable: {path}' => 'Sendmail-Pfad ist nicht ausführbar: {path}',
+        'Current cycle started' => 'Aktueller Zyklusstart',
+        'Next reminder' => 'Nächste Erinnerung',
+        'Confirmation window / reminder interval' => 'Bestätigungsfenster / Erinnerungsintervall',
+        'Grace period after the deadline' => 'Karenzzeit nach der Frist',
+        'Stored missed cycles / required cycles' => 'Gespeicherte / benötigte verpasste Zyklen',
+        'No message templates remain. Saving this non-runtime-ready configuration needs explicit approval.' => 'Es sind keine Nachrichtenvorlagen mehr vorhanden. Das Speichern dieser noch nicht versandbereiten Konfiguration braucht ausdrückliche Freigabe.',
+        'No recipients remain. Saving a configuration without notifications needs explicit approval.' => 'Es sind keine Empfänger:innen mehr vorhanden. Das Speichern einer Konfiguration ohne Benachrichtigungen braucht ausdrückliche Freigabe.',
+        'Approval needed' => 'Freigabe erforderlich',
+        'Run action' => 'Ausführen',
+        'Password required for this sensitive action.' => 'Passwort für diese sensible Aktion erforderlich.',
+        'Password required before data directory changes.' => 'Passwort vor Änderungen am Datenverzeichnis erforderlich.',
+        'Required for data directory changes.' => 'Erforderlich für Änderungen am Datenverzeichnis.',
+        'Password required before HMAC rotation.' => 'Passwort vor HMAC-Rotation erforderlich.',
+        'Required for writing the secret and starting a new cycle.' => 'Erforderlich zum Schreiben des Secrets und Starten eines neuen Zyklus.',
+        'Password required before dangerous maintenance actions.' => 'Passwort vor gefährlichen Wartungsaktionen erforderlich.',
+        'Web UI Access' => 'Web-UI-Zugriff',
+        'Enabled' => 'Aktiviert',
+        'Disabled' => 'Deaktiviert',
+        'Enables this optional administration interface.' => 'Aktiviert diese optionale Verwaltungsoberfläche.',
+        'When disabled, totman-ui.php refuses setup, sign-in, API access, and write actions. The runtime continues to work.' => 'Wenn deaktiviert, verweigert totman-ui.php Einrichtung, Anmeldung, API-Zugriff und Schreibaktionen. Die Runtime läuft weiter.',
+        'Web UI disabled' => 'Web UI deaktiviert',
+        'This optional administration interface is disabled in the effective main config. Set web_ui_enabled to true before using totman-ui.php.' => 'Diese optionale Verwaltungsoberfläche ist in der effektiven Hauptkonfiguration deaktiviert. Setzen Sie web_ui_enabled auf true, bevor Sie totman-ui.php nutzen.',
+        'The totman runtime continues to use the same configuration files and remains available for manual operation.' => 'Die totman-Runtime nutzt weiterhin dieselben Konfigurationsdateien und bleibt manuell bedienbar.',
+        'Web UI access is disabled. Set web_ui_enabled to true in the effective main config before using totman-ui.php.' => 'Der Web-UI-Zugriff ist deaktiviert. Setzen Sie web_ui_enabled in der effektiven Hauptkonfiguration auf true, bevor Sie totman-ui.php nutzen.',
+    ]];
+    $text = array_replace(translations()[$lang] ?? [], translation_overrides()[$lang] ?? [], $recent[$lang] ?? [])[$key] ?? $key;
+    foreach ($params as $name => $value) {
+        $text = str_replace('{' . $name . '}', (string)$value, $text);
+    }
+    return $text;
+}
+function translated_error_label(string $label): string
+{
+    $normalised = strtolower(trim($label));
+    $map = ['alert interval' => 'Alert Interval','base_url' => 'Web address (HTTPS)','body_reminder' => 'Body Template','check_interval_seconds' => 'Cycle interval','confirm_window_seconds' => 'Confirmation window','download data root' => 'Download Data Root','download_base_dir' => 'Download Data Root','download_lease_seconds' => 'Download Lease','download maximum requests' => 'Download Maximum Requests','download_rate_limit_max_requests' => 'Download Maximum Requests','download_rate_limit_window_seconds' => 'Download Window','download_valid_days' => 'Expiry Period','escalate_ack_max_reminds' => 'Maximum Receipt Reminders','escalate_ack_remind_every_seconds' => 'Receipt reminder interval','escalate_grace_seconds' => 'Delay before escalation','from address' => 'From Address','l18n_dir_name' => 'Translation Directory','lib_file' => 'Library File','lock_file' => 'Lock File','log_file' => 'Log Path','log_file_name' => 'Log Name','log path' => 'Log Path','mail_date_format' => 'Date Format','mail_datetime_format' => 'Combined date/time format','mail_from' => 'From Address','mail_time_format' => 'Time Format','mail_timezone' => 'Timezone','maximum receipt reminders' => 'Maximum Receipt Reminders','missed_cycles_before_fire' => 'Missed cycles before escalation','operator_alert_interval_hours' => 'Alert Interval','rate limit directory' => 'Rate Limit Directory','rate_limit_dir' => 'Rate Limit Directory','rate_limit_max_requests' => 'Maximum Requests','rate_limit_window_seconds' => 'Window','remind_every_seconds' => 'Self-reminder interval','reply-to address' => 'Reply-To Address','reply_to' => 'Reply-To Address','sendmail path' => 'Sendmail Path','sendmail_path' => 'Sendmail Path','state_file' => 'State File','subject_reminder' => 'Subject','to_self' => 'Reminder addresses','tolerance' => 'Missed cycles before escalation','trusted_proxies' => 'Trusted Proxies','trusted_proxy_header' => 'Proxy Header','web_css_file' => 'Web Stylesheet','web_file' => 'Web Endpoint','web maximum requests' => 'Maximum Requests','web_ui_enabled' => 'Web UI Access',];
+    return t($map[$normalised] ?? $label);
+}
+function ui_message(string $message): string
+{
+    $exact = t($message);
+    if ($exact !== $message) {
+        return $exact;
+    }
+    $labelPatterns = ['/^(.+) must be a positive whole number\.$/' => ['{label} must be a positive whole number.',['label']],'/^(.+) must be a whole number\.$/' => ['{label} must be a whole number.',['label']],'/^(.+) must be at least ([0-9]+)\.$/' => ['{label} must be at least {min}.',['label','min']],'/^(.+) must be at most ([0-9]+)\.$/' => ['{label} must be at most {max}.',['label','max']],'/^(.+) must not be 0\. Leave it empty to use the default\.$/' => ['{label} must not be 0. Empty value uses the default.',['label']],'/^(.+) must be empty, null, or an absolute server path\.$/' => ['{label} must be empty, null, or an absolute server path.',['label']],'/^(.+) must not contain parent directory segments\.$/' => ['{label} must not contain parent directory segments.',['label']],'/^(.+) must be an absolute server path\.$/' => ['{label} must be an absolute server path.',['label']],'/^(.+) must not be 0\. Leave it empty only when the field description allows the default\.$/' => ['{label} must not be 0. Empty value is allowed only when the field description allows the default.',['label']],'/^(.+) must be an absolute server path without parent directory segments\.$/' => ['{label} must be an absolute server path without parent directory segments.',['label']],'/^(.+) must contain exactly one valid e-mail address, optionally with a display name\.$/' => ['{label} must contain exactly one valid e-mail address, optionally with a display name.',['label']],'/^(.+) must be one absolute executable path without spaces or arguments\.$/' => ['{label} must be one absolute executable path without spaces or arguments.',['label']],'/^(.+) must point to an executable file\.$/' => ['{label} must point to an executable file.',['label']],'/^(.+) must be a non-empty single-line value\.$/' => ['{label} must be a non-empty single-line value.',['label']],'/^(.+) must be a valid e-mail address, optionally with a display name\.$/' => ['{label} must be a valid e-mail address, optionally with a display name.',['label']],'/^Missing or unreadable (.+): (.+)$/' => ['Missing or unreadable {label}: {path}',['label','path']],'/^(.+) must return an array\.$/' => ['{label} must return an array.',['label']],];
+    foreach ($labelPatterns as $regex => [$key,$names]) {
+        if (preg_match($regex, $message, $m)) {
+            $params = [];
+            foreach ($names as $i => $name) {
+                $value = (string)$m[$i + 1];
+                $params[$name] = $name === 'label' ? translated_error_label($value) : $value;
+            }
+            return t($key, $params);
+        }
+    }
+    $deleteWarningPrefix = 'Recipients configuration saved, but download file deletion needs manual review: ';
+    if (str_starts_with($message, $deleteWarningPrefix)) {
+        return t('Recipients configuration saved, but download file deletion needs manual review: {error}', [
+            'error' => substr($message, strlen($deleteWarningPrefix)),
+        ]);
+    }
+    $patterns = ['/^Invalid duration: (.+)$/' => ['Invalid duration: {value}',['value']],'/^Invalid day value: (.+)$/' => ['Invalid day value: {value}',['value']],'/^Invalid filename for (.+)\.$/' => ['{key} must be a safe filename.',['key']],'/^The configured data directory is not readable: (.+)$/' => ['The configured data directory is not readable: {path}',['path']],'/^Self-reminder address at line ([0-9]+) must contain exactly one valid e-mail address\.$/' => ['Reminder addresses line {row} must contain exactly one valid e-mail address.',['row']],'/^Invalid self-recipient: (.+)$/' => ['Invalid self-recipient: {value}',['value']],'/^File alias is missing at row ([0-9]+)\.$/' => ['File alias is missing at row {row}.',['row']],'/^File path is missing at row ([0-9]+)\.$/' => ['File path is missing at row {row}.',['row']],'/^File alias at row ([0-9]+) must be 64 characters or fewer\.$/' => ['File alias at row {row} must be 64 characters or fewer.',['row']],'/^File alias at row ([0-9]+) uses invalid characters\. Use lowercase letters, numbers, underscore, and hyphen\.$/' => ['File alias at row {row} uses invalid characters. Allowed characters: lowercase letters, numbers, underscore, and hyphen.',['row']],'/^File path at row ([0-9]+) must be a safe relative path below the download root\.$/' => ['File path at row {row} must be a safe relative path below the download root.',['row']],'/^Message template is incomplete at row ([0-9]+)\.$/' => ['Message template is incomplete at row {row}.',['row']],'/^Single-use notice in row ([0-9]+) must be a single-line value\.$/' => ['Single-use notice in row {row} must be a single-line value.',['row']],'/^Invalid file alias or path at row ([0-9]+)\.$/' => ['Invalid file alias or path at row {row}.',['row']],'/^File path for alias (.+) is read-only\.$/' => ['File path for alias {alias} is read-only.',['alias']],'/^Unknown file alias deletion request: (.+)$/' => ['Unknown file alias deletion request: {alias}',['alias']],'/^File deletion path mismatch for alias (.+)\.$/' => ['File deletion path mismatch for alias {alias}.',['alias']],'/^Deleted file alias cannot be re-added in the same save: (.+)$/' => ['Deleted file alias cannot be re-added in the same save: {alias}',['alias']],'/^Deleted file for alias (.+): (.+)$/' => ['Deleted file for alias {alias}: {path}',['alias','path']],'/^File for alias (.+) was already missing: (.+)$/' => ['File for alias {alias} was already missing: {path}',['alias','path']],'/^Download file for alias (.+) is not safe to delete\.$/' => ['Download file for alias {alias} is not safe to delete.',['alias']],'/^Could not delete download file for alias (.+): (.+)$/' => ['Could not delete download file for alias {alias}: {path}',['alias','path']],'/^Recipients config save failed after deleting files\. Backup review required: (.+)\. Original error: (.+)$/' => ['Recipients configuration saved, but download file deletion needs manual review: {error}',['path','error']],'/^Duplicate file alias at row ([0-9]+): (.+)$/' => ['Duplicate file alias at row {row}: {alias}',['row','alias']],'/^Invalid message at row ([0-9]+)\.$/' => ['Invalid message at row {row}.',['row']],'/^Duplicate message template key at row ([0-9]+): (.+)$/' => ['Duplicate message template key at row {row}: {key}',['row','key']],'/^Invalid recipient at row ([0-9]+)\.$/' => ['Invalid recipient at row {row}.',['row']],'/^Recipient name is missing at row ([0-9]+)\.$/' => ['Recipient name is missing at row {row}.',['row']],'/^Recipient e-mail address is invalid at row ([0-9]+)\.$/' => ['Recipient e-mail address is invalid at row {row}.',['row']],'/^Recipient template is missing or unknown at row ([0-9]+)\.$/' => ['Template is missing or unknown at recipient row {row}.',['row']],'/^Recipient (.+) references unknown file alias (.+)\.$/' => ['Recipient {address} references unknown file alias {alias}.',['address','alias']],'/^Message (.+) needs a single-use notice\.$/' => ['Single-use notice is required for message template {key}.',['key']],'/^Invalid file alias: (.+)$/' => ['Invalid file alias: {alias}',['alias']],'/^Directory is not writable: (.+)$/' => ['Directory is not writable: {path}',['path']],'/^Could not create temporary file in (.+)$/' => ['Could not create temporary file in {path}',['path']],'/^Could not write temporary file: (.+)$/' => ['Could not write temporary file: {path}',['path']],'/^Could not replace file: (.+)$/' => ['Could not replace file: {path}',['path']],'/^Could not create backup directory: (.+)$/' => ['Could not create backup directory: {path}',['path']],'/^Could not create backup for (.+)$/' => ['Could not create backup for {path}',['path']],'/^Could not remove partially written file: (.+)$/' => ['Could not remove partially written file: {path}',['path']],'/^Could not restore backup for (.+)$/' => ['Could not restore backup for {path}',['path']],'/^Could not open lock file: (.+)$/' => ['Lock file could not be opened: {path}',['path']],'/^Invalid log path: (.+)$/' => ['Invalid log path: {path}',['path']],'/^Log directory is not writable: (.+)$/' => ['Log directory is not writable: {path}',['path']],'/^Log file is not writable: (.+)$/' => ['Log file is not writable: {path}',['path']],'/^Could not open log file: (.+)$/' => ['Log file could not be opened: {path}',['path']],'/^Could not lock log file: (.+)$/' => ['Could not lock log file: {path}',['path']],'/^Could not clear log file: (.+)$/' => ['Could not clear log file: {path}',['path']],'/^HMAC rotation failed and rollback also failed: (.+)$/' => ['HMAC rotation failed and rollback also failed: {error}',['error']],'/^HMAC rotation failed; previous configuration was restored\. Original error: (.+)$/' => ['HMAC rotation failed; previous configuration was restored. Original error: {error}',['error']],'/^Template (.+) was renamed to (.+); ([0-9]+) recipient entries now use it\.$/' => ['Template {old} was renamed to {new}; {count} recipient entries now use it.',['old','new','count']],];
+    foreach ($patterns as $regex => [$key,$names]) {
+        if (preg_match($regex, $message, $m)) {
+            $params = [];
+            foreach ($names as $i => $name) {
+                $value = (string)$m[$i + 1];
+                $params[$name] = match ($name) {
+                    'error'=>ui_message($value),'key'=>translated_error_label($value),default=>$value,
+                };
+            }
+            return t($key, $params);
+        }
+    }
+    $translated = $message;
+    foreach (['Self-reminder interval must not be longer than the confirmation window.','Download lease must not be longer than the download expiry period.','Enabled web rate limiting needs at least one request and a window of at least one minute.','Enabled download rate limiting needs at least one request and a window of at least one minute.',] as $fragment) {
+        $translated = str_replace($fragment, t($fragment), $translated);
+    }
+    if ($translated !== $message) {
+        return $translated;
+    }
+    return $message;
+}
+function format_dashboard_datetime(?int $timestamp, array $cfg): string
+{
+    if (!$timestamp) {
+        return t('Not initialised');
+    }
+    $timezoneName = (string)($cfg['mail_timezone'] ?? date_default_timezone_get());
+    try {
+        $timezone = new DateTimeZone($timezoneName);
+    } catch (Throwable) {
+        $timezone = new DateTimeZone(date_default_timezone_get());
+        $timezoneName = $timezone->getName();
+    }
+    $date = (new DateTimeImmutable('@' . $timestamp))->setTimezone($timezone);
+    if (class_exists('IntlDateFormatter')) {
+        $locale = current_lang() === 'de' ? 'de_DE' : 'en_GB';
+        $formatterClass = 'IntlDateFormatter';
+        $formatter = new $formatterClass($locale, (int)constant('IntlDateFormatter::MEDIUM'), (int)constant('IntlDateFormatter::SHORT'), $timezoneName);
+        $formatted = $formatter->format($date);
+        if (is_string($formatted) && $formatted !== '') {
+            return $formatted;
+        }
+    }
+    return $date->format(current_lang() === 'de' ? 'd.m.Y, H:i' : 'j M Y, H:i');
+}
+function dashboard_duration(int $seconds): string
+{
+    $seconds = max(0, $seconds);
+    $units = current_lang() === 'de'
+        ? [['Jahr','Jahre',31536000],['Monat','Monate',2592000],['Woche','Wochen',604800],['Tag','Tage',86400],['Stunde','Stunden',3600],['Minute','Minuten',60],['Sekunde','Sekunden',1]]
+        : [['year','years',31536000],['month','months',2592000],['week','weeks',604800],['day','days',86400],['hour','hours',3600],['minute','minutes',60],['second','seconds',1]];
+    $parts = [];
+    foreach ($units as [$one,$other,$size]) {
+        if ($seconds < $size) {
+            continue;
+        }
+        $qty = intdiv($seconds, $size);
+        $seconds -= $qty * $size;
+        $parts[] = $qty . ' ' . ($qty === 1 ? $one : $other);
+    }
+    if ($parts === []) {
+        return current_lang() === 'de' ? '0 Sekunden' : '0 seconds';
+    }
+    if (count($parts) === 1) {
+        return $parts[0];
+    }
+    $last = array_pop($parts);
+    return implode(', ', $parts) . (current_lang() === 'de' ? ' und ' : ' and ') . $last;
+}
+function csrf_token(): string
+{
+    if (empty($_SESSION['csrf_token']) || !is_string($_SESSION['csrf_token'])) {
+        $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION['csrf_token'];
+}
+function csrf_field(): string
+{
+    return'<input type="hidden" name="csrf_token" value="' . h(csrf_token()) . '">';
+}
+function require_csrf(): void
+{
+    $token = (string)($_POST['csrf_token'] ?? '');
+    if ($token === '' || empty($_SESSION['csrf_token']) || !hash_equals((string)$_SESSION['csrf_token'], $token)) {
+        throw new RuntimeException('Security check failed. Page reload required before retry.');
+    }
+}
+function client_source_key(): string
+{
+    $ip = (string)($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)) {
+        $parts = explode('.', $ip);
+        $ip = implode('.', array_slice($parts, 0, 3)) . '.0/24';
+    } elseif (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)) {
+        $segments = explode(':', inet_ntop(inet_pton($ip)) ?: $ip);
+        $ip = implode(':', array_slice($segments, 0, 4)) . '::/64';
+    }
+    return strtolower($ip);
+}
+function throttle_state_key(string $scope, string $subject = ''): string
+{
+    $subjectKey = $subject !== '' ? strtolower(trim($subject)) : 'anonymous';
+    return $scope . ':' . hash('sha256', client_source_key() . '|' . $subjectKey);
+}
+function throttle_prune(array $store): array
+{
+    $now = time();
+    $filtered = [];
+    foreach ($store as $key => $entry) {
+        if (!is_string($key) || !is_array($entry)) {
+            continue;
+        }
+        $last = (int)($entry['last'] ?? 0);
+        $until = (int)($entry['until'] ?? 0);
+        if ($last > 0 && ($now - $last) <= UI_THROTTLE_TTL_SECONDS || $until > $now) {
+            $filtered[$key] = $entry;
+        }
+    }
+    uasort($filtered, static fn(array $a, array $b): int=>(int)($b['last'] ?? 0) <=> (int)($a['last'] ?? 0));
+    return array_slice($filtered, 0, UI_THROTTLE_MAX_ENTRIES, true);
+}
+function throttle_assert(array $store, string $scope, string $subject = ''): void
+{
+    $store = throttle_prune($store);
+    $entry = $store[throttle_state_key($scope, $subject)] ?? null;
+    if (!is_array($entry)) {
+        return;
+    }
+    $until = (int)($entry['until'] ?? 0);
+    if ($until > time()) {
+        throw new RuntimeException('Too many attempts. Temporary wait before retry.');
+    }
+}
+function throttle_record(array &$store, string $scope, string $subject = ''): void
+{
+    $store = throttle_prune($store);
+    $key = throttle_state_key($scope, $subject);
+    $entry = isset($store[$key]) && is_array($store[$key]) ? $store[$key] : [];
+    $count = min(12, ((int)($entry['count'] ?? 0)) + 1);
+    $cooldown = min(UI_THROTTLE_MAX_SECONDS, UI_THROTTLE_BASE_SECONDS ** min(8, $count));
+    $store[$key] = ['count' => $count,'last' => time(),'until' => time() + $cooldown];
+    $store = throttle_prune($store);
+}
+function throttle_clear(array &$store, string $scope, string $subject = ''): void
+{
+    $store = throttle_prune($store);
+    unset($store[throttle_state_key($scope, $subject)]);
+}
+function ui_is_configured(?array $cfg): bool
+{
+    return is_array($cfg) && isset($cfg['username'], $cfg['password_hash'], $cfg['state_dir']) && is_string($cfg['username']) && is_string($cfg['password_hash']) && is_string($cfg['state_dir']) && $cfg['username'] !== '' && $cfg['password_hash'] !== '' && $cfg['state_dir'] !== '';
+}
+function setup_throttle_assert(?array $cfg): void
+{
+    $store = is_array($cfg['setup_throttle'] ?? null) ? $cfg['setup_throttle'] : [];
+    throttle_assert($store, 'setup', 'initial-setup');
+}
+function setup_throttle_record(?array $cfg): array
+{
+    $next = is_array($cfg) ? $cfg : [];
+    $store = is_array($next['setup_throttle'] ?? null) ? $next['setup_throttle'] : [];
+    throttle_record($store, 'setup', 'initial-setup');
+    $next['setup_throttle'] = $store;
+    ui_write_config($next);
+    return $next;
+}
+function config_throttle_assert(array $cfg, string $scope, string $subject = ''): void
+{
+    $store = is_array($cfg['auth_throttle'] ?? null) ? $cfg['auth_throttle'] : [];
+    throttle_assert($store, $scope, $subject);
+}
+function config_throttle_record(array $cfg, string $scope, string $subject = ''): array
+{
+    $store = is_array($cfg['auth_throttle'] ?? null) ? $cfg['auth_throttle'] : [];
+    throttle_record($store, $scope, $subject);
+    $cfg['auth_throttle'] = $store;
+    ui_write_config($cfg);
+    return $cfg;
+}
+function config_throttle_clear(array $cfg, string $scope, string $subject = ''): array
+{
+    $store = is_array($cfg['auth_throttle'] ?? null) ? $cfg['auth_throttle'] : [];
+    throttle_clear($store, $scope, $subject);
+    if ($store === []) {
+        unset($cfg['auth_throttle']);
+    } else {
+        $cfg['auth_throttle'] = $store;
+    }
+    ui_write_config($cfg);
+    return $cfg;
+}
+function auth_failure_delay(): void
+{
+    usleep(UI_AUTH_FAILURE_DELAY_MICROS);
+}
+function login_throttle_assert(array $cfg, string $username): void
+{
+    $store = is_array($cfg['auth_throttle'] ?? null) ? $cfg['auth_throttle'] : [];
+    throttle_assert($store, 'login_ip');
+    throttle_assert($store, 'login', $username);
+}
+function login_throttle_record(array $cfg, string $username): array
+{
+    $store = is_array($cfg['auth_throttle'] ?? null) ? $cfg['auth_throttle'] : [];
+    throttle_record($store, 'login_ip');
+    throttle_record($store, 'login', $username);
+    $cfg['auth_throttle'] = $store;
+    ui_write_config($cfg);
+    return $cfg;
+}
+function login_throttle_clear(array $cfg, string $username): array
+{
+    $store = is_array($cfg['auth_throttle'] ?? null) ? $cfg['auth_throttle'] : [];
+    throttle_clear($store, 'login_ip');
+    throttle_clear($store, 'login', $username);
+    if ($store === []) {
+        unset($cfg['auth_throttle']);
+    } else {
+        $cfg['auth_throttle'] = $store;
+    }
+    ui_write_config($cfg);
+    return $cfg;
+}
+function mark_authenticated(string $username): void
+{
+    session_regenerate_id(true);
+    unset($_SESSION['csrf_token']);
+    $_SESSION['authenticated'] = true;
+    $_SESSION['username'] = $username;
+    $_SESSION['auth_started_at'] = time();
+    $_SESSION['auth_last_seen_at'] = time();
+}
+function enforce_session_lifetime(): void
+{
+    if (empty($_SESSION['authenticated'])) {
+        return;
+    }
+    $now = time();
+    $started = (int)($_SESSION['auth_started_at'] ?? $now);
+    $lastSeen = (int)($_SESSION['auth_last_seen_at'] ?? $now);
+    if (($now - $lastSeen) > UI_SESSION_IDLE_SECONDS || ($now - $started) > UI_SESSION_ABSOLUTE_SECONDS) {
+        $_SESSION = [];
+        session_destroy();
+        throw new RuntimeException('Session expired. Sign-in required again.');
+    }
+    $_SESSION['auth_last_seen_at'] = $now;
+}
+function require_reauth_password(array $uiConfig, string $scope = 'reauth'): array
+{
+    $subject = (string)($_SESSION['username'] ?? ($uiConfig['username'] ?? 'user'));
+    config_throttle_assert($uiConfig, $scope, $subject);
+    $password = (string)($_POST['reauth_password'] ?? '');
+    if ($password === '' || !password_verify($password, (string)($uiConfig['password_hash'] ?? ''))) {
+        config_throttle_record($uiConfig, $scope, $subject);
+        throw new RuntimeException('Password required for this sensitive action.');
+    }
+    return config_throttle_clear($uiConfig, $scope, $subject);
+}
+function ui_load_config(): ?array
+{
+    $path = ui_config_file();
+    if (!is_file($path)) {
+        return null;
+    }
+    $cfg = require $path;
+    return is_array($cfg) ? $cfg : null;
+}
+function ui_write_config(array $cfg): void
+{
+    $cfg['updated_at'] = gmdate('c');
+    $body = "<?php\n\ndeclare(strict_types=1);\n\nreturn " . var_export($cfg, true) . ";\n";
+    atomic_write(ui_config_file($cfg), $body);
+}
+function ui_config_file(?array $cfg = null): string
+{
+    $candidates = ui_config_file_candidates($cfg);
+    foreach ($candidates as $candidate) {
+        if (is_file($candidate)) {
+            return $candidate;
+        }
+    }
+
+    return $candidates[0];
+}
+/**
+ * @return list<string>
+ */
+function ui_config_file_candidates(?array $cfg = null): array
+{
+    $dirs = [];
+    $configuredStateDir = is_array($cfg) ? trim((string)($cfg['state_dir'] ?? '')) : '';
+    if ($configuredStateDir !== '') {
+        $dirs[] = rtrim($configuredStateDir, '/');
+    }
+
+    $envStateDir = getenv('TOTMAN_STATE_DIR');
+    if (is_string($envStateDir) && trim($envStateDir) !== '') {
+        $dirs[] = rtrim(trim($envStateDir), '/');
+    }
+
+    $dirs[] = dirname(UI_DEFAULT_CONFIG_FILE);
+
+    $paths = [];
+    foreach (array_unique($dirs) as $dir) {
+        if ($dir === '' || str_contains($dir, "\0")) {
+            continue;
+        }
+        $paths[] = $dir . '/.totman-ui.php';
+    }
+
+    $sidecar = __DIR__ . '/.totman-ui.php';
+    if (!in_array($sidecar, $paths, true)) {
+        $paths[] = $sidecar;
+    }
+
+    return $paths === [] ? [$sidecar] : $paths;
+}
+function setup_code_configured(): bool
+{
+    $code = ui_setup_code();
+    return $code !== '' && $code !== 'CHANGE_THIS_SETUP_CODE';
+}
+function require_setup_code(string $code): void
+{
+    if (!setup_code_configured()) {
+        throw new RuntimeException(t('Setup is locked. TOTMAN_UI_SETUP_CODE must be set in {script} before first use.', ['script' => current_script_name()]));
+    }
+    if ($code === '' || !hash_equals(ui_setup_code(), $code)) {
+        throw new RuntimeException('Setup code is incorrect.');
+    }
+}
+function ui_setup_code(): string
+{
+    $envCode = getenv('TOTMAN_UI_SETUP_CODE');
+    if (is_string($envCode) && $envCode !== '') {
+        return $envCode;
+    }
+    return TOTMAN_UI_SETUP_CODE;
+}
+function atomic_write(string $path, string $content): void
+{
+    $dir = dirname($path);
+    if (!is_dir($dir) || !is_writable($dir)) {
+        throw new RuntimeException("Directory is not writable: {$dir}");
+    }
+    $tmp = tempnam($dir, '.totman-tmp-');
+    if ($tmp === false) {
+        throw new RuntimeException("Could not create temporary file in {$dir}");
+    }
+    try {
+        if (file_put_contents($tmp, $content, LOCK_EX) === false) {
+            throw new RuntimeException("Could not write temporary file: {$tmp}");
+        }
+        if (substr($path, -4) === '.php') {
+            load_array_file($tmp, 'generated PHP file');
+        }
+        if (!rename($tmp, $path)) {
+            throw new RuntimeException("Could not replace file: {$path}");
+        }@chmod($path, 0660);
+        if (function_exists('opcache_invalidate') && substr($path, -4) === '.php') {
+            @opcache_invalidate($path, true);
+        }
+    } finally {
+        if (is_file($tmp)) {
+            @unlink($tmp);
+        }
+    }
+}
+function backup_file(string $path): ?string
+{
+    if (!is_file($path)) {
+        return null;
+    }
+    $dir = dirname($path) . '/.totman-ui-backups';
+    if (!is_dir($dir) && !mkdir($dir, 0770, true)) {
+        throw new RuntimeException("Could not create backup directory: {$dir}");
+    }
+    $backup = $dir . '/' . basename($path) . '.' . gmdate('Ymd-His') . '.' . bin2hex(random_bytes(4)) . '.bak';
+    if (!copy($path, $backup)) {
+        throw new RuntimeException("Could not create backup for {$path}");
+    }@chmod($backup, 0660);
+    prune_backups($dir, basename($path));
+    return $backup;
+}
+function prune_backups(string $dir, string $baseName): void
+{
+    $files = glob($dir . '/' . $baseName . '.*.bak') ?: [];
+    rsort($files, SORT_STRING);
+    foreach (array_slice($files, UI_BACKUP_RETENTION) as $oldBackup) {
+        if (is_file($oldBackup)) {
+            @unlink($oldBackup);
+        }
+    }
+}
+function restore_file(?string $backup, string $target): void
+{
+    if ($backup === null) {
+        if (is_file($target) && !unlink($target)) {
+            throw new RuntimeException("Could not remove partially written file: {$target}");
+        }
+        return;
+    }
+    if (!copy($backup, $target)) {
+        throw new RuntimeException("Could not restore backup for {$target}");
+    }@chmod($target, 0660);
+}
+function load_array_file(string $path, string $label): array
+{
+    if (!is_file($path) || !is_readable($path)) {
+        throw new RuntimeException("Missing or unreadable {$label}: {$path}");
+    }
+    $data = require $path;
+    if (!is_array($data)) {
+        throw new RuntimeException("{$label} must return an array.");
+    }
+    return $data;
+}
+function default_main_config(string $stateDir): array
+{
+    return['base_url' => 'https://example.com/totman','state_dir' => $stateDir,'lib_file' => 'totman-lib.php','l18n_dir_name' => 'l18n','lock_file' => 'totman.lock','log_file_name' => 'totman.log','recipients_file' => 'totman-recipients.php','state_file' => 'totman.json','web_file' => 'totman.php','web_css_file' => 'totman.css','download_base_dir' => $stateDir . '/downloads','download_valid_days' => 180,'download_rate_limit_enabled' => true,'download_rate_limit_max_requests' => 20,'download_rate_limit_window_seconds' => 60,'download_lease_seconds' => 300,'hmac_secret_hex' => 'REPLACE_WITH_64_HEX_CHARS','check_interval_seconds' => 86400,'confirm_window_seconds' => 172800,'remind_every_seconds' => 43200,'escalate_grace_seconds' => 14400,'missed_cycles_before_fire' => 2,'escalate_ack_enabled' => true,'escalate_ack_remind_every_seconds' => 43200,'escalate_ack_max_reminds' => 25,'stealth_neutral_for_invalid' => true,'stealth_level_2_neutral_on_stale' => true,'show_success_details' => true,'rate_limit_enabled' => true,'rate_limit_dir' => null,'rate_limit_max_requests' => 30,'rate_limit_window_seconds' => 60,'ip_mode' => 'remote_addr','trusted_proxies' => ['127.0.0.1','::1'],'trusted_proxy_header' => 'X-Forwarded-For','web_ui_enabled' => false,'sendmail_path' => '/usr/sbin/sendmail','to_self' => ['My Name <myname@example.com>','Fallback Mail <fallback@example.com>',],'operator_alert_interval_hours' => 2,'mail_from' => 'totman <totman@example.com>','reply_to' => '','subject_reminder' => '[totman] Please confirm you are safe','mail_timezone' => 'Europe/London','mail_date_format' => 'j F Y','mail_time_format' => 'H:i:s','mail_datetime_format' => 'l, j F Y, H:i:s e','body_reminder' => "Hello,\n\nThis is a reminder to confirm that you are safe and able to respond.\n\nPlease click this link to confirm:\n{CONFIRM_URL}\n\nYou must click the link no later than the confirmation deadline.\n\nConfirmation deadline: {DEADLINE_ISO}\nCurrent cycle started: {CYCLE_START_ISO}\n\nIf you confirm after the deadline, escalation may already have started.",'log_mode' => 'both','log_file' => null,];
+}
+function default_recipients_config(): array
+{
+    return['files' => ['letter' => 'shared/letter.pdf','contacts' => 'shared/contacts.txt','photos' => 'shared/family-photos.zip',],'messages' => ['default' => ['subject' => '[totman] EXAMPLE TEMPLATE – escalation message','body' => "Hello {RECIPIENT_NAME},\n\nThis is an example escalation message for totman.\nPlease replace it with your own wording before production use.\n\nYou are receiving this message because the sender did not complete the required confirmation in time.\n\n{ACK_BLOCK}\n\n{DOWNLOAD_LINKS}",],'jane' => ['subject' => '[totman] EXAMPLE TEMPLATE – personal message','body' => "Dear {RECIPIENT_NAME},\n\nThis is an example of a more personal escalation message.\nPlease replace it with your own wording before production use.\n\nIf you are reading this, the sender did not complete the required confirmation in time.\n\n{ACK_BLOCK}\n\n{DOWNLOAD_LINKS}",],'john' => ['subject' => '[totman] EXAMPLE TEMPLATE – message with documents','single_use_notice' => 'Please save this file straight away. This download link works only once.','body' => "Hello {RECIPIENT_NAME},\n\nThis is an example escalation message for document delivery.\nPlease replace it with your own wording before production use.\n\nThe files below are included as part of this message.\n\n{ACK_BLOCK}\n\n{DOWNLOAD_LINKS}",],],'recipients' => [['Recipient 1','recipient1@example.com','default'],['Jane Doe','Jane Doe <recipient2@example.com>','jane',['letter','contacts']],['John Doe','<recipient3@example.com>','john',['letter'],['photos']],['Alex Example','alex@example.com','default',['letter']],],];
+}
+function ensure_setup_state_dir(string $stateDir): void
+{
+    if ($stateDir === '' || !is_dir($stateDir) || !is_readable($stateDir) || !is_writable($stateDir)) {
+        throw new RuntimeException('Setup needs a readable and writable data directory.');
+    }
+    $mainDist = $stateDir . '/totman.inc.dist.php';
+    $recipientsDist = $stateDir . '/totman-recipients.dist.php';
+    if (!is_file($mainDist)) {
+        write_main_config($mainDist, default_main_config($stateDir));
+    }
+    if (!is_file($recipientsDist)) {
+        write_recipients_config($recipientsDist, default_recipients_config());
+    }
+    $main = effective_main_config($stateDir);
+    effective_recipients_config($stateDir, $main['config']);
+}
+function require_existing_state_dir(string $stateDir): void
+{
+    if ($stateDir === '' || !is_dir($stateDir) || !is_readable($stateDir) || !is_writable($stateDir)) {
+        throw new RuntimeException('Recovery needs an existing readable and writable data directory.');
+    }
+    $main = effective_main_config($stateDir);
+    effective_recipients_config($stateDir, $main['config']);
+}
+function source_fingerprint(array $paths): string
+{
+    $parts = [];
+    foreach ($paths as $path) {
+        $parts[] = $path . ':' . (is_file($path) ? hash_file('sha256', $path) : 'missing');
+    }
+    return hash('sha256', implode("\n", $parts));
+}
+function state_dir_from_ui(array $ui): string
+{
+    $dir = rtrim((string)($ui['state_dir'] ?? ''), '/');
+    if ($dir === '') {
+        throw new RuntimeException('No data directory is configured.');
+    }
+    if (!is_dir($dir) || !is_readable($dir)) {
+        throw new RuntimeException("The configured data directory is not readable: {$dir}");
+    }
+    return $dir;
+}
+function effective_main_config(string $stateDir): array
+{
+    $live = $stateDir . '/totman.inc.php';
+    $dist = $stateDir . '/totman.inc.dist.php';
+    $liveCfg = is_file($live) ? load_array_file($live, 'totman.inc.php') : null;
+    $distCfg = is_file($dist) ? load_array_file($dist, 'totman.inc.dist.php') : null;
+    if ($liveCfg === null && $distCfg === null) {
+        throw new RuntimeException('Neither totman.inc.php nor totman.inc.dist.php exists in the data directory.');
+    }
+    $cfg = ($liveCfg !== null && $distCfg !== null) ? array_replace($distCfg, $liveCfg) : (array)($liveCfg ?? $distCfg);
+    $cfg['state_dir'] = $stateDir;
+    return['config' => $cfg,'live_path' => $live,'dist_path' => $dist,'fingerprint' => source_fingerprint([$live,$dist]),'source' => ($liveCfg !== null && $distCfg !== null) ? 'live+dist' : ($liveCfg !== null ? 'live' : 'dist'),];
+}
+function web_ui_enabled(array $main): bool
+{
+    $cfg = (array)($main['config'] ?? []);
+    return ($cfg['web_ui_enabled'] ?? false) === true;
+}
+function require_web_ui_enabled(string $stateDir): array
+{
+    $main = effective_main_config($stateDir);
+    if (!web_ui_enabled($main)) {
+        throw new RuntimeException('Web UI access is disabled. Set web_ui_enabled to true in the effective main config before using totman-ui.php.');
+    }
+    return $main;
+}
+function configured_web_ui_enabled_state(?array $uiConfig): ?bool
+{
+    if (!ui_is_configured($uiConfig)) {
+        return null;
+    }
+    try {
+        return web_ui_enabled(effective_main_config(state_dir_from_ui($uiConfig)));
+    } catch (Throwable) {
+        return null;
+    }
+}
+function effective_recipients_config(string $stateDir, array $cfg): array
+{
+    $configured = basename((string)($cfg['recipients_file'] ?? 'totman-recipients.php'));
+    if ($configured === '' || $configured === '.' || $configured === '..') {
+        $configured = 'totman-recipients.php';
+    }
+    $live = $stateDir . '/' . $configured;
+    $dist = $stateDir . '/totman-recipients.dist.php';
+    $path = is_file($live) ? $live : (is_file($dist) ? $dist : $live);
+    $data = load_array_file($path, 'recipients file');
+    foreach (['files','messages','recipients'] as $key) {
+        if (!isset($data[$key]) || !is_array($data[$key])) {
+            throw new RuntimeException('Recipients file must return files, messages, and recipients arrays.');
+        }
+    }
+    return['data' => $data,'live_path' => $live,'dist_path' => $dist,'effective_path' => $path,'fingerprint' => source_fingerprint([$live,$dist]),];
+}
+function id_valid(string $id): bool
+{
+    return(bool)preg_match('/^[a-z0-9_-]{1,100}$/', $id);
+}
+function file_alias_valid(string $id): bool
+{
+    return(bool)preg_match('/^[a-z0-9_-]{1,64}$/', trim($id));
+}
+function rel_path_valid(string $path): bool
+{
+    $path = trim($path);
+    return $path !== '' && !str_starts_with($path, '/') && !str_contains($path, '..') && !str_contains($path, '\\') && !preg_match('/[[:cntrl:]]/', $path);
+}
+function mailbox_valid(string $mailbox): bool
+{
+    $mailbox = trim($mailbox);
+    if ($mailbox === '' || preg_match('/[[:cntrl:]]/', $mailbox)) {
+        return false;
+    }
+    if (preg_match('/^<([^<>]+)>$/', $mailbox, $m)) {
+        $address = trim($m[1]);
+    } elseif (preg_match('/^[^<>]+<([^<>]+)>$/', $mailbox, $m)) {
+        $address = trim($m[1]);
+    } elseif (!str_contains($mailbox, '<') && !str_contains($mailbox, '>')) {
+        $address = $mailbox;
+    } else {
+        return false;
+    }
+    return filter_var($address, FILTER_VALIDATE_EMAIL) !== false || (bool)preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $address);
+}
+function filename_valid(string $name): bool
+{
+    $name = trim($name);
+    return $name !== '' && !str_contains($name, '/') && !str_contains($name, '\\') && $name !== '.' && $name !== '..' && !str_contains($name, '..') && !preg_match('/[[:cntrl:]]/', $name);
+}
+function parse_duration_seconds(string $raw): int
+{
+    $raw = trim(strtolower($raw));
+    if ($raw === '') {
+        throw new RuntimeException('Duration must not be empty.');
+    }
+    if (preg_match('/^\d+$/', $raw)) {
+        return max(1, (int)$raw);
+    }
+    if (!preg_match('/^(\d+)\s*([smhdw])$/', $raw, $m)) {
+        throw new RuntimeException("Invalid duration: {$raw}");
+    }
+    $n = (int)$m[1];
+    $mult = ['s' => 1,'m' => 60,'h' => 3600,'d' => 86400,'w' => 604800][$m[2]];
+    return max(1, $n * $mult);
+}
+function duration_unit_seconds(string $unit): int
+{
+    return match ($unit) {
+        'seconds'=>1,'minutes'=>60,'hours'=>3600,'days'=>86400,'weeks'=>604800,default=>throw new RuntimeException('Invalid duration unit.'),
+    };
+}
+function parse_duration_control(string $key, string $fallback): int
+{
+    if (array_key_exists($key . '_value', $_POST) || array_key_exists($key . '_unit', $_POST)) {
+        return duration_from_parts((string)($_POST[$key . '_value'] ?? ''), (string)($_POST[$key . '_unit'] ?? ''), $key);
+    }
+    return parse_duration_seconds((string)($_POST[$key] ?? $fallback));
+}
+function duration_from_parts(string $value, string $unit, string $label = 'Duration'): int
+{
+    $rawValue = trim($value);
+    if (!preg_match('/^[1-9]\d*$/', $rawValue)) {
+        throw new RuntimeException("{$label} must be a positive whole number.");
+    }
+    return(int)$rawValue * duration_unit_seconds($unit);
+}
+function duration_parts(int $seconds, ?array $allowedUnits = null): array
+{
+    $units = ['weeks' => 604800,'days' => 86400,'hours' => 3600,'minutes' => 60,'seconds' => 1];
+    if ($allowedUnits !== null) {
+        $units = array_intersect_key($units, $allowedUnits);
+    }
+    foreach ($units as $unit => $size) {
+        if ($seconds >= $size && $seconds % $size === 0) {
+            return[(int)($seconds / $size),$unit];
+        }
+    }
+    $smallestUnit = array_key_last($units) ?: 'seconds';
+    $smallestSize = $units[$smallestUnit] ?? 1;
+    return[max(1, (int)ceil($seconds / $smallestSize)),$smallestUnit];
+}
+function parse_day_control(string $key, string $fallback): int
+{
+    if (array_key_exists($key . '_value', $_POST) || array_key_exists($key . '_unit', $_POST)) {
+        $rawValue = trim((string)($_POST[$key . '_value'] ?? ''));
+        $unit = (string)($_POST[$key . '_unit'] ?? '');
+        if (!preg_match('/^[1-9]\d*$/', $rawValue)) {
+            throw new RuntimeException("{$key} must be a positive whole number.");
+        }
+        return match ($unit) {
+            'days'=>(int)$rawValue,'weeks'=>(int)$rawValue * 7,default=>throw new RuntimeException("{$key} must use days or weeks."),
+        };
+    }
+    return parse_days((string)($_POST[$key] ?? $fallback));
+}
+function format_duration(int $seconds): string
+{
+    foreach ([604800 => 'w',86400 => 'd',3600 => 'h',60 => 'm'] as $unit => $suffix) {
+        if ($seconds >= $unit && $seconds % $unit === 0) {
+            return(string)($seconds / $unit) . $suffix;
+        }
+    }
+    return(string)$seconds . 's';
+}
+function parse_days(string $raw): int
+{
+    $raw = trim(strtolower($raw));
+    if (preg_match('/^(\d+)\s*d?$/', $raw, $m)) {
+        return max(1, (int)$m[1]);
+    }
+    throw new RuntimeException("Invalid day value: {$raw}");
+}
+function parse_positive_int(string $raw, string $label, int $min = 1, ?int $max = null): int
+{
+    $raw = trim($raw);
+    if (!preg_match('/^\d+$/', $raw)) {
+        throw new RuntimeException("{$label} must be a whole number.");
+    }
+    $value = (int)$raw;
+    if ($value < $min) {
+        throw new RuntimeException("{$label} must be at least {$min}.");
+    }
+    if ($max !== null && $value > $max) {
+        throw new RuntimeException("{$label} must be at most {$max}.");
+    }
+    return $value;
+}
+function timezone_valid(string $timezone): bool
+{
+    return in_array($timezone, DateTimeZone::listIdentifiers(), true);
+}
+function single_line_text_valid(string $value): bool
+{
+    return trim($value) !== '' && !preg_match('/[[:cntrl:]]/', $value);
+}
+function base_url_valid(string $url): bool
+{
+    $url = trim($url);
+    if ($url === '' || preg_match('/\s|[[:cntrl:]]/', $url)) {
+        return false;
+    }
+    $parts = parse_url($url);
+    if (!is_array($parts)) {
+        return false;
+    }
+    $path = rawurldecode((string)($parts['path'] ?? ''));
+    if ($path === '..' || str_starts_with($path, '../') || $path === '/..' || str_contains($path, '/../') || str_ends_with($path, '/..')) {
+        return false;
+    }
+    return strtolower((string)($parts['scheme'] ?? '')) === 'https'
+        && trim((string)($parts['host'] ?? '')) !== ''
+        && array_intersect_key($parts, array_flip(['user','pass','query','fragment'])) === [];
+}
+function timing_errors(array $cfg): array
+{
+    $errors = [];
+    if ((int)($cfg['remind_every_seconds'] ?? 0) > (int)($cfg['confirm_window_seconds'] ?? 0)) {
+        $errors[] = 'Self-reminder interval must not be longer than the confirmation window.';
+    }
+    if ((int)($cfg['download_lease_seconds'] ?? 0) > ((int)($cfg['download_valid_days'] ?? 0) * 86400)) {
+        $errors[] = 'Download lease must not be longer than the download expiry period.';
+    }
+    if (!empty($cfg['rate_limit_enabled']) && ((int)($cfg['rate_limit_max_requests'] ?? 0) < 1 || (int)($cfg['rate_limit_window_seconds'] ?? 0) < 60)) {
+        $errors[] = 'Enabled web rate limiting needs at least one request and a window of at least one minute.';
+    }
+    if (!empty($cfg['download_rate_limit_enabled']) && ((int)($cfg['download_rate_limit_max_requests'] ?? 0) < 1 || (int)($cfg['download_rate_limit_window_seconds'] ?? 0) < 60)) {
+        $errors[] = 'Enabled download rate limiting needs at least one request and a window of at least one minute.';
+    }
+    return $errors;
+}
+function nullable_string(string $raw): ?string
+{
+    $v = trim($raw);
+    return($v === '' || strtolower($v) === 'null') ? null : $v;
+}
+function nullable_absolute_directory(string $raw, string $label): ?string
+{
+    $v = trim($raw);
+    if ($v === '' || strtolower($v) === 'null') {
+        return null;
+    }
+    if ($v === '0') {
+        throw new RuntimeException($label . ' must not be 0. Empty value uses the default.');
+    }
+    if (!str_starts_with($v, '/') || preg_match('/[[:cntrl:]]/', $v) || str_contains($v, '\\')) {
+        throw new RuntimeException($label . ' must be empty, null, or an absolute server path.');
+    }
+    $normalised = str_replace('\\', '/', $v);
+    if ($normalised === '/..' || str_contains($normalised, '/../') || str_ends_with($normalised, '/..')) {
+        throw new RuntimeException($label . ' must not contain parent directory segments.');
+    }
+    return $v === '/' ? '/' : rtrim($v, '/');
+}
+function parse_proxy_list(string $raw): array
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        return[];
+    }
+    $json = json_decode($raw, true);
+    if (is_array($json)) {
+        return array_values(array_filter(array_map('strval', $json), static fn(string $v): bool=>trim($v) !== ''));
+    }
+    return array_values(array_filter(array_map('trim', explode(',', $raw)), static fn(string $v): bool=>$v !== ''));
+}
+function path_string_valid(string $path, bool $absolute = true): bool
+{
+    $normalised = trim($path);
+    if ($normalised === '' || preg_match('/[[:cntrl:]]/', $normalised) || str_contains($normalised, '\\')) {
+        return false;
+    }
+    if ($absolute && !str_starts_with($normalised, '/')) {
+        return false;
+    }
+    return!($normalised === '/..' || str_contains($normalised, '/../') || str_ends_with($normalised, '/..'));
+}
+function log_file_path_valid(string $path): bool
+{
+    $trimmed = trim($path);
+    if ($trimmed === '' || preg_match('/[[:cntrl:]]/', $trimmed) || str_contains($trimmed, '\\')) {
+        return false;
+    }
+    $normalised = str_replace('\\', '/', $trimmed);
+    return!($normalised === '..' || str_starts_with($normalised, '../') || $normalised === '/..' || str_contains($normalised, '/../') || str_ends_with($normalised, '/..'));
+}
+function base_url_contains_web_file(string $baseUrl, string $webFile): bool
+{
+    $webFile = basename(trim($webFile));
+    if ($webFile === '') {
+        return false;
+    }
+    $path = parse_url(trim($baseUrl), PHP_URL_PATH);
+    if (!is_string($path) || $path === '') {
+        return false;
+    }
+    return basename(rtrim($path, '/')) === $webFile;
+}
+function absolute_path_value(string $raw, string $label, bool $allowEmpty = false): ?string
+{
+    $value = trim($raw);
+    if ($value === '' || strtolower($value) === 'null') {
+        if ($allowEmpty) {
+            return null;
+        }
+        throw new RuntimeException($label . ' must be an absolute server path.');
+    }
+    if ($value === '0') {
+        throw new RuntimeException($label . ' must not be 0. Empty value is allowed only when the field description allows the default.');
+    }
+    if (!path_string_valid($value, true)) {
+        throw new RuntimeException($label . ' must be an absolute server path without parent directory segments.');
+    }
+    return $value === '/' ? '/' : rtrim($value, '/');
+}
+function executable_path_value(string $raw, string $label): string
+{
+    $value = absolute_path_value($raw, $label);
+    if ($value === null || preg_match('/\s/', $value) || str_contains($value, '\\')) {
+        throw new RuntimeException($label . ' must be one absolute executable path without spaces or arguments.');
+    }
+    if (!is_file($value) || !is_executable($value)) {
+        throw new RuntimeException($label . ' must point to an executable file.');
+    }
+    return $value;
+}
+function proxy_entry_valid(string $entry): bool
+{
+    $entry = trim($entry);
+    if ($entry === '') {
+        return false;
+    }
+    if (str_contains($entry, '/')) {
+        [$ip,$bits] = array_pad(explode('/', $entry, 2), 2, '');
+        if (
+            !preg_match('/^\d{1,3}$/', $bits)
+        ) {
+            return false;
+        }
+        $max = str_contains($ip, ':') ? 128 : 32;
+        $cidr = (int)$bits;
+        return $cidr >= 0 && $cidr <= $max && filter_var($ip, FILTER_VALIDATE_IP) !== false;
+    }
+    return filter_var($entry, FILTER_VALIDATE_IP) !== false;
+}
+function header_name_valid(string $name): bool
+{
+    return(bool)preg_match('/^[A-Za-z0-9-]{1,80}$/', trim($name));
+}
+function config_from_post(array $current): array
+{
+    $cfg = $current;
+    $stringKeys = ['base_url','download_base_dir','sendmail_path','mail_from','reply_to','subject_reminder','mail_timezone','mail_date_format','mail_time_format','mail_datetime_format','body_reminder','log_mode','ip_mode','trusted_proxy_header',];
+    foreach ($stringKeys as $key) {
+        if (array_key_exists($key, $_POST)) {
+            $cfg[$key] = trim((string)$_POST[$key]);
+        }
+    }
+    foreach (['lib_file','l18n_dir_name','lock_file','log_file_name','state_file','web_file'] as $key) {
+        $value = trim((string)($_POST[$key] ?? ''));
+        if (!filename_valid($value)) {
+            throw new RuntimeException("Invalid filename for {$key}.");
+        }
+        $cfg[$key] = $value;
+    }
+    $webCssFile = trim((string)($_POST['web_css_file'] ?? ''));
+    if ($webCssFile !== '' && !filename_valid($webCssFile)) {
+        throw new RuntimeException('Invalid filename for web_css_file.');
+    }
+    $cfg['web_css_file'] = $webCssFile;
+    $cfg['download_valid_days'] = parse_day_control('download_valid_days', (string)($current['download_valid_days'] ?? '180'));
+    $cfg['download_rate_limit_enabled'] = (($_POST['download_rate_limit_enabled'] ?? '0') === '1');
+    if (!empty($cfg['download_rate_limit_enabled'])) {
+        $cfg['download_rate_limit_max_requests'] = parse_positive_int((string)($_POST['download_rate_limit_max_requests'] ?? '20'), 'Download maximum requests');
+        $cfg['download_rate_limit_window_seconds'] = parse_duration_control('download_rate_limit_window_seconds', '1m');
+    }
+    $cfg['download_lease_seconds'] = parse_duration_control('download_lease_seconds', '5m');
+    $cfg['check_interval_seconds'] = parse_duration_control('check_interval_seconds', '24h');
+    $cfg['confirm_window_seconds'] = parse_duration_control('confirm_window_seconds', '48h');
+    $cfg['remind_every_seconds'] = parse_duration_control('remind_every_seconds', '12h');
+    $cfg['escalate_grace_seconds'] = parse_duration_control('escalate_grace_seconds', '4h');
+    $cfg['missed_cycles_before_fire'] = parse_positive_int((string)($_POST['missed_cycles_before_fire'] ?? '2'), 'Missed cycles before escalation');
+    $cfg['escalate_ack_enabled'] = (($_POST['escalate_ack_enabled'] ?? '0') === '1');
+    if (!empty($cfg['escalate_ack_enabled'])) {
+        $cfg['escalate_ack_remind_every_seconds'] = parse_duration_control('escalate_ack_remind_every_seconds', '12h');
+        $cfg['escalate_ack_max_reminds'] = parse_positive_int((string)($_POST['escalate_ack_max_reminds'] ?? '25'), 'Maximum receipt reminders', 0);
+    }
+    $cfg['stealth_neutral_for_invalid'] = (($_POST['stealth_neutral_for_invalid'] ?? '0') === '1');
+    $cfg['stealth_level_2_neutral_on_stale'] = (($_POST['stealth_level_2_neutral_on_stale'] ?? '0') === '1');
+    $cfg['show_success_details'] = (($_POST['show_success_details'] ?? '0') === '1');
+    $cfg['rate_limit_enabled'] = (($_POST['rate_limit_enabled'] ?? '0') === '1');
+    $cfg['web_ui_enabled'] = (($_POST['web_ui_enabled'] ?? '0') === '1');
+    $cfg['download_base_dir'] = absolute_path_value((string)($cfg['download_base_dir'] ?? ''), 'Download data root');
+    $cfg['sendmail_path'] = executable_path_value((string)($cfg['sendmail_path'] ?? ''), 'Sendmail path');
+    $cfg['rate_limit_dir'] = nullable_absolute_directory((string)($_POST['rate_limit_dir'] ?? ''), 'Rate limit directory');
+    if (!empty($cfg['rate_limit_enabled'])) {
+        $cfg['rate_limit_max_requests'] = parse_positive_int((string)($_POST['rate_limit_max_requests'] ?? '30'), 'Web maximum requests');
+        $cfg['rate_limit_window_seconds'] = parse_duration_control('rate_limit_window_seconds', '1m');
+    }
+    $cfg['trusted_proxies'] = parse_proxy_list((string)($_POST['trusted_proxies'] ?? ''));
+    foreach ($cfg['trusted_proxies'] as $proxy) {
+        if (!proxy_entry_valid((string)$proxy)) {
+            throw new RuntimeException('Trusted proxies must contain only IP addresses or CIDR ranges.');
+        }
+    }
+    if (!header_name_valid((string)($cfg['trusted_proxy_header'] ?? ''))) {
+        throw new RuntimeException('Proxy header must be a valid HTTP header name.');
+    }
+    if (($cfg['ip_mode'] ?? '') === 'trusted_proxy' && $cfg['trusted_proxies'] === []) {
+        throw new RuntimeException('Trusted proxy mode requires at least one trusted proxy.');
+    }
+    $cfg['operator_alert_interval_hours'] = parse_positive_int((string)($_POST['operator_alert_interval_hours'] ?? '2'), 'Alert interval', 1, 24);
+    $logFile = nullable_string((string)($_POST['log_file'] ?? ''));
+    if ($logFile !== null && !log_file_path_valid($logFile)) {
+        throw new RuntimeException('Log path must be empty, null, an absolute path, or a safe relative path without parent directory segments or backslashes.');
+    }
+    $cfg['log_file'] = $logFile;
+    $cfg['to_self'] = array_values(array_filter(array_map('trim', preg_split('/\R/', (string)($_POST['to_self'] ?? '')) ?: [])));
+    if (!base_url_valid((string)$cfg['base_url'])) {
+        throw new RuntimeException('Base URL must be a valid HTTPS address without query string, fragment, username, or password.');
+    }
+    if (base_url_contains_web_file((string)$cfg['base_url'], (string)$cfg['web_file'])) {
+        throw new RuntimeException('Base URL must not include the web endpoint filename. Web Endpoint is configured separately.');
+    }
+    if (!in_array($cfg['log_mode'], ['none','syslog','file','both'], true)) {
+        throw new RuntimeException('Log Mode has an invalid value.');
+    }
+    if (!in_array($cfg['ip_mode'], ['remote_addr','trusted_proxy'], true)) {
+        throw new RuntimeException('IP Handling has an invalid value.');
+    }
+    if (!timezone_valid((string)$cfg['mail_timezone'])) {
+        throw new RuntimeException('Timezone must be a valid IANA timezone such as Europe/London.');
+    }
+    foreach (['subject_reminder' => 'Subject','mail_date_format' => 'Date Format','mail_time_format' => 'Time Format'] as $key => $label) {
+        if (!single_line_text_valid((string)($cfg[$key] ?? ''))) {
+            throw new RuntimeException($label . ' must be a non-empty single-line value.');
+        }
+    }
+    if ((string)($cfg['mail_datetime_format'] ?? '') !== '' && !single_line_text_valid((string)$cfg['mail_datetime_format'])) {
+        throw new RuntimeException('Combined date/time format must be a single-line value.');
+    }
+    if (trim((string)($cfg['body_reminder'] ?? '')) === '' || !str_contains((string)$cfg['body_reminder'], '{CONFIRM_URL}')) {
+        throw new RuntimeException('The body template must include {CONFIRM_URL}.');
+    }
+    foreach (['mail_from' => 'From address','reply_to' => 'Reply-To address'] as $key => $label) {
+        $mailbox = (string)($cfg[$key] ?? '');
+        if ($mailbox !== '' && !mailbox_valid($mailbox)) {
+            throw new RuntimeException($label . ' must contain exactly one valid e-mail address, optionally with a display name.');
+        }
+    }
+    if ($cfg['to_self'] === []) {
+        throw new RuntimeException('Reminder addresses must contain at least one address.');
+    }
+    foreach ($cfg['to_self'] as $i => $entry) {
+        if (!mailbox_valid($entry)) {
+            throw new RuntimeException('Self-reminder address at line ' . ($i + 1) . ' must contain exactly one valid e-mail address.');
+        }
+    }
+    $timingErrors = timing_errors($cfg);
+    if ($timingErrors !== []) {
+        throw new RuntimeException(implode(' ', $timingErrors));
+    }
+    return $cfg;
+}
+function recipients_from_post(array $currentData = [], array &$renameSummary = [], array &$fileDeleteSummary = []): array
+{
+    $currentFiles = (array)($currentData['files'] ?? []);
+    $allowBrokenMessageRefs = (($_POST['allow_broken_message_refs'] ?? '0') === '1');
+    $allowNoRecipients = (($_POST['allow_no_recipients'] ?? '0') === '1');
+    $deletedAliases = [];
+    foreach ((array)($_POST['file_delete_alias'] ?? []) as $i => $deleteAliasRaw) {
+        $deleteAlias = trim((string)$deleteAliasRaw);
+        if ($deleteAlias === '') {
+            continue;
+        }
+        $deletePath = trim((string)(($_POST['file_delete_path'] ?? [])[$i] ?? ''));
+        if (!array_key_exists($deleteAlias, $currentFiles)) {
+            throw new RuntimeException("Unknown file alias deletion request: {$deleteAlias}");
+        }
+        $currentPath = (string)$currentFiles[$deleteAlias];
+        if ($deletePath !== $currentPath) {
+            throw new RuntimeException("File deletion path mismatch for alias {$deleteAlias}.");
+        }
+        $deletedAliases[$deleteAlias] = $currentPath;
+        $fileDeleteSummary[] = ['alias' => $deleteAlias,'path' => $currentPath,'status' => 'pending'];
+    }
+    $files = [];
+    $fileRenameMap = [];
+    $fileOriginalAliases = (array)($_POST['file_original_alias'] ?? []);
+    $fileOriginalPaths = (array)($_POST['file_original_path'] ?? []);
+    foreach ((array)($_POST['file_alias'] ?? []) as $i => $aliasRaw) {
+        $alias = trim((string)$aliasRaw);
+        $path = trim((string)(($_POST['file_path'] ?? [])[$i] ?? ''));
+        $originalAlias = trim((string)($fileOriginalAliases[$i] ?? ''));
+        $originalPath = trim((string)($fileOriginalPaths[$i] ?? ''));
+        if ($originalAlias !== '' && isset($deletedAliases[$originalAlias])) {
+            continue;
+        }
+        if ($alias === '' && $path === '') {
+            continue;
+        }
+        if ($alias === '') {
+            throw new RuntimeException('File alias is missing at row ' . ($i + 1) . '.');
+        }
+        if ($path === '') {
+            throw new RuntimeException('File path is missing at row ' . ($i + 1) . '.');
+        }
+        if (strlen($alias) > 64) {
+            throw new RuntimeException('File alias at row ' . ($i + 1) . ' must be 64 characters or fewer.');
+        }
+        if (!file_alias_valid($alias)) {
+            throw new RuntimeException('File alias at row ' . ($i + 1) . ' uses invalid characters. Allowed characters: lowercase letters, numbers, underscore, and hyphen.');
+        }
+        if (!rel_path_valid($path)) {
+            throw new RuntimeException('File path at row ' . ($i + 1) . ' must be a safe relative path below the download root.');
+        }
+        if (isset($deletedAliases[$alias])) {
+            throw new RuntimeException("Deleted file alias cannot be re-added in the same save: {$alias}");
+        }
+        if ($originalAlias !== '') {
+            if (!array_key_exists($originalAlias, $currentFiles)) {
+                throw new RuntimeException("Unknown file alias deletion request: {$originalAlias}");
+            }
+            $expectedPath = (string)$currentFiles[$originalAlias];
+            if ($originalPath !== '' && $originalPath !== $expectedPath) {
+                throw new RuntimeException("File deletion path mismatch for alias {$originalAlias}.");
+            }
+            if ($path !== $expectedPath) {
+                throw new RuntimeException("File path for alias {$originalAlias} is read-only.");
+            }
+            if ($originalAlias !== $alias) {
+                $fileRenameMap[$originalAlias] = $alias;
+            }
+        }
+        if (isset($files[$alias])) {
+            throw new RuntimeException("Duplicate file alias at row " . ($i + 1) . ": {$alias}");
+        }
+        $files[$alias] = $path;
+    }
+    $messages = [];
+    $messageRenameMap = [];
+    $messageOriginalKeys = (array)($_POST['message_original_key'] ?? []);
+    foreach ((array)($_POST['message_key'] ?? []) as $i => $keyRaw) {
+        $key = trim((string)$keyRaw);
+        $originalKey = trim((string)($messageOriginalKeys[$i] ?? ''));
+        $subject = trim((string)(($_POST['message_subject'] ?? [])[$i] ?? ''));
+        $body = trim((string)(($_POST['message_body'] ?? [])[$i] ?? ''));
+        $notice = trim((string)(($_POST['message_single_use_notice'] ?? [])[$i] ?? ''));
+        if ($key === '' && $subject === '' && $body === '') {
+            continue;
+        }
+        if (!id_valid($key) || !single_line_text_valid($subject) || $body === '') {
+            throw new RuntimeException('Message template is incomplete at row ' . ($i + 1) . '.');
+        }
+        if ($notice !== '' && !single_line_text_valid($notice)) {
+            throw new RuntimeException('Single-use notice in row ' . ($i + 1) . ' must be a single-line value.');
+        }
+        if (isset($messages[$key])) {
+            throw new RuntimeException("Duplicate message template key at row " . ($i + 1) . ": {$key}");
+        }
+        if ($originalKey !== '' && $originalKey !== $key && id_valid($originalKey)) {
+            if (isset($messageRenameMap[$originalKey]) && $messageRenameMap[$originalKey] !== $key) {
+                throw new RuntimeException("Conflicting message template rename at row " . ($i + 1) . '.');
+            }
+            $messageRenameMap[$originalKey] = $key;
+        }
+        $entry = ['subject' => $subject,'body' => $body];
+        if ($notice !== '') {
+            $entry['single_use_notice'] = $notice;
+        }
+        $messages[$key] = $entry;
+    }
+    $recipients = [];
+    $renameCounts = array_fill_keys(array_keys($messageRenameMap), 0);
+    foreach ((array)($_POST['recipient_name'] ?? []) as $i => $nameRaw) {
+        $name = trim((string)$nameRaw);
+        $address = trim((string)(($_POST['recipient_address'] ?? [])[$i] ?? ''));
+        $messageKey = trim((string)(($_POST['recipient_message_key'] ?? [])[$i] ?? ''));
+        if (!isset($messages[$messageKey]) && isset($messageRenameMap[$messageKey], $messages[$messageRenameMap[$messageKey]])) {
+            $renameCounts[$messageKey] = ($renameCounts[$messageKey] ?? 0) + 1;
+            $messageKey = $messageRenameMap[$messageKey];
+        }
+        $normal = remap_file_aliases(posted_alias_list('recipient_normal_files', (int)$i), $fileRenameMap, $deletedAliases);
+        $single = remap_file_aliases(posted_alias_list('recipient_single_files', (int)$i), $fileRenameMap, $deletedAliases);
+        if ($name === '' && $address === '' && $messageKey === '') {
+            continue;
+        }
+        if (!single_line_text_valid($name)) {
+            throw new RuntimeException("Recipient name is missing at row " . ($i + 1) . '.');
+        }
+        if (!mailbox_valid($address)) {
+            throw new RuntimeException("Recipient e-mail address is invalid at row " . ($i + 1) . '.');
+        }
+        $messageMissingAllowed = $messages === [] && $allowBrokenMessageRefs;
+        if (!isset($messages[$messageKey]) && !$messageMissingAllowed && $messages !== []) {
+            throw new RuntimeException("Recipient template is missing or unknown at row " . ($i + 1) . '.');
+        }
+        foreach (array_merge($normal, $single) as $alias) {
+            if (!isset($files[$alias])) {
+                throw new RuntimeException("Recipient {$address} references unknown file alias {$alias}.");
+            }
+        }
+        if ($single !== [] && isset($messages[$messageKey]) && trim((string)($messages[$messageKey]['single_use_notice'] ?? '')) === '') {
+            throw new RuntimeException("Message {$messageKey} needs a single-use notice.");
+        }
+        $row = [$name,$address,$messageKey];
+        if ($normal !== [] || $single !== []) {
+            $row[] = $normal;
+        }
+        if ($single !== []) {
+            if (count($row) === 3) {
+                $row[] = [];
+            }
+            $row[] = $single;
+        }
+        $recipients[] = $row;
+    }
+    if ($messages === [] && !$allowBrokenMessageRefs) {
+        throw new RuntimeException('No message templates remain. Saving this non-runtime-ready configuration needs explicit approval.');
+    }
+    if ($recipients === [] && !$allowNoRecipients) {
+        throw new RuntimeException('No recipients remain. Saving a configuration without notifications needs explicit approval.');
+    }
+    foreach ($messageRenameMap as $old => $new) {
+        if (($renameCounts[$old] ?? 0) === 0) {
+            foreach ($recipients as $recipient) {
+                if ($recipient[2] === $new) {
+                    $renameCounts[$old] = ($renameCounts[$old] ?? 0) + 1;
+                }
+            }
+        }
+        $renameSummary[] = ['old' => (string)$old,'new' => (string)$new,'count' => (int)($renameCounts[$old] ?? 0)];
+    }
+    return['files' => $files,'messages' => $messages,'recipients' => $recipients];
+}
+function alias_list(string $raw): array
+{
+    $out = [];
+    foreach (preg_split('/[,\\s]+/', trim($raw)) ?: [] as $alias) {
+        $alias = trim($alias);
+        if ($alias === '') {
+            continue;
+        }
+        if (strlen($alias) > 64) {
+            throw new RuntimeException('File aliases must be 64 characters or fewer.');
+        }
+        if (!file_alias_valid($alias)) {
+            throw new RuntimeException("Invalid file alias: {$alias}");
+        }
+        $out[] = $alias;
+    }
+    return array_values(array_unique($out));
+}
+function remap_file_aliases(array $aliases, array $renameMap, array $deletedAliases): array
+{
+    $out = [];
+    foreach ($aliases as $alias) {
+        $alias = (string)$alias;
+        if (isset($deletedAliases[$alias])) {
+            continue;
+        }
+        $out[] = (string)($renameMap[$alias] ?? $alias);
+    }
+    return array_values(array_unique($out));
+}
+function posted_alias_list(string $field, int $index): array
+{
+    $rows = $_POST[$field] ?? [];
+    if (is_array($rows) && isset($rows[$index]) && is_array($rows[$index])) {
+        return alias_list(implode(',', array_map('strval', $rows[$index])));
+    }
+    if (is_array($rows) && isset($rows[$index])) {
+        return alias_list((string)$rows[$index]);
+    }
+    return[];
+}
+function postback_alias_list(array $postback, string $field, int $index): array
+{
+    $rows = $postback[$field] ?? [];
+    if (is_array($rows) && isset($rows[$index]) && is_array($rows[$index])) {
+        return alias_list(implode(',', array_map('strval', $rows[$index])));
+    }
+    if (is_array($rows) && isset($rows[$index])) {
+        return alias_list((string)$rows[$index]);
+    }
+    return[];
+}
+function export_php_value(mixed $value, int $level = 0): string
+{
+    if (!is_array($value)) {
+        return var_export($value, true);
+    }
+    if ($value === []) {
+        return'[]';
+    }
+    $indent = str_repeat(' ', 4 * $level);
+    $childIndent = str_repeat(' ', 4 * ($level + 1));
+    $sequential = array_keys($value) === range(0, count($value) - 1);
+    $lines = ['['];
+    foreach ($value as $key => $item) {
+        $prefix = $sequential ? '' : var_export($key, true) . ' => ';
+        $lines[] = $childIndent . $prefix . export_php_value($item, $level + 1) . ',';
+    }
+    $lines[] = $indent . ']';
+    return implode("\n", $lines);
+}
+function config_section_export(array $cfg, array $keys): string
+{
+    $lines = [];
+    foreach ($keys as $key) {
+        if (array_key_exists($key, $cfg)) {
+            $lines[] = var_export($key, true) . ' => ' . export_php_value($cfg[$key]) . ',';
+        }
+    }
+    return implode("\n", $lines);
+}
+function generated_main_config_body(array $cfg): string
+{
+    unset($cfg['_config_source']);
+    $sections = [
+        'Core runtime paths' => ['base_url','state_dir','lib_file','l18n_dir_name','lock_file','log_file_name','recipients_file','state_file','web_file','web_css_file','download_base_dir'],
+        'Downloads' => ['download_valid_days','download_rate_limit_enabled','download_rate_limit_max_requests','download_rate_limit_window_seconds','download_lease_seconds'],
+        'Signing secret' => ['hmac_secret_hex'],
+        'Cycle timing' => ['check_interval_seconds','confirm_window_seconds','remind_every_seconds','escalate_grace_seconds','missed_cycles_before_fire'],
+        'Recipient receipt acknowledgement' => ['escalate_ack_enabled','escalate_ack_remind_every_seconds','escalate_ack_max_reminds'],
+        'Web security and access' => ['stealth_neutral_for_invalid','stealth_level_2_neutral_on_stale','show_success_details','web_ui_enabled','rate_limit_enabled','rate_limit_dir','rate_limit_max_requests','rate_limit_window_seconds','ip_mode','trusted_proxies','trusted_proxy_header'],
+        'Mail delivery' => ['sendmail_path','to_self','operator_alert_interval_hours','mail_from','reply_to','subject_reminder','mail_timezone','mail_date_format','mail_time_format','mail_datetime_format','body_reminder'],
+        'Logging' => ['log_mode','log_file'],
+    ];
+    $known = [];
+    $body = "<?php\n\n";
+    $body .= "declare(strict_types=1);\n\n";
+    $body .= "// Generated by totman Web UI. Runtime-compatible values are preserved,\n";
+    $body .= "// but template comments from totman.inc.dist.php are not copied.\n\n";
+    $body .= "return [\n";
+    foreach ($sections as $title => $keys) {
+        $section = config_section_export($cfg, $keys);
+        foreach ($keys as $key) {
+            $known[$key] = true;
+        }
+        if ($section !== '') {
+            $body .= "\n// {$title}\n{$section}\n";
+        }
+    }
+    $extraKeys = array_values(array_filter(array_keys($cfg), static fn(string $key): bool=>!isset($known[$key])));
+    if ($extraKeys !== []) {
+        $body .= "\n// Additional values preserved from the previous config\n" . config_section_export($cfg, $extraKeys) . "\n";
+    }
+    return $body . "];\n";
+}
+function generated_recipients_config_body(array $data): string
+{
+    $sections = ['files','messages','recipients'];
+    $body = "<?php\n\n";
+    $body .= "declare(strict_types=1);\n\n";
+    $body .= "// Generated by totman Web UI. Runtime-compatible values are preserved,\n";
+    $body .= "// but template comments from totman-recipients.dist.php are not copied.\n\n";
+    $body .= "return [\n";
+    foreach ($sections as $key) {
+        if (array_key_exists($key, $data)) {
+            $body .= "\n" . var_export($key, true) . ' => ' . export_php_value($data[$key]) . ",\n";
+        }
+    }
+    $extraKeys = array_values(array_filter(array_keys($data), static fn(string $key): bool=>!in_array($key, $sections, true)));
+    foreach ($extraKeys as $key) {
+        $body .= "\n" . var_export($key, true) . ' => ' . export_php_value($data[$key]) . ",\n";
+    }
+    return $body . "];\n";
+}
+function write_main_config(string $path, array $cfg): void
+{
+    atomic_write($path, generated_main_config_body($cfg));
+    load_array_file($path, 'written main config');
+}
+function write_recipients_config(string $path, array $data): void
+{
+    atomic_write($path, generated_recipients_config_body($data));
+    load_array_file($path, 'written recipients config');
+}
+function validate_hmac_secret(string $secret): void
+{
+    if (hmac_secret_needs_initialisation($secret) || !preg_match('/^[a-f0-9]{32,}$/i', $secret) || strlen($secret) % 2 !== 0) {
+        throw new RuntimeException('HMAC secret must be hex encoded and at least 32 characters long.');
+    }
+}
+function hmac_secret_needs_initialisation(string $secret): bool
+{
+    return in_array(trim($secret), ['','REPLACE_WITH_64_HEX_CHARS'], true);
+}
+function validate_generated_hmac_secret(): bool
+{
+    $secret = (string)($_SESSION['generated_hmac_secret'] ?? '');
+    return $secret !== '' && preg_match('/^[a-f0-9]{64}$/', $secret) === 1;
+}
+function mask_secret(string $secret): string
+{
+    if (hmac_secret_needs_initialisation($secret)) {
+        return t('Not initialised');
+    }
+    if (strlen($secret) < 18) {
+        return str_repeat('•', 12);
+    }
+    return substr($secret, 0, 8) . ' … ' . substr($secret, -8);
+}
+function make_token(string $secretHex): array
+{
+    $id = bin2hex(random_bytes(16));
+    $bin = hex2bin($secretHex);
+    if ($bin === false) {
+        throw new RuntimeException('Invalid HMAC secret.');
+    }
+    return['id' => $id,'sig' => hash_hmac('sha256', $id, $bin)];
+}
+function reset_runtime_state(array $cfg): void
+{
+    validate_hmac_secret((string)($cfg['hmac_secret_hex'] ?? ''));
+    $stateDir = rtrim((string)$cfg['state_dir'], '/');
+    $stateFile = $stateDir . '/' . basename((string)($cfg['state_file'] ?? 'totman.json'));
+    $lockFile = $stateDir . '/' . basename((string)($cfg['lock_file'] ?? 'totman.lock'));
+    $lock = fopen($lockFile, 'c+');
+    if ($lock === false) {
+        throw new RuntimeException("Could not open lock file: {$lockFile}");
+    }
+    try {
+        if (!flock($lock, LOCK_EX)) {
+            throw new RuntimeException('Could not acquire state lock.');
+        }
+        $now = time();
+        $check = max(1, (int)($cfg['check_interval_seconds'] ?? 86400));
+        $window = max(1, (int)($cfg['confirm_window_seconds'] ?? 172800));
+        $root = ['runtime' => ['version' => 1,'created_at' => $now,'last_tick_at' => $now,'cycle_start_at' => $now,'last_confirm_at' => 0,'missed_cycles' => 0,'missed_cycle_deadline' => null,'token' => make_token((string)$cfg['hmac_secret_hex']),'next_check_at' => $now + $check,'deadline_at' => $now + $check + $window,'next_reminder_at' => $now + $check,'escalation_event_at' => null,'operator_alerts' => [],'escalation_delivery' => [],'escalated_sent_at' => null,'escalate_ack_token' => null,'escalate_ack_recipients' => [],'escalate_ack_at' => null,'escalate_ack_sent_count' => 0,'escalate_ack_next_at' => null,],'downloads' => [],];
+        atomic_write($stateFile, json_encode($root, JSON_THROW_ON_ERROR));
+    } finally {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+}
+function log_path_from_config(array $cfg): string
+{
+    $path = $cfg['log_file'] ?? null;
+    if (!is_string($path) || trim($path) === '') {
+        return rtrim((string)($cfg['state_dir'] ?? ''), '/') . '/' . basename((string)($cfg['log_file_name'] ?? 'totman.log'));
+    }
+    return $path;
+}
+function log_path_is_renderable(string $path, string $stateDir): bool
+{
+    $base = basename($path);
+    if ($path === '' || $stateDir === '' || is_dir($path) || str_starts_with($base, '.')) {
+        return false;
+    }
+    if (preg_match('/\.(php|phtml|phar|bak)$/i', $base)) {
+        return false;
+    }
+    if (preg_match('/(secret|password|credential|token|key|backup)/i', $base)) {
+        return false;
+    }
+    return path_is_inside_dir($path, $stateDir);
+}
+function safe_log_lines(array $cfg): array
+{
+    return (array)safe_log_page($cfg)['lines'];
+}
+function safe_log_page(array $cfg, ?int $before = null, int $limit = UI_LOG_PAGE_LINES): array
+{
+    $path = log_path_from_config($cfg);
+    $stateDir = (string)($cfg['state_dir'] ?? '');
+    if (!log_path_is_renderable($path, $stateDir)) {
+        return['lines' => [t('# Log path is outside the safe display area.')],'next_before' => 0,'has_more' => false];
+    }
+    if (!is_file($path) || !is_readable($path)) {
+        return['lines' => [t('# Log file is not readable here.')],'next_before' => 0,'has_more' => false];
+    }
+    $limit = max(1, min($limit, UI_LOG_MAX_PAGE_LINES));
+    $size = filesize($path);
+    if ($size === false || $size <= 0) {
+        return['lines' => [],'next_before' => 0,'has_more' => false];
+    }
+    $before = $before === null || $before <= 0 ? $size : min($before, $size);
+    return reverse_log_page($path, $before, $limit, $size);
+}
+function reverse_log_page(string $path, int $before, int $limit, int $size): array
+{
+    $fh = fopen($path, 'rb');
+    if (!is_resource($fh)) {
+        return['lines' => [t('# Log file is not readable here.')],'next_before' => 0,'has_more' => false];
+    }
+    $pos = max(0, min($before, $size));
+    $carry = '';
+    $lines = [];
+    $skipTrailingEmpty = true;
+    while ($pos > 0 && count($lines) <= $limit) {
+        $read = min(8192, $pos);
+        $pos -= $read;
+        fseek($fh, $pos);
+        $chunk = (string)fread($fh, $read);
+        $data = $chunk . $carry;
+        $parts = explode("\n", $data);
+        $first = '';
+        if ($pos > 0) {
+            $first = (string)array_shift($parts);
+            $carry = $first;
+        } else {
+            $carry = '';
+        }
+        $lineStart = $pos + ($pos > 0 ? strlen($first) + 1 : 0);
+        $complete = [];
+        foreach ($parts as $part) {
+            $complete[] = ['start' => $lineStart,'text' => rtrim($part, "\r")];
+            $lineStart += strlen($part) + 1;
+        }
+        for ($i = count($complete) - 1; $i >= 0; $i--) {
+            if ($skipTrailingEmpty && $complete[$i]['text'] === '' && $i === count($complete) - 1) {
+                $skipTrailingEmpty = false;
+                continue;
+            }
+            $skipTrailingEmpty = false;
+            $lines[] = $complete[$i];
+            if (count($lines) > $limit) {
+                break 2;
+            }
+        }
+    }
+    fclose($fh);
+    if ($lines === [] && $carry !== '') {
+        $lines[] = ['start' => 0,'text' => rtrim($carry, "\r")];
+    }
+    $hasMore = count($lines) > $limit;
+    if ($hasMore) {
+        array_pop($lines);
+    }
+    $nextBefore = $hasMore && $lines !== [] ? (int)$lines[count($lines) - 1]['start'] : 0;
+    return['lines' => array_map(static fn(array $line): string=>(string)$line['text'], $lines),'next_before' => $nextBefore,'has_more' => $hasMore];
+}
+function path_is_inside_dir(string $path, string $dir): bool
+{
+    $realDir = realpath($dir);
+    $pathDir = realpath(dirname($path));
+    if ($realDir === false || $pathDir === false) {
+        return false;
+    }
+    $realDir = rtrim($realDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+    $pathDir = rtrim($pathDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+    return str_starts_with($pathDir, $realDir);
+}
+function dir_is_inside_dir(string $child, string $parent): bool
+{
+    $realParent = realpath($parent);
+    $realChild = realpath($child);
+    if ($realParent === false || $realChild === false) {
+        return false;
+    }
+    $realParent = rtrim($realParent, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+    $realChild = rtrim($realChild, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+    return str_starts_with($realChild, $realParent);
+}
+function clear_activity_log(array $cfg): void
+{
+    $path = log_path_from_config($cfg);
+    if ($path === '' || is_dir($path)) {
+        throw new RuntimeException("Invalid log path: {$path}");
+    }
+    $dir = dirname($path);
+    if (!is_dir($dir) || !is_writable($dir)) {
+        throw new RuntimeException("Log directory is not writable: {$dir}");
+    }
+    if (!path_is_inside_dir($path, (string)($cfg['state_dir'] ?? ''))) {
+        throw new RuntimeException('The activity log can only be cleared when the log file is inside the configured data directory. The log must be moved there or external logs cleared with hosting tools.');
+    }
+    if (!log_path_is_renderable($path, (string)($cfg['state_dir'] ?? ''))) {
+        throw new RuntimeException('The activity log path is not safe for maintenance here. A log file inside the data directory with a non-sensitive filename is required.');
+    }
+    if (is_file($path) && !is_writable($path)) {
+        throw new RuntimeException("Log file is not writable: {$path}");
+    }
+    $fh = fopen($path, 'c');
+    if ($fh === false) {
+        throw new RuntimeException("Could not open log file: {$path}");
+    }
+    try {
+        if (!flock($fh, LOCK_EX)) {
+            throw new RuntimeException("Could not lock log file: {$path}");
+        }
+        if (!ftruncate($fh, 0)) {
+            throw new RuntimeException("Could not clear log file: {$path}");
+        }
+        fflush($fh);
+        flock($fh, LOCK_UN);
+    } finally {
+        fclose($fh);
+    }
+}
+function rotate_hmac_with_rollback(string $mainPath, array $newCfg): void
+{
+    $stateDir = rtrim((string)$newCfg['state_dir'], '/');
+    $statePath = $stateDir . '/' . basename((string)($newCfg['state_file'] ?? 'totman.json'));
+    $mainBackup = backup_file($mainPath);
+    $stateBackup = backup_file($statePath);
+    try {
+        write_main_config($mainPath, $newCfg);
+        reset_runtime_state($newCfg);
+    } catch (Throwable $e) {
+        try {
+            restore_file($mainBackup, $mainPath);
+            restore_file($stateBackup, $statePath);
+        } catch (Throwable $restoreError) {
+            throw new RuntimeException('HMAC rotation failed and rollback also failed: ' . $restoreError->getMessage(), 0, $e);
+        }
+        throw new RuntimeException('HMAC rotation failed; previous configuration was restored. Original error: ' . $e->getMessage(), 0, $e);
+    }
+}
+function preflight_checks(array $ui, ?array $main, ?array $recips, ?array $state): array
+{
+    $checks = [];
+    $stateDir = '';
+    try {
+        $stateDir = state_dir_from_ui($ui);
+        $checks[] = ['ok',t('Data directory'),t('Using {path}', ['path' => $stateDir]),t('No action needed.')];
+        $checks[] = [is_writable($stateDir) ? 'ok' : 'error',t('Data directory writes'),is_writable($stateDir) ? t('Writable by PHP.') : t('PHP cannot write to this directory.'),t('Make the configured data directory writable by PHP.')];
+        $documentRoot = (string)($_SERVER['DOCUMENT_ROOT'] ?? '');
+        if ($documentRoot !== '' && is_dir($documentRoot) && dir_is_inside_dir($stateDir, $documentRoot)) {
+            $checks[] = ['error',t('Data directory exposure'),t('The data directory appears to be inside the public web root.'),t('state_dir should be outside the web root. If that is impossible, direct web access to the data directory and its backups must be blocked in the hosting panel.')];
+        } else {
+            $checks[] = ['ok',t('Data directory exposure'),t('Data directory is not inside the detected web root.'),t('No action needed.')];
+        }
+        $backupDir = rtrim($stateDir, '/') . '/.totman-ui-backups';
+        $backupWritable = !is_dir($backupDir) || is_writable($backupDir);
+        $backupDetail = !is_dir($backupDir) ? t('Backup folder will be created on first save.') : ($backupWritable ? t('Backups are retained locally with restricted file permissions.') : t('Backup folder exists but PHP cannot write to it.'));
+        $checks[] = [$backupWritable ? 'ok' : 'error',t('Backup storage'),$backupDetail,t('The backup folder should stay outside public web access; old backups should be pruned regularly.')];
+    } catch (Throwable $e) {
+        $checks[] = ['error',t('Data directory'),$e->getMessage(),t('state_dir in the generated UI config must point to the folder that contains the existing configuration files.')];
+    }
+    $checks[] = [secure_cookie_enabled() ? 'ok' : 'warn',t('Session cookie'),secure_cookie_enabled() ? t('Secure cookie mode is active.') : t('Secure cookie mode is not active.'),t('Production requires HTTPS or TOTMAN_UI_SECURE_COOKIE=1 behind a TLS proxy.')];
+    if ($main) {
+        $cfg = $main['config'];
+        $checks[] = config_file_pair_check('Main configuration files', (string)$main['live_path'], (string)$main['dist_path']);
+        $secret = (string)($cfg['hmac_secret_hex'] ?? '');
+        $checks[] = [hmac_secret_needs_initialisation($secret) ? 'error' : 'ok',t('HMAC secret'),hmac_secret_needs_initialisation($secret) ? t('A real HMAC secret must be generated and rotated before saving live configuration.') : t('Configured.'),t('Secret generation and HMAC rotation are required.')];
+        if (base_url_contains_web_file((string)($cfg['base_url'] ?? ''), (string)($cfg['web_file'] ?? ''))) {
+            $checks[] = ['error',t('Web address (HTTPS)'),t('Base URL includes the web endpoint filename: {file}.', ['file' => basename((string)$cfg['web_file'])]),t('{file} must be removed from Base URL. The runtime appends Web Endpoint automatically.', ['file' => basename((string)$cfg['web_file'])])];
+        }
+        $statePath = rtrim((string)$cfg['state_dir'], '/') . '/' . basename((string)($cfg['state_file'] ?? 'totman.json'));
+        $checks[] = [$state ? 'ok' : 'warn',t('Cycle data'),$state ? t('Cycle data is readable.') : t('Cycle data file is not initialised yet: {path}', ['path' => $statePath]),t('Cycle data is created by HMAC rotation or the first confirmation-endpoint request.')];
+        $sendmail = (string)($cfg['sendmail_path'] ?? '');
+        $checks[] = [is_file($sendmail) && is_executable($sendmail) ? 'ok' : 'error',t('Sendmail'),is_file($sendmail) && is_executable($sendmail) ? t('Sendmail is executable.') : t('Sendmail path is not executable: {path}', ['path' => $sendmail]),t('Correct sendmail path or sendmail installation/configuration is required on the server.')];
+        $downloadDir = (string)($cfg['download_base_dir'] ?? '');
+        $checks[] = [is_dir($downloadDir) && is_readable($downloadDir) ? 'ok' : 'error',t('Download directory'),is_dir($downloadDir) && is_readable($downloadDir) ? t('Readable.') : t('Directory is missing or unreadable: {path}', ['path' => $downloadDir]),t('Create the directory and upload files manually, then make it readable by PHP.')];
+        $logPath = $cfg['log_file'] ?? null;
+        if (!is_string($logPath) || trim($logPath) === '') {
+            $logPath = rtrim((string)$cfg['state_dir'], '/') . '/' . basename((string)($cfg['log_file_name'] ?? 'totman.log'));
+        }
+        if (is_string($cfg['log_file'] ?? null) && trim((string)$cfg['log_file']) !== '' && !str_starts_with(trim((string)$cfg['log_file']), '/')) {
+            $checks[] = ['warn',t('Log target'),t('Relative log path is accepted by the runtime: {path}', ['path' => (string)$cfg['log_file']]),t('An absolute path inside the data directory is required for Web UI display or clearing.')];
+        }
+        $logDir = dirname($logPath);
+        $checks[] = [is_dir($logDir) && is_writable($logDir) ? 'ok' : 'warn',t('Log target'),is_dir($logDir) && is_writable($logDir) ? t('Log directory is writable.') : t('Log directory permissions require review: {path}', ['path' => $logDir]),t('Create the log directory or adjust permissions for the PHP user.')];
+        if (is_dir($logDir) && !path_is_inside_dir($logPath, (string)($cfg['state_dir'] ?? ''))) {
+            $checks[] = ['warn',t('Log target'),t('The configured log file is outside the data directory.'),t('External log files are not cleared here. The log must be inside the data directory, or external logs must be cleared with hosting tools.')];
+        }
+        $checks[] = [log_path_is_renderable($logPath, (string)($cfg['state_dir'] ?? '')) ? 'ok' : 'warn',t('Log display'),log_path_is_renderable($logPath, (string)($cfg['state_dir'] ?? '')) ? t('Activity log can be displayed safely.') : t('Activity log is outside the safe display area.'),t('The log should be inside the data directory and avoid PHP, backup, dotfile, secret, token, or key filenames.')];
+    }
+    if ($main && $recips) {
+        $missing = missing_file_aliases($main['config'], $recips['data']);
+        $checks[] = [$missing === [] ? 'ok' : 'error',t('File aliases'),$missing === [] ? t('Configured file aliases resolve to readable files.') : t('Missing or unreadable aliases: {aliases}', ['aliases' => implode(', ', $missing)]),t('Upload the files manually below download_base_dir or adjust the alias paths.')];
+        $checks[] = config_file_pair_check('Recipient configuration files', (string)$recips['live_path'], (string)$recips['dist_path']);
+    }
+    return $checks;
+}
+function config_file_pair_check(string $label, string $livePath, string $distPath): array
+{
+    $live = basename($livePath);
+    $dist = basename($distPath);
+    $liveExists = is_file($livePath);
+    $distExists = is_file($distPath);
+    if ($liveExists && $distExists) {
+        return['ok',t($label),t('Live and template files exist: {live}, {dist}.', ['live' => $live,'dist' => $dist]),t('No action needed.')];
+    }
+    if ($liveExists) {
+        return['warn',t($label),t('Live file exists, template is missing: {live}.', ['live' => $live]),t('Template recovery requires the installation package. Existing live values remain active.')];
+    }
+    if ($distExists) {
+        return['warn',t($label),t('Template exists, live file will be created on save: {dist}.', ['dist' => $dist]),t('The next successful save creates the live file from the template-backed values.')];
+    }
+    return['error',t($label),t('No live or template file was found.'),t('Restore the live file or template from backup or installation package before the Web UI can manage this configuration.')];
+}
+function preflight_summary(array $checks): array
+{
+    $summary = ['ok' => 0,'warn' => 0,'error' => 0];
+    foreach ($checks as $check) {
+        $status = (string)($check[0] ?? 'warn');
+        if (isset($summary[$status])) {
+            $summary[$status]++;
+        }
+    }
+    return $summary;
+}
+function missing_file_aliases(array $cfg, array $data): array
+{
+    $base = rtrim((string)($cfg['download_base_dir'] ?? ''), '/');
+    if ($base === '' || !is_dir($base)) {
+        return array_keys((array)($data['files'] ?? []));
+    }
+    $missing = [];
+    foreach ((array)($data['files'] ?? []) as $alias => $relPath) {
+        $path = $base . '/' . ltrim((string)$relPath, '/');
+        if (!is_file($path) || !is_readable($path)) {
+            $missing[] = (string)$alias;
+        }
+    }
+    return $missing;
+}
+function with_totman_lock(array $cfg, callable $callback): mixed
+{
+    $stateDir = rtrim((string)($cfg['state_dir'] ?? ''), '/');
+    $lockFile = $stateDir . '/' . basename((string)($cfg['lock_file'] ?? 'totman.lock'));
+    $lock = fopen($lockFile, 'c+');
+    if ($lock === false) {
+        throw new RuntimeException("Could not open lock file: {$lockFile}");
+    }
+    try {
+        if (!flock($lock, LOCK_EX)) {
+            throw new RuntimeException('Could not acquire state lock.');
+        }
+        return $callback();
+    } finally {
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+}
+function safe_download_delete_path(array $cfg, string $alias, string $relativePath): ?string
+{
+    if (!rel_path_valid($relativePath)) {
+        throw new RuntimeException("Download file for alias {$alias} is not safe to delete.");
+    }
+    $base = realpath(rtrim((string)($cfg['download_base_dir'] ?? ''), '/'));
+    if ($base === false || !is_dir($base) || !is_readable($base)) {
+        throw new RuntimeException("Download file for alias {$alias} is not safe to delete.");
+    }
+    $base = rtrim($base, DIRECTORY_SEPARATOR);
+    $candidate = $base . DIRECTORY_SEPARATOR . ltrim(str_replace('\\', '/', $relativePath), '/');
+    if (is_link($candidate) || is_dir($candidate)) {
+        throw new RuntimeException("Download file for alias {$alias} is not safe to delete.");
+    }
+    $real = realpath($candidate);
+    if ($real === false) {
+        return null;
+    }
+    if (!is_file($real) || is_link($real)) {
+        throw new RuntimeException("Download file for alias {$alias} is not safe to delete.");
+    }
+    $realBase = $base . DIRECTORY_SEPARATOR;
+    if (!str_starts_with($real, $realBase)) {
+        throw new RuntimeException("Download file for alias {$alias} is not safe to delete.");
+    }
+    $name = basename($real);
+    if (str_starts_with($name, '.') || preg_match('/\.(php|phtml|phar)$/i', $name) || preg_match('/(secret|password|credential|token|key|backup)/i', $name)) {
+        throw new RuntimeException("Download file for alias {$alias} is not safe to delete.");
+    }
+    if (!is_writable(dirname($real))) {
+        throw new RuntimeException("Could not delete download file for alias {$alias}: {$relativePath}");
+    }
+    return $real;
+}
+function delete_download_alias_files(array $cfg, array &$deleteSummary): void
+{
+    foreach ($deleteSummary as &$item) {
+        $alias = (string)($item['alias'] ?? '');
+        $path = (string)($item['path'] ?? '');
+        $deletePath = safe_download_delete_path($cfg, $alias, $path);
+        if ($deletePath === null) {
+            $item['status'] = 'missing';
+            continue;
+        }
+        if (!unlink($deletePath)) {
+            throw new RuntimeException("Could not delete download file for alias {$alias}: {$path}");
+        }
+        $item['status'] = 'deleted';
+    }
+    unset($item);
+}
+function flash(string $type, string $message, string $scope = 'global'): void
+{
+    $_SESSION['flash'][] = ['type' => $type,'message' => $message,'scope' => $scope];
+}
+function take_flash(): array
+{
+    $items = $_SESSION['flash'] ?? [];
+    unset($_SESSION['flash']);
+    return is_array($items) ? $items : [];
+}
+function take_postback(string $key): array
+{
+    $sessionKey = 'postback_' . $key;
+    $value = $_SESSION[$sessionKey] ?? [];
+    unset($_SESSION[$sessionKey]);
+    return is_array($value) ? $value : [];
+}
+function apply_main_postback(array $cfg, array $post): array
+{
+    $view = $cfg;
+    foreach (['base_url','download_base_dir','sendmail_path','mail_from','reply_to','subject_reminder','mail_timezone','mail_date_format','mail_time_format','mail_datetime_format','body_reminder','log_mode','ip_mode','trusted_proxy_header','rate_limit_dir','log_file','lib_file','l18n_dir_name','lock_file','log_file_name','state_file','web_file','web_css_file',] as $key) {
+        if (array_key_exists($key, $post)) {
+            $view[$key] = trim((string)$post[$key]);
+        }
+    }
+    foreach (['download_rate_limit_enabled','escalate_ack_enabled','stealth_neutral_for_invalid','stealth_level_2_neutral_on_stale','show_success_details','rate_limit_enabled','web_ui_enabled',] as $key) {
+        if (array_key_exists($key, $post)) {
+            $view[$key] = ((string)$post[$key] === '1');
+        }
+    }
+    foreach (['rate_limit_max_requests','download_rate_limit_max_requests','missed_cycles_before_fire','escalate_ack_max_reminds','operator_alert_interval_hours'] as $key) {
+        if (array_key_exists($key, $post)) {
+            $view[$key] = (string)$post[$key];
+        }
+    }
+    if (array_key_exists('trusted_proxies', $post)) {
+        $view['trusted_proxies'] = (string)$post['trusted_proxies'];
+    }
+    if (array_key_exists('to_self', $post)) {
+        $view['to_self'] = preg_split('/\R/', (string)$post['to_self']) ?: [];
+    }
+    foreach (['check_interval_seconds','confirm_window_seconds','remind_every_seconds','escalate_grace_seconds','escalate_ack_remind_every_seconds','download_valid_days','download_rate_limit_window_seconds','download_lease_seconds','rate_limit_window_seconds'] as $key) {
+        if (array_key_exists($key . '_value', $post) && array_key_exists($key . '_unit', $post)) {
+            try {
+                $view[$key] = duration_from_parts((string)$post[$key . '_value'], (string)$post[$key . '_unit']);
+            } catch (Throwable) {
+                continue;
+            }
+        }
+    }
+    if (isset($view['download_valid_days'])) {
+        $view['download_valid_days'] = max(1, (int)ceil(((int)$view['download_valid_days']) / 86400));
+    }
+    return $view;
+}
+function action_flash_scope(string $action): string
+{
+    return match ($action) {
+        'save_main'=>'config','save_recipients'=>'recipients','generate_hmac','rotate_hmac'=>'hmac','reset_runtime','clear_activity_log'=>'logs','recover_state_dir'=>'recovery',default=>'global',
+    };
+}
+function posted_config_flash_scope(): string
+{
+    $scope = (string)($_POST['config_flash_scope'] ?? 'config-core');
+    return in_array($scope, ['config-core','config-security','config-downloads','config-logging','config-runtime','config-timing','config-mail','config-format','config-reminder','hmac',], true) ? $scope : 'config-core';
+}
+function main_config_flash_scope(string $message): string
+{
+    $message = strtolower($message);
+    if (str_contains($message, 'hmac')) {
+        return'hmac';
+    }
+    if (str_contains($message, 'base url') || str_contains($message, 'main config changed') || str_contains($message, 'data directory')) {
+        return'config-core';
+    }
+    if (str_contains($message, 'filename') || str_contains($message, 'lib_file') || str_contains($message, 'state_file') || str_contains($message, 'web_file')) {
+        return'config-runtime';
+    }
+    if (str_contains($message, 'download')) {
+        return'config-downloads';
+    }
+    if (str_contains($message, 'rate limit directory') || str_contains($message, 'rate_limit') || str_contains($message, 'web ui') || str_contains($message, 'web_ui') || str_contains($message, 'web maximum requests') || str_contains($message, 'web rate') || str_contains($message, 'invalid ip mode') || str_contains($message, 'trusted') || str_contains($message, 'proxy')) {
+        return'config-security';
+    }
+    if (str_contains($message, 'log') || str_contains($message, 'alert interval')) {
+        return'config-logging';
+    }
+    if (str_contains($message, 'timezone') || str_contains($message, 'date') || str_contains($message, 'time format')) {
+        return'config-format';
+    }
+    if (str_contains($message, 'self-recipient') || str_contains($message, 'reminder addresses') || str_contains($message, 'sendmail') || str_contains($message, 'from address') || str_contains($message, 'reply-to')) {
+        return'config-mail';
+    }
+    if (str_contains($message, 'body template') || str_contains($message, 'reminder') || str_contains($message, 'confirmation window') || str_contains($message, 'check interval') || str_contains($message, 'check_interval') || str_contains($message, 'confirm_window') || str_contains($message, 'remind_every') || str_contains($message, 'escalate') || str_contains($message, 'missed_cycles') || str_contains($message, 'duration') || str_contains($message, 'tolerance')) {
+        return'config-timing';
+    }
+    return posted_config_flash_scope();
+}
+function redirect_after_post(string $action, string $scope = ''): never
+{
+    header('Location: ' . strtok((string)$_SERVER['REQUEST_URI'], '?'));
+    exit;
+}
+function duration_value(array $cfg, string $key): string
+{
+    return format_duration((int)($cfg[$key] ?? 0));
+}
+function checked(bool $value): string
+{
+    return $value ? ' checked' : '';
+}
+function current_script_name(): string
+{
+    if (PHP_SAPI === 'cli') {
+        return UI_DISTRIBUTED_FILE;
+    }
+    return basename((string)($_SERVER['SCRIPT_NAME'] ?? UI_DISTRIBUTED_FILE)) ?: UI_DISTRIBUTED_FILE;
+}
+function asset_url(string $asset): string
+{
+    return current_script_name() . '?totman_ui_asset=' . rawurlencode($asset) . '&v=' . pwa_version();
+}
+function pwa_version(): string
+{
+    $hash = hash_file('sha256', __FILE__);
+    if (!is_string($hash)) {
+        $hash = hash('sha256', __FILE__);
+    }
+    return substr($hash, 0, 12);
+}
+function pwa_url(string $target): string
+{
+    return current_script_name() . '?pwa=' . rawurlencode($target) . '&v=' . pwa_version();
+}
+function pwa_response(string $target): void
+{
+    header('X-Content-Type-Options: nosniff');
+    if ($target === 'manifest') {
+        header('Content-Type: application/manifest+json; charset=UTF-8');
+        header('Cache-Control: public, max-age=31536000, immutable');
+        echo json_encode(pwa_manifest(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    if ($target === 'icon-192' || $target === 'icon-512') {
+        header('Content-Type: image/png');
+        header('Cache-Control: public, max-age=31536000, immutable');
+        echo pwa_icon_png($target === 'icon-512' ? 512 : 192);
+        exit;
+    }
+    if ($target === 'sw') {
+        header('Content-Type: application/javascript; charset=UTF-8');
+        header('Cache-Control: no-cache, max-age=0');
+        echo pwa_service_worker();
+        exit;
+    }
+    http_response_code(404);
+    header('Content-Type: text/plain; charset=UTF-8');
+    header('Cache-Control: no-store, max-age=0');
+    echo'Not found';
+    exit;
+}
+function json_response(array $payload, int $status = 200): void
+{
+    http_response_code($status);
+    header('Content-Type: application/json; charset=UTF-8');
+    header('Cache-Control: no-store, max-age=0');
+    header('Pragma: no-cache');
+    header('X-Content-Type-Options: nosniff');
+    echo json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+    exit;
+}
+function pwa_manifest(): array
+{
+    $script = current_script_name();
+    return['name' => 'totman','short_name' => 'totman','description' => 'A deadman’s switch for e-mail configuration.','id' => $script,'start_url' => $script,'scope' => './','display' => 'standalone','theme_color' => '#c1121f','background_color' => '#0b0f1a','icons' => [['src' => pwa_url('icon-192'),'sizes' => '192x192','type' => 'image/png','purpose' => 'any maskable',],['src' => pwa_url('icon-512'),'sizes' => '512x512','type' => 'image/png','purpose' => 'any maskable',],],];
+}
+function pwa_icon_png(int $size): string
+{
+    $logo = base64_decode(substr(LOGO_DATA_URI, strlen('data:image/png;base64,')), true) ?: '';
+    if ($size === 192) {
+        return $logo;
+    }
+    return pwa_scaled_logo_png($logo, 512) ?: pwa_generated_icon_png(512);
+}
+function pwa_scaled_logo_png(string $logo, int $size): string
+{
+    if ($logo === '' || !function_exists('imagecreatefromstring') || !function_exists('imagecreatetruecolor')) {
+        return'';
+    }
+    $source = imagecreatefromstring($logo);
+    if ($source === false) {
+        return'';
+    }
+    $target = imagecreatetruecolor($size, $size);
+    if ($target === false) {
+        return'';
+    }
+    imagealphablending($target, false);
+    imagesavealpha($target, true);
+    $transparent = imagecolorallocatealpha($target, 0, 0, 0, 127);
+    if ($transparent !== false) {
+        imagefilledrectangle($target, 0, 0, $size, $size, $transparent);
+    }
+    imagecopyresampled($target, $source, 0, 0, 0, 0, $size, $size, imagesx($source), imagesy($source));
+    ob_start();
+    imagepng($target);
+    $png = (string)ob_get_clean();
+    return $png;
+}
+function pwa_png_chunk(string $type, string $data): string
+{
+    return pack('N', strlen($data)) . $type . $data . pack('N', crc32($type . $data));
+}
+function pwa_generated_icon_png(int $size): string
+{
+    $raw = '';
+    $stemMin = (int)round($size * 0.45);
+    $stemMax = (int)round($size * 0.56);
+    $barMinY = (int)round($size * 0.22);
+    $barMaxY = (int)round($size * 0.33);
+    $barMinX = (int)round($size * 0.30);
+    $barMaxX = (int)round($size * 0.70);
+    $stemMaxY = (int)round($size * 0.78);for ($y = 0; $y < $size; $y++) {
+        $row = "\0";for ($x = 0; $x < $size; $x++) {
+            $edge = min($x, $y, $size - 1 - $x, $size - 1 - $y);
+            $r = $edge < $size * 0.04 ? 125 : 193;
+            $g = $edge < $size * 0.04 ? 10 : 18;
+            $b = $edge < $size * 0.04 ? 22 : 31;
+            $inStem = $x >= $stemMin && $x <= $stemMax && $y >= $barMinY && $y <= $stemMaxY;
+            $inBar = $x >= $barMinX && $x <= $barMaxX && $y >= $barMinY && $y <= $barMaxY;
+            if ($inStem || $inBar) {
+                $r = 255;
+                $g = 255;
+                $b = 255;
+            }
+            $row .= chr($r) . chr($g) . chr($b) . "\xff";
+        }
+        $raw .= $row;
+    }
+    $png = "\x89PNG\r\n\x1a\n";
+    $png .= pwa_png_chunk('IHDR', pack('NNCCCCC', $size, $size, 8, 6, 0, 0, 0));
+    $compressed = gzcompress($raw, 9);
+    if (!is_string($compressed)) {
+        return'';
+    }
+    $png .= pwa_png_chunk('IDAT', $compressed);
+    return $png . pwa_png_chunk('IEND', '');
+}
+function pwa_service_worker(): string
+{
+    $cacheName = 'totman-pwa-' . pwa_version();
+    $staticUrls = json_encode([pwa_url('manifest'),pwa_url('icon-192'),pwa_url('icon-512'),], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
+    $offlineHtml = json_encode('<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>totman offline</title><body><main style="font-family:system-ui,sans-serif;margin:2rem;line-height:1.5"><h1>totman</h1><p>Offline. Eine Verbindung zum Server ist erforderlich.</p><p>Offline. A server connection is required.</p></main></body></html>', JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);return<<<JS
+const CACHE_NAME = '{$cacheName}';
+const STATIC_URLS = {$staticUrls};
+const OFFLINE_HTML = {$offlineHtml};
+
+self.addEventListener('install', event => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then(cache => cache.addAll(STATIC_URLS))
+      .then(() => self.skipWaiting())
+  );
+});
+
+self.addEventListener('activate', event => {
+  event.waitUntil(
+    caches.keys()
+      .then(keys => Promise.all(keys
+        .filter(key => key.startsWith('totman-pwa-') && key !== CACHE_NAME)
+        .map(key => caches.delete(key))))
+      .then(() => self.clients.claim())
+  );
+});
+
+self.addEventListener('fetch', event => {
+  const request = event.request;
+  if (request.method !== 'GET') return;
+  const url = new URL(request.url);
+  if (url.origin !== self.location.origin) return;
+  const pwaTarget = url.searchParams.get('pwa');
+  if (['manifest', 'icon-192', 'icon-512'].includes(pwaTarget)) {
+    event.respondWith(
+      caches.match(request).then(cached => cached || fetch(request).then(response => {
+        if (response.ok) {
+          const copy = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
+        }
+        return response;
+      }))
+    );
+    return;
+  }
+  if (request.mode === 'navigate') {
+    event.respondWith(
+      fetch(request).catch(() => new Response(OFFLINE_HTML, {
+        status: 503,
+        headers: {
+          'Content-Type': 'text/html; charset=UTF-8',
+          'Cache-Control': 'no-store, max-age=0'
+        }
+      }))
+    );
+  }
+});
+JS;
+}
+$action = (string)($_POST['action'] ?? $_GET['action'] ?? '');
+try {
+    $redirectScope = '';
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        require_csrf();
+        if (!in_array($action, ['setup','login','set_language','logout'], true)) {
+            enforce_session_lifetime();
+        }
+        if ($action !== 'logout' && ui_is_configured($uiConfig) && configured_web_ui_enabled_state($uiConfig) === false) {
+            throw new RuntimeException('Web UI access is disabled. Set web_ui_enabled to true in the effective main config before using totman-ui.php.');
+        }
+        if ($action === 'set_language') {
+            $_SESSION['ui_lang'] = normalise_lang((string)($_POST['ui_lang'] ?? 'en'));
+            if ($uiConfig) {
+                $uiConfig['ui_lang'] = $_SESSION['ui_lang'];
+                ui_write_config($uiConfig);
+            }
+            header('Location: ' . strtok((string)$_SERVER['REQUEST_URI'], '?'));
+            exit;
+        }
+        if ($action === 'setup') {
+            if (ui_is_configured($uiConfig)) {
+                throw new RuntimeException('Setup is already locked. Existing access or server-side recovery is required.');
+            }
+            $stateDir = rtrim((string)($_POST['setup_state_dir'] ?? ''), '/');
+            require_web_ui_enabled($stateDir);
+            setup_throttle_assert($uiConfig);
+            try {
+                require_setup_code(trim((string)($_POST['setup_code'] ?? '')));
+            } catch (Throwable $e) {
+                $uiConfig = setup_throttle_record($uiConfig);
+                throw new RuntimeException('Setup failed. Setup code and form values require review.');
+            }
+            $username = trim((string)($_POST['setup_user'] ?? ''));
+            $password = (string)($_POST['setup_password'] ?? '');
+            $passwordConfirm = (string)($_POST['setup_password_confirm'] ?? $password);
+            if ($username === '' || strlen($password) < 10) {
+                throw new RuntimeException('Setup needs a username and a password with at least 10 characters.');
+            }
+            if (!hash_equals($password, $passwordConfirm)) {
+                throw new RuntimeException('Password confirmation does not match.');
+            }
+            ensure_setup_state_dir($stateDir);
+            ui_write_config(['username' => $username,'password_hash' => password_hash($password, PASSWORD_DEFAULT),'state_dir' => $stateDir,'ui_lang' => current_lang(),'setup_locked' => true,'setup_code_used_at' => gmdate('c'),'created_at' => gmdate('c'),]);
+            mark_authenticated($username);
+            flash('ok', 'Setup saved.');
+            header('Location: ' . strtok((string)$_SERVER['REQUEST_URI'], '?'));
+            exit;
+        }
+        if ($action === 'login') {
+            $uiConfig = ui_load_config();
+            $username = trim((string)($_POST['username'] ?? ''));
+            $password = (string)($_POST['password'] ?? '');
+            $_SESSION['last_login_username'] = $username;
+            if (ui_is_configured($uiConfig)) {
+                login_throttle_assert($uiConfig, $username);
+            }
+            if (!ui_is_configured($uiConfig) || !hash_equals((string)$uiConfig['username'], $username) || !password_verify($password, (string)$uiConfig['password_hash'])) {
+                auth_failure_delay();
+                if (ui_is_configured($uiConfig)) {
+                    $uiConfig = login_throttle_record($uiConfig, $username);
+                }
+                throw new RuntimeException('Login failed.');
+            }
+            $uiConfig = login_throttle_clear($uiConfig, $username);
+            if (password_needs_rehash((string)$uiConfig['password_hash'], PASSWORD_DEFAULT)) {
+                $uiConfig['password_hash'] = password_hash($password, PASSWORD_DEFAULT);
+                $uiConfig['updated_at'] = gmdate('c');
+                ui_write_config($uiConfig);
+            }
+            mark_authenticated($username);
+            unset($_SESSION['last_login_username']);
+            flash('ok', 'Signed in.');
+            header('Location: ' . strtok((string)$_SERVER['REQUEST_URI'], '?'));
+            exit;
+        }
+        if ($action === 'logout') {
+            $_SESSION = [];
+            session_destroy();
+            header('Location: ' . strtok((string)$_SERVER['REQUEST_URI'], '?'));
+            exit;
+        }
+        if (ui_is_configured($uiConfig) && configured_web_ui_enabled_state($uiConfig) === false) {
+            throw new RuntimeException('Web UI access is disabled. Set web_ui_enabled to true in the effective main config before using totman-ui.php.');
+        }
+        if (empty($_SESSION['authenticated']) || !ui_is_configured($uiConfig)) {
+            throw new RuntimeException('Sign-in required first.');
+        }
+        if ($action === 'recover_state_dir') {
+            $uiConfig = require_reauth_password($uiConfig, 'recover_state_dir');
+            require_setup_code(trim((string)($_POST['recovery_code'] ?? '')));
+            $newStateDir = rtrim((string)($_POST['recovery_state_dir'] ?? ''), '/');
+            require_existing_state_dir($newStateDir);
+            $uiConfig['state_dir'] = $newStateDir;
+            ui_write_config($uiConfig);
+            flash('ok', 'Data directory updated. Configuration will be loaded from the new path.', 'global');
+            redirect_after_post($action, 'global');
+        }
+        $stateDir = state_dir_from_ui($uiConfig);
+        $main = require_web_ui_enabled($stateDir);
+        $recips = effective_recipients_config($stateDir, $main['config']);
+        if ($action === 'save_main') {
+            if (!hash_equals($main['fingerprint'], (string)($_POST['main_fingerprint'] ?? ''))) {
+                throw new RuntimeException('Main config changed on disk. Reload required before saving.');
+            }
+            $cfg = config_from_post($main['config']);
+            $cfg['hmac_secret_hex'] = (string)($main['config']['hmac_secret_hex'] ?? '');
+            validate_hmac_secret($cfg['hmac_secret_hex']);
+            backup_file($main['live_path']);
+            write_main_config($main['live_path'], $cfg);
+            $redirectScope = posted_config_flash_scope();
+            flash('ok', 'Main configuration saved to totman.inc.php.', $redirectScope);
+        } elseif ($action === 'save_recipients') {
+            if (!hash_equals($recips['fingerprint'], (string)($_POST['recipients_fingerprint'] ?? ''))) {
+                throw new RuntimeException('Recipients config changed on disk. Reload required before saving.');
+            }
+            $renameSummary = [];
+            $fileDeleteSummary = [];
+            $recipientsData = recipients_from_post($recips['data'], $renameSummary, $fileDeleteSummary);
+            $recipsBackup = backup_file($recips['live_path']);
+            $deleteError = null;
+            with_totman_lock($main['config'], function () use ($main, $recips, $recipsBackup, $recipientsData, &$fileDeleteSummary, &$deleteError): void {
+                try {
+                    write_recipients_config($recips['live_path'], $recipientsData);
+                } catch (Throwable $e) {
+                    restore_file($recipsBackup, $recips['live_path']);
+                    throw $e;
+                }
+                try {
+                    delete_download_alias_files($main['config'], $fileDeleteSummary);
+                } catch (Throwable $e) {
+                    $deleteError = $e->getMessage();
+                }
+            });
+            foreach ($renameSummary as $rename) {
+                flash('ok', 'Template ' . (string)$rename['old'] . ' was renamed to ' . (string)$rename['new'] . '; ' . (string)$rename['count'] . ' recipient entries now use it.', 'recipients');
+            }
+            foreach ($fileDeleteSummary as $delete) {
+                $message = (string)($delete['status'] ?? '') === 'missing' ? 'File for alias ' . (string)$delete['alias'] . ' was already missing: ' . (string)$delete['path'] : 'Deleted file for alias ' . (string)$delete['alias'] . ': ' . (string)$delete['path'];
+                flash((string)($delete['status'] ?? '') === 'missing' ? 'warn' : 'ok', $message, 'recipients');
+            }
+            if ($deleteError !== null) {
+                flash('warn', 'Recipients configuration saved, but download file deletion needs manual review: ' . $deleteError, 'recipients');
+            }
+            flash('ok', 'Recipients configuration saved.', 'recipients');
+        } elseif ($action === 'generate_hmac') {
+            $_SESSION['generated_hmac_secret'] = bin2hex(random_bytes(32));
+            flash('ok', 'New HMAC secret generated. Rotation writes it and starts a new cycle.', 'hmac');
+        } elseif ($action === 'rotate_hmac') {
+            $uiConfig = require_reauth_password($uiConfig, 'rotate_hmac');
+            if (!hash_equals($main['fingerprint'], (string)($_POST['main_fingerprint'] ?? ''))) {
+                throw new RuntimeException('Main config changed on disk. Reload required before HMAC rotation.');
+            }
+            $newSecret = (string)($_SESSION['generated_hmac_secret'] ?? '');
+            validate_hmac_secret($newSecret);
+            $cfg = $main['config'];
+            $cfg['hmac_secret_hex'] = $newSecret;
+            rotate_hmac_with_rollback($main['live_path'], $cfg);
+            unset($_SESSION['generated_hmac_secret']);
+            flash('ok', 'HMAC secret rotated and cycle restarted.', 'hmac');
+        } elseif ($action === 'reset_runtime') {
+            $uiConfig = require_reauth_password($uiConfig, 'reset_runtime');
+            reset_runtime_state($main['config']);
+            flash('ok', 'Cycle reset.', 'logs');
+        } elseif ($action === 'clear_activity_log') {
+            $uiConfig = require_reauth_password($uiConfig, 'clear_activity_log');
+            clear_activity_log($main['config']);
+            flash('ok', 'Log cleared.', 'logs');
+        }
+        redirect_after_post($action, $redirectScope);
+    }
+} catch (Throwable $e) {
+    if ($action === 'save_main') {
+        $_SESSION['postback_main'] = $_POST;
+    } elseif ($action === 'save_recipients') {
+        $_SESSION['postback_recipients'] = $_POST;
+    }
+    $scope = $action === 'save_main' ? main_config_flash_scope($e->getMessage()) : action_flash_scope($action);
+    flash('error', $e->getMessage(), $scope);
+    redirect_after_post($action, $scope);
+}
+try {
+    enforce_session_lifetime();
+} catch (Throwable $e) {
+    flash('error', $e->getMessage(), 'global');
+}
+$authenticated = !empty($_SESSION['authenticated']) && ui_is_configured($uiConfig);
+$flash = take_flash();
+if ($bootstrapError !== '') {
+    $flash[] = ['type' => 'error','message' => $bootstrapError,'scope' => 'global'];
+}
+$viewError = '';
+$main = null;
+$recips = null;
+$stateSummary = null;
+$uiDisabled = configured_web_ui_enabled_state($uiConfig) === false;
+if ($authenticated) {
+    try {
+        $stateDir = state_dir_from_ui($uiConfig);
+        $main = effective_main_config($stateDir);
+        $recips = effective_recipients_config($stateDir, $main['config']);
+        $statePath = $stateDir . '/' . basename((string)($main['config']['state_file'] ?? 'totman.json'));
+        if (is_file($statePath)) {
+            $stateRoot = json_decode((string)file_get_contents($statePath), true);
+            $stateSummary = is_array($stateRoot) ? (array)($stateRoot['runtime'] ?? []) : null;
+        }
+    } catch (Throwable $e) {
+        $viewError = $e->getMessage();
+    }
+}
+if ((string)($_GET['ui_api'] ?? '') === 'preflight') {
+    if ($uiDisabled || !$authenticated || !$uiConfig) {
+        json_response(['error' => 'Authentication required.'], 403);
+    }
+    $checks = preflight_checks((array)$uiConfig, $main, $recips, $stateSummary);
+    $summary = preflight_summary($checks);
+    json_response(['summary' => $summary,'summary_text' => preflight_summary_text($summary),'fix_prefix' => t('How to fix:'),'checks' => $checks]);
+}
+if ((string)($_GET['ui_api'] ?? '') === 'log') {
+    if ($uiDisabled || !$authenticated || !$uiConfig || !$main || $viewError !== '') {
+        json_response(['error' => t('Authentication required.')], 403);
+    }
+    $beforeRaw = (string)($_GET['before'] ?? '');
+    $before = preg_match('/^\d+$/', $beforeRaw) ? (int)$beforeRaw : null;
+    $limitRaw = (string)($_GET['limit'] ?? '');
+    $limit = preg_match('/^\d+$/', $limitRaw) ? (int)$limitRaw : UI_LOG_PAGE_LINES;
+    $page = safe_log_page((array)$main['config'], $before, $limit);
+    json_response($page);
+}
+function render_header(): void
+{
+    $lang = current_lang();
+    $languageButtons = '';
+    foreach (supported_languages() as $code => $label) {
+        $languageButtons .= '<button type="submit" name="ui_lang" value="' . h($code) . '"' . ($code === $lang ? ' aria-current="true"' : '') . '>' . h($label) . '</button>';
+    }
+    $scriptName = current_script_name();
+    echo'<header class="header view-animate"><a class="brand brand-link" href="' . h($scriptName) . '" aria-label="totman"><img src="' . h(LOGO_DATA_URI) . '" alt="" class="brand-logo" aria-hidden="true"><div class="brand-text"><h1>totman</h1><h2 class="tagline">' . h(t('A Deadman’s Switch for E-mail.')) . '</h2></div></a><div class="header-actions"><form method="post" class="language-form">' . csrf_field() . '<input type="hidden" name="action" value="set_language"><details class="language-menu"><summary aria-label="' . h(t('Language')) . '"><span>' . h((string)(supported_languages()[$lang] ?? 'English')) . '</span></summary><div class="language-options">' . $languageButtons . '</div></details></form><button type="button" id="theme-toggle" class="btn-secondary compact-btn theme-toggle" aria-label="' . h(t('Toggle theme')) . '" title="' . h(t('Toggle theme')) . '"><span class="theme-icon theme-icon-light" aria-hidden="true">☀</span><span class="theme-icon theme-icon-dark" aria-hidden="true">◐</span></button>';
+    if (!empty($_SESSION['authenticated'])) {
+        echo'<form method="post" class="header-logout-form">' . csrf_field() . '<input type="hidden" name="action" value="logout"><button type="submit" class="btn-secondary compact-btn signout-btn">' . h(t('Sign out')) . '</button></form>';
+    }
+    echo'</div></header>';
+}
+function render_shell_start(): void
+{
+    echo'<!DOCTYPE html><html lang="' . h(current_lang()) . '" data-pwa-worker="' . h(pwa_url('sw')) . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>totman</title><meta name="theme-color" content="#f1f5f9" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0b0f1a" media="(prefers-color-scheme: dark)"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="totman"><link rel="manifest" href="' . h(pwa_url('manifest')) . '"><link rel="apple-touch-icon" sizes="192x192" href="' . h(pwa_url('icon-192')) . '"><link rel="stylesheet" href="' . h(asset_url('css')) . '"></head><body><div class="container">';
+    render_header();
+}
+function render_shell_end(): void
+{
+    render_notification_modal();
+    echo'<div id="confirm-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" aria-describedby="confirm-modal-message" aria-hidden="true"><div class="confirm-dialog" role="document"><h2 id="confirm-modal-title">' . h(t('Approval needed')) . '</h2><p id="confirm-modal-message"></p><div class="action-bar modal-actions"><button type="button" class="btn-secondary" data-confirm-cancel>' . h(t('Cancel')) . '</button><button type="button" class="btn-secondary danger modal-confirm-button" data-confirm-ok>' . h(t('Run action')) . '</button></div></div></div>';
+    render_footer();
+    echo'</div><script src="' . h(asset_url('js')) . '"></script></body></html>';
+}
+function queue_notification(string $type, string $message): void
+{
+    $GLOBALS['totman_notifications'][] = ['type' => in_array($type, ['ok','warn','error','info'], true) ? $type : 'info','message' => ui_message($message),];
+}
+function queued_notifications(): array
+{
+    $items = $GLOBALS['totman_notifications'] ?? [];
+    return is_array($items) ? $items : [];
+}
+function render_notification_modal(): void
+{
+    $payload = json_encode(queued_notifications(), JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    echo'<div id="notification-modal" class="notification-backdrop hidden" role="status" aria-live="polite" aria-atomic="true" data-notifications="' . h($payload) . '"><div class="notification-dialog" role="document"><button type="button" class="notification-close" aria-label="' . h(t('Close')) . '" data-notification-close>&times;</button><div data-notification-items></div><div class="notification-progress" aria-hidden="true"><span data-notification-progress></span></div></div></div>';
+}
+function render_footer(): void
+{
+    echo'<footer class="site-footer"><div class="footer-nav" aria-label="' . h(t('Footer')) . '"><a href="https://github.com/MacSteini/totmannschalter">GitHub</a><a href="https://github.com/MacSteini/">MacSteini &copy; 2026</a><a href="https://github.com/MacSteini/totmannschalter/tree/main/docs">' . h(t('Documentation')) . '</a></div></footer>';
+}
+function render_flash(array $flash, string $scope = 'global', string $viewError = ''): void
+{
+    foreach ($flash as $item) {
+        if ((string)($item['scope'] ?? 'global') !== $scope) {
+            continue;
+        }
+        $type = (string)($item['type'] ?? 'info');
+        queue_notification($type, (string)($item['message'] ?? ''));
+    }
+    if ($scope === 'global' && $viewError !== '') {
+        queue_notification('error', $viewError);
+    }
+}
+function render_setup(array $flash): void
+{
+    render_shell_start();
+    render_flash($flash);
+    $locked = !setup_code_configured();
+    echo'<main class="auth-main"><section class="card auth-card"><h2>' . h(t('Initial setup')) . '</h2>';
+    if ($locked) {
+        queue_notification('error', t('Setup is locked. TOTMAN_UI_SETUP_CODE must be set in {script}; the same code unlocks setup after page reload.', ['script' => current_script_name()]));
+    }
+    echo'<form method="post">' . csrf_field() . '<input type="hidden" name="action" value="setup"><div class="form-grid">';
+    input('setup_code', 'Setup Code', '', 'text');
+    input('setup_user', 'Username', '', 'text');
+    input('setup_password', 'Password', '', 'password', null, '', '', 'new-password');
+    input('setup_password_confirm', 'Repeat Password', '', 'password', null, '', '', 'new-password');
+    input('setup_state_dir', 'Data directory', '/var/lib/totman', 'text', null, 'full-width');
+    echo'</div><div class="action-bar"><button class="btn-primary" type="submit"' . ($locked ? ' disabled' : '') . '>' . h(t('Create access')) . '</button></div></form></section></main>';
+    render_shell_end();
+}
+function render_login(array $flash): void
+{
+    render_shell_start();
+    render_flash($flash);
+    $lastUsername = (string)($_SESSION['last_login_username'] ?? '');
+    echo'<main class="auth-main"><section class="card auth-card"><h2>' . h(t('Sign in')) . '</h2><form method="post">' . csrf_field() . '<input type="hidden" name="action" value="login"><div class="form-grid">';
+    input('username', 'Username', $lastUsername, 'text', null, '', '', 'username');
+    input('password', 'Password', '', 'password', null, '', '', 'current-password');
+    echo'</div><div class="action-bar"><button class="btn-primary" type="submit">' . h(t('Sign in')) . '</button></div></form></section></main>';
+    render_shell_end();
+}
+function render_disabled(array $flash): void
+{
+    render_shell_start();
+    render_flash($flash);
+    echo'<main class="auth-main"><section class="card auth-card"><h2>' . h(t('Web UI disabled')) . '</h2><p class="helper-text">' . h(t('This optional administration interface is disabled in the effective main config. Set web_ui_enabled to true before using totman-ui.php.')) . '</p><p class="helper-text">' . h(t('The totman runtime continues to use the same configuration files and remains available for manual operation.')) . '</p></section></main>';
+    render_shell_end();
+}
+function go_live_state(array $checks): array
+{
+    $summary = preflight_summary($checks);
+    $first = null;
+    foreach ($checks as $check) {
+        if (($check[0] ?? 'ok') === 'error') {
+            $first = $check;
+            break;
+        }
+        if ($first === null && ($check[0] ?? 'ok') === 'warn') {
+            $first = $check;
+        }
+    }
+    if ($summary['error'] > 0) {
+        return['blocked','Not ready','First issue: {item}',$first];
+    }
+    if ($summary['warn'] > 0) {
+        return['attention','Needs attention','Go-live review: {item}',$first];
+    }
+    return['ready','Ready','All checks completed successfully.',null];
+}
+function render_recovery_screen(array $uiConfig, string $viewError, array $flash): void
+{
+    $stateDir = (string)($uiConfig['state_dir'] ?? '');
+    $exists = $stateDir !== '' && is_dir($stateDir);
+    $readable = $exists && is_readable($stateDir);
+    $writable = $exists && is_writable($stateDir);
+    echo'<main><section class="card go-live-card status-blocked"><div><div class="go-live-kicker">' . h(t('Recovery needed')) . '</div><h2 class="go-live-status">' . h(t('Configuration unavailable')) . '</h2><p class="go-live-next">' . h($viewError !== '' ? ui_message($viewError) : t('The required configuration files are missing or unreadable. Recovery requires a backup, the original package, or the hosting file manager/SFTP.')) . '</p></div></section>';
+    echo'<section class="card"><h3>' . h(t('Data directory check')) . '</h3><div class="preflight-grid">';
+    $items = [[($stateDir !== '' ? 'ok' : 'error'),t('Configured path'),$stateDir !== '' ? $stateDir : t('No path configured.'),t('state_dir in the generated UI config must point to the folder that contains the existing configuration files.')],[($exists ? 'ok' : 'error'),t('Directory exists'),$exists ? t('Directory was found.') : t('Directory is missing.'),t('The directory must exist in the hosting panel or state_dir must point to the correct folder.')],[($readable ? 'ok' : 'error'),t('Directory readable'),$readable ? t('Readable.') : t('PHP cannot read this directory.'),t('Read permission for the PHP user is required.')],[($writable ? 'ok' : 'warn'),t('Directory writable'),$writable ? t('Writable by PHP.') : t('PHP cannot write to this directory.'),t('Write permission for PHP is required before saving.')],];
+    foreach ($items as $item) {
+        render_preflight_item($item);
+    }
+    echo'</div><p class="helper-text">' . h(t('The exact absolute path can be verified with the hosting file manager or SFTP. Missing configuration files must be restored from backup or the original package. After file, path, or permission fixes, the page can be reloaded.')) . '</p></section>';
+    echo'<section class="card" id="recovery-card"><h3>' . h(t('Repair data directory')) . '</h3>';
+    render_flash($flash, 'recovery');
+    echo'<p class="helper-text">' . h(t('Recovery applies only when the configured data directory is wrong or moved. It changes the folder path only; deleted live configuration files are not recreated. The recovery code is the same one-time setup code configured in {script} or the server environment.', ['script' => current_script_name()])) . '</p>';
+    $locked = !setup_code_configured();
+    if ($locked) {
+        queue_notification('error', 'Recovery is locked until a setup code is configured server-side.');
+    }
+    echo'<form method="post">' . csrf_field() . '<input type="hidden" name="action" value="recover_state_dir"><div class="form-grid">';
+    input('recovery_code', 'Recovery Code', '', 'text');
+    input('recovery_state_dir', 'New data directory', $stateDir, 'text', null, 'full-width');
+    echo'<div class="input-group">' . field_label('recovery_reauth_password', 'Password', field_tooltip('recovery_reauth_password', 'Password', 'Password required before data directory changes.')) . field_detail('recovery_reauth_password', 'Password required before data directory changes.') . password_control('recovery_reauth_password', 'reauth_password', '', 'current-password', described_by('recovery_reauth_password'), true, '', 'Password') . '<p id="recovery_reauth_password_help" class="helper-text">' . h(t('Required for data directory changes.')) . '</p></div>';
+    echo'</div><div class="action-bar"><button class="btn-primary" type="submit"' . ($locked ? ' disabled' : ' data-requires-password="recovery_reauth_password"') . '>' . h(t('Update data directory')) . '</button></div></form><details class="advanced-help"><summary>' . h(t('Advanced technical details')) . '</summary><p class="helper-text">' . h(t('The generated UI config can also be edited with the hosting file manager or SFTP; state_dir must be the absolute path that contains the existing configuration files.')) . '</p></details></section></main>';
+}
+function stat_icon(string $name): string
+{
+    static $icons = ['last_confirm' => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4.1 12 6"></path><path d="m5.1 8-2.9-.8"></path><path d="m6 12-1.9 2"></path><path d="M7.2 2.2 8 5.1"></path><path d="M9.037 9.69a.498.498 0 0 1 .653-.653l11 4.5a.5.5 0 0 1-.074.949l-4.349 1.041a1 1 0 0 0-.74.739l-1.04 4.35a.5.5 0 0 1-.95.074z"></path></svg>','next_window' => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16.5 12"></polyline></svg>','deadline' => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2 2"></path><path d="M5 3 2 6"></path><path d="m22 6-3-3"></path><path d="M6.38 18.7 4 21"></path><path d="M17.64 18.67 20 21"></path></svg>','system' => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"></path><path d="m9 12 2 2 4-4"></path></svg>','cycle' => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"></path><path d="M8 16H3v5"></path></svg>','recipients' => '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 21a8 8 0 0 0-16 0"></path><circle cx="10" cy="8" r="5"></circle><path d="M22 20c0-3.37-2-6.5-4-8a5 5 0 0 0-.45-8.3"></path></svg>',];
+    return'<div class="stat-icon">' . ($icons[$name] ?? '') . '</div>';
+}
+function delete_icon(): string
+{
+    return'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path><path d="M3 6h18"></path><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+}
+function dashboard_stat_card(string $icon, string $value, string $description): string
+{
+    return'<div class="card stat-card">' . stat_icon($icon) . '<div class="stat-content"><div class="stat-value">' . h($value) . '</div><span class="stat-desc">' . h($description) . '</span></div></div>';
+}
+function dashboard_cards(string $cycleStart, string $lastConfirm, string $next, string $deadline, string $nextReminder, string $window, string $reminder, string $grace, int $missed, int $threshold): string
+{
+    return dashboard_stat_card('cycle', $cycleStart, t('Current cycle started'))
+        . dashboard_stat_card('last_confirm', $lastConfirm, t('Most recent confirmation link click'))
+        . dashboard_stat_card('next_window', $next, t('When confirmation opens'))
+        . dashboard_stat_card('deadline', $deadline, t('Click the link before this time'))
+        . dashboard_stat_card('next_window', $nextReminder, t('Next reminder'))
+        . dashboard_stat_card('system', $window . ' / ' . $reminder, t('Confirmation window / reminder interval'))
+        . dashboard_stat_card('deadline', $grace, t('Grace period after the deadline'))
+        . dashboard_stat_card('cycle', $missed . ' / ' . $threshold, t('Stored missed cycles / required cycles'));
+}
+function render_dashboard(array $uiConfig, ?array $main, ?array $recips, ?array $state, array $flash, string $viewError): void
+{
+    render_shell_start();
+    render_flash($flash, 'global', $viewError);
+    if (!$main || !$recips) {
+        render_recovery_screen($uiConfig, $viewError, $flash);
+        render_shell_end();
+        return;
+    }
+    $cfg = $main['config'];
+    $data = $recips['data'];
+    $checks = preflight_checks($uiConfig, $main, $recips, $state);
+    $missed = (int)($state['missed_cycles'] ?? 0);
+    $threshold = (int)($cfg['missed_cycles_before_fire'] ?? 1);
+    $cycleStart = format_dashboard_datetime(isset($state['cycle_start_at']) ? (int)$state['cycle_start_at'] : null, $cfg);
+    $next = format_dashboard_datetime(isset($state['next_check_at']) ? (int)$state['next_check_at'] : null, $cfg);
+    $deadline = format_dashboard_datetime(isset($state['deadline_at']) ? (int)$state['deadline_at'] : null, $cfg);
+    $nextReminder = format_dashboard_datetime(isset($state['next_reminder_at']) ? (int)$state['next_reminder_at'] : null, $cfg);
+    $lastConfirmAt = isset($state['last_confirm_at']) ? (int)$state['last_confirm_at'] : 0;
+    $lastConfirm = $lastConfirmAt > 0 ? format_dashboard_datetime($lastConfirmAt, $cfg) : t('No confirmation yet');
+    $window = dashboard_duration((int)($cfg['confirm_window_seconds'] ?? 0));
+    $reminder = dashboard_duration((int)($cfg['remind_every_seconds'] ?? 0));
+    $grace = dashboard_duration((int)($cfg['escalate_grace_seconds'] ?? 0));
+    $cards = dashboard_cards($cycleStart, $lastConfirm, $next, $deadline, $nextReminder, $window, $reminder, $grace, $missed, $threshold);
+    $preflightSummary = preflight_summary($checks);
+    $preflightHasIssues = $preflightSummary['error'] > 0 || $preflightSummary['warn'] > 0;
+    if ($preflightHasIssues) {
+        render_preflight($checks);
+    }
+    echo'<details class="mobile-status-details view-animate" id="mobile-status-details" data-status-has-issues="' . ($state ? '0' : '1') . '"><summary class="mobile-status-summary"><span class="mobile-status-title"><span class="when-closed">' . h(t('Status')) . '</span><span class="when-open">' . h(t('Status')) . '</span></span><span class="mobile-status-line"><span>' . h(t('Last confirmation')) . ': ' . h($lastConfirm) . '</span><span>' . h(t('Next confirmation window')) . ': ' . h($next) . '</span><span>' . h(t('Confirm by')) . ': ' . h($deadline) . '</span></span></summary><div class="dashboard-grid mobile-status-grid">' . $cards . '</div></details><div class="dashboard-grid desktop-status-grid view-animate">' . $cards . '</div>';
+    if (!$preflightHasIssues) {
+        render_preflight($checks);
+    }
+    echo'<nav class="view-animate" role="tablist" aria-label="' . h(t('Main views')) . '"><button type="button" id="tab-config" class="nav-item active" data-target="view-config" role="tab" aria-selected="true" aria-controls="view-config">' . h(t('Configuration')) . '</button><button type="button" id="tab-recipients" class="nav-item" data-target="view-recipients" role="tab" aria-selected="false" aria-controls="view-recipients">' . h(t('Recipients')) . '</button><button type="button" id="tab-logs" class="nav-item" data-target="view-logs" role="tab" aria-selected="false" aria-controls="view-logs">' . h(t('Logging')) . '</button></nav><main>';
+    render_main_config($main, $flash);
+    render_recipients($recips, $flash);
+    render_logs($cfg, $flash);
+    echo'</main>';
+    render_shell_end();
+}
+function render_preflight(array $checks): void
+{
+    $summary = preflight_summary($checks);
+    $summaryText = preflight_summary_text($summary);
+    $hasIssues = $summary['error'] > 0 || $summary['warn'] > 0;
+    [$state,,$nextTemplate,$first] = go_live_state($checks);
+    $item = is_array($first) ? (string)($first[1] ?? '') : '';
+    $next = $item !== '' ? t($nextTemplate, ['item' => t($item)]) : t($nextTemplate);
+    echo'<details class="card preflight-card" id="preflight-card" aria-labelledby="preflight-title" data-preflight-status="' . h((string)$state) . '" data-preflight-url="' . h(asset_url_for_query(['ui_api' => 'preflight'])) . '" data-preflight-has-issues="' . ($hasIssues ? '1' : '0') . '"' . ($hasIssues ? ' open' : '') . '><summary class="preflight-summary"><span class="preflight-heading"><strong id="preflight-title"><span class="desktop-disclosure-label">' . h(t('Preflight')) . '</span><span class="mobile-toggle-closed">' . h(t('Preflight')) . '</span><span class="mobile-toggle-open">' . h(t('Preflight')) . '</span></strong><span class="preflight-next">' . h($next) . '</span></span><span class="badge preflight-counts" data-preflight-counts>' . h($summaryText) . '</span></summary><div class="preflight-grid" data-preflight-grid>';
+    foreach ($checks as $check) {
+        render_preflight_item($check);
+    }
+    echo'</div></details>';
+}
+function preflight_summary_text(array $summary): string
+{
+    return $summary['error'] . ' ' . t('errors') . ' / ' . $summary['warn'] . ' ' . t('warnings');
+}
+function render_preflight_item(array $check): void
+{
+    [$status,$label,$detail] = $check;
+    $fix = (string)($check[3] ?? '');
+    echo'<div class="preflight-item status-' . h((string)$status) . '"><strong>' . h(t((string)$label)) . '</strong><span>' . h(t((string)$detail)) . '</span>';
+    if ($status !== 'ok' && $fix !== '') {
+        echo'<span class="preflight-fix"><strong>' . h(t('How to fix:')) . '</strong> ' . h(t($fix)) . '</span>';
+    }
+    echo'</div>';
+}
+function asset_url_for_query(array $query): string
+{
+    return current_script_name() . '?' . http_build_query($query);
+}
+function render_main_config(array $main, array $flash): void
+{
+    $cfg = apply_main_postback($main['config'], take_postback('main'));
+    $hmacSecret = (string)($cfg['hmac_secret_hex'] ?? '');
+    $hmacNeeds = hmac_secret_needs_initialisation($hmacSecret);
+    $hasGeneratedSecret = validate_generated_hmac_secret();
+    echo'<form method="post" id="generate-hmac-form">' . csrf_field() . '<input type="hidden" name="action" value="generate_hmac"></form>';
+    echo'<form method="post" id="rotate-hmac-form">' . csrf_field() . '<input type="hidden" name="action" value="rotate_hmac"><input type="hidden" name="main_fingerprint" value="' . h($main['fingerprint']) . '"></form>';
+    echo'<section id="view-config" class="view-animate" role="tabpanel" aria-labelledby="tab-config"><form method="post" id="main-config-form">' . csrf_field() . '<input type="hidden" name="action" value="save_main"><input type="hidden" name="main_fingerprint" value="' . h($main['fingerprint']) . '"><input type="hidden" id="config-flash-scope" name="config_flash_scope" value="config-core"><div class="sub-nav" role="tablist" aria-label="' . h(t('Configuration sections')) . '"><button type="button" id="tab-config-general" class="sub-nav-item active" data-sub="config-general" role="tab" aria-selected="true" aria-controls="config-general">' . h(t('General')) . '</button><button type="button" id="tab-config-timing" class="sub-nav-item" data-sub="config-timing" role="tab" aria-selected="false" aria-controls="config-timing">' . h(t('Schedule')) . '</button><button type="button" id="tab-config-mail" class="sub-nav-item" data-sub="config-mail" role="tab" aria-selected="false" aria-controls="config-mail">' . h(t('Delivery')) . '</button></div>';
+    render_flash($flash, 'config');
+    echo'<div id="config-general" class="sub-view" role="tabpanel"><div id="config-core-card" class="card" data-config-scope="config-core"><h3>' . h(t('Core Paths & Secrets')) . '</h3>';
+    render_flash($flash, 'config-core');
+    echo'<div class="form-grid">';
+    input('base_url', 'Web address (HTTPS)', (string)($cfg['base_url'] ?? ''));
+    input_readonly('state_dir_display', 'Data Directory', (string)($cfg['state_dir'] ?? ''), 'This path comes from the generated UI config. Moving it requires a UI config edit or setup recovery.');
+    echo'</div></div><div id="hmac-section" class="card danger-zone hmac-card"><h3>' . h(t('Rotate HMAC Secret')) . '</h3>';
+    render_flash($flash, 'hmac');
+    echo'<div class="form-grid">';
+    input_readonly('hmac_secret_display', 'Current HMAC Secret', mask_secret($hmacSecret), $hmacNeeds ? 'A real HMAC secret must be generated and rotated before saving live configuration.' : 'This is the active token-signing secret. The full value is masked.');
+    input_readonly('hmac_pending_secret_display', 'Pending Generated Secret', $hasGeneratedSecret ? t('Generated and waiting') : t('none'), 'Secret generation creates this value server-side. HMAC rotation writes it and invalidates old tokens.');
+    echo'<div class="input-group reauth-field">' . field_label('hmac_reauth_password', 'Password', field_tooltip('hmac_reauth_password', 'Password', 'Password required before HMAC rotation.')) . field_detail('hmac_reauth_password', 'Password required before HMAC rotation.') . password_control('hmac_reauth_password', 'reauth_password', '', 'current-password', described_by('hmac_reauth_password'), false, 'rotate-hmac-form', 'Password') . '<p id="hmac_reauth_password_help" class="helper-text">' . h(t('Required for writing the secret and starting a new cycle.')) . '</p></div>';
+    echo'</div><p class="helper-text">' . h(t('Existing tokens become invalid and a new cycle starts. Secret generation prepares rotation; rotation writes the secret. The secret is generated by the server and is never typed manually.')) . '</p><p class="helper-text">' . h($hasGeneratedSecret ? t('A new secret is ready for rotation.') : t('No generated secret is waiting yet.')) . '</p><div class="hmac-actions"><button class="btn-secondary" type="submit" form="generate-hmac-form">' . h(t('Generate Secret')) . '</button><button class="btn-secondary danger" type="submit" form="rotate-hmac-form" disabled data-requires-password="hmac_reauth_password" data-has-secret="' . ($hasGeneratedSecret ? '1' : '0') . '">' . h(t('Rotate HMAC and Reset State')) . '</button></div></div>';
+    echo'<div id="config-security-card" class="card" data-config-scope="config-security"><h3>' . h(t('Security & Web')) . '</h3>';
+    render_flash($flash, 'config-security');
+    echo'<div class="form-grid">';
+    radio_pair('stealth_neutral_for_invalid', 'Neutral on Invalid', !empty($cfg['stealth_neutral_for_invalid']));
+    radio_pair('stealth_level_2_neutral_on_stale', 'Neutral on Stale', !empty($cfg['stealth_level_2_neutral_on_stale']));
+    select_box('ip_mode', 'IP Handling', (string)($cfg['ip_mode'] ?? 'remote_addr'), ['remote_addr' => 'REMOTE_ADDR','trusted_proxy' => 'Trusted Proxy']);
+    input('trusted_proxies', 'Trusted Proxies', json_encode($cfg['trusted_proxies'] ?? [], JSON_UNESCAPED_SLASHES) ?: '[]', 'text', null, '', 'ip_mode:trusted_proxy');
+    input('trusted_proxy_header', 'Proxy Header', (string)($cfg['trusted_proxy_header'] ?? 'X-Forwarded-For'), 'text', null, '', 'ip_mode:trusted_proxy');
+    radio_pair('rate_limit_enabled', 'Web Rate Limit', !empty($cfg['rate_limit_enabled']));
+    input('rate_limit_max_requests', 'Maximum Requests', (string)($cfg['rate_limit_max_requests'] ?? 30), 'number', null, '', 'rate_limit_enabled');
+    duration_control('rate_limit_window_seconds', 'Window', (int)($cfg['rate_limit_window_seconds'] ?? 60), null, 'rate_limit_enabled');
+    input('rate_limit_dir', 'Rate Limit Directory', !array_key_exists('rate_limit_dir', $cfg) || $cfg['rate_limit_dir'] === null ? '' : (string)$cfg['rate_limit_dir'], 'text', null, '', 'rate_limit_enabled');
+    radio_pair('show_success_details', 'Success Details', !empty($cfg['show_success_details']), 'Show', 'Hide');
+    radio_pair('web_ui_enabled', 'Web UI Access', !empty($cfg['web_ui_enabled']), 'Enabled', 'Disabled');
+    echo'</div></div><div id="config-downloads-card" class="card" data-config-scope="config-downloads"><h3>' . h(t('Downloads')) . '</h3>';
+    render_flash($flash, 'config-downloads');
+    echo'<div class="form-grid">';
+    duration_control('download_valid_days', 'Expiry Period', (int)($cfg['download_valid_days'] ?? 180) * 86400, null, '', ['days' => 'Days','weeks' => 'Weeks']);
+    input('download_base_dir', 'Download Data Root', (string)($cfg['download_base_dir'] ?? ''));
+    radio_pair('download_rate_limit_enabled', 'Download Rate Limit', !empty($cfg['download_rate_limit_enabled']));
+    input('download_rate_limit_max_requests', 'Download Maximum Requests', (string)($cfg['download_rate_limit_max_requests'] ?? 20), 'number', null, '', 'download_rate_limit_enabled');
+    duration_control('download_rate_limit_window_seconds', 'Download Window', (int)($cfg['download_rate_limit_window_seconds'] ?? 60), null, 'download_rate_limit_enabled');
+    duration_control('download_lease_seconds', 'Download Lease', (int)($cfg['download_lease_seconds'] ?? 300));
+    echo'</div></div><div id="config-logging-card" class="card" data-config-scope="config-logging"><h3>' . h(t('Logging')) . '</h3>';
+    render_flash($flash, 'config-logging');
+    echo'<div class="form-grid">';
+    select_box('log_mode', 'Log Mode', (string)($cfg['log_mode'] ?? 'both'), ['both' => 'File & Syslog','file' => 'File only','syslog' => 'Syslog only','none' => 'None']);
+    input('operator_alert_interval_hours', 'Alert Interval', (string)($cfg['operator_alert_interval_hours'] ?? 2), 'number');
+    input('log_file', 'Log Path', !array_key_exists('log_file', $cfg) || $cfg['log_file'] === null ? 'null' : (string)$cfg['log_file']);
+    echo'</div></div><div id="config-runtime-card" class="card" data-config-scope="config-runtime"><h3>' . h(t('Technical Filenames')) . '</h3>';
+    render_flash($flash, 'config-runtime');
+    echo'<div class="form-grid">';
+    foreach (['lib_file' => 'Library File','l18n_dir_name' => 'Translation Directory','lock_file' => 'Lock File','log_file_name' => 'Log Name','state_file' => 'State File','web_file' => 'Web Endpoint','web_css_file' => 'Web Stylesheet'] as $key => $label) {
+        input($key, $label, (string)($cfg[$key] ?? ''));
+    }
+    input_readonly('recipients_file_display', 'Recipients Config', (string)($cfg['recipients_file'] ?? 'totman-recipients.php'), 'Recipient config renames need a dedicated migration flow; normal saves keep the active filename.');
+    echo'</div></div></div>';
+    echo'<div id="config-timing" class="sub-view hidden" role="tabpanel"><div id="config-timing-card" class="card" data-config-scope="config-timing"><h3>' . h(t('Schedule')) . '</h3>';
+    render_flash($flash, 'config-timing');
+    echo'<div class="form-grid">';
+    duration_control('check_interval_seconds', 'Cycle interval', (int)($cfg['check_interval_seconds'] ?? 86400));
+    duration_control('confirm_window_seconds', 'Confirmation window', (int)($cfg['confirm_window_seconds'] ?? 172800));
+    duration_control('remind_every_seconds', 'Self-reminder interval', (int)($cfg['remind_every_seconds'] ?? 43200));
+    duration_control('escalate_grace_seconds', 'Delay before escalation', (int)($cfg['escalate_grace_seconds'] ?? 14400));
+    input('missed_cycles_before_fire', 'Missed cycles before escalation', (string)($cfg['missed_cycles_before_fire'] ?? 2), 'number');
+    radio_pair('escalate_ack_enabled', 'Final e-mail receipt acknowledgement', !empty($cfg['escalate_ack_enabled']));
+    duration_control('escalate_ack_remind_every_seconds', 'Receipt reminder interval', (int)($cfg['escalate_ack_remind_every_seconds'] ?? 43200), null, 'escalate_ack_enabled');
+    input('escalate_ack_max_reminds', 'Maximum Receipt Reminders', (string)($cfg['escalate_ack_max_reminds'] ?? 25), 'number', null, '', 'escalate_ack_enabled');
+    echo'</div></div></div><div id="config-mail" class="sub-view hidden" role="tabpanel"><div id="config-mail-card" class="card" data-config-scope="config-mail"><h3>' . h(t('Mail Delivery')) . '</h3>';
+    render_flash($flash, 'config-mail');
+    echo'<div class="form-grid">';
+    textarea('to_self', 'Reminder addresses', implode("\n", (array)($cfg['to_self'] ?? [])));
+    input('mail_from', 'From Address', (string)($cfg['mail_from'] ?? ''));
+    input('reply_to', 'Reply-To Address', (string)($cfg['reply_to'] ?? ''));
+    input('sendmail_path', 'Sendmail Path', (string)($cfg['sendmail_path'] ?? ''));
+    echo'</div></div><div id="config-format-card" class="card" data-config-scope="config-format"><h3>' . h(t('Region & Format')) . '</h3>';
+    render_flash($flash, 'config-format');
+    echo'<div class="form-grid">';
+    timezone_input('mail_timezone', 'Timezone', (string)($cfg['mail_timezone'] ?? 'UTC'));
+    input('mail_date_format', 'Date Format', (string)($cfg['mail_date_format'] ?? 'j F Y'));
+    input('mail_time_format', 'Time Format', (string)($cfg['mail_time_format'] ?? 'H:i:s'));
+    input('mail_datetime_format', 'Combined date/time format', (string)($cfg['mail_datetime_format'] ?? ''));
+    echo'</div></div><div id="config-reminder-card" class="card" data-config-scope="config-reminder"><h3>' . h(t('Reminder Template')) . '</h3>';
+    render_flash($flash, 'config-reminder');
+    echo'<div class="form-grid">';
+    input('subject_reminder', 'Subject', (string)($cfg['subject_reminder'] ?? ''));
+    textarea('body_reminder', 'Body Template', (string)($cfg['body_reminder'] ?? ''));
+    echo'</div></div></div><div class="action-bar">' . ($hmacNeeds ? '<span class="helper-text">' . h(t('Configuration save is locked until a real HMAC secret exists.')) . '</span>' : '') . '<button class="btn-primary" type="submit"' . ($hmacNeeds ? ' disabled' : '') . '>' . h(t('Save')) . '</button></div></form></section>';
+}
+function render_recipients(array $recips, array $flash): void
+{
+    $data = $recips['data'];
+    $postback = take_postback('recipients');
+    $messageRows = [];
+    $fileRows = [];
+    $recipientRows = [];
+    if ($postback !== []) {
+        foreach ((array)($postback['message_key'] ?? []) as $i => $key) {
+            $messageRows[] = [(string)$key,['subject' => (string)(($postback['message_subject'] ?? [])[$i] ?? ''),'body' => (string)(($postback['message_body'] ?? [])[$i] ?? ''),'single_use_notice' => (string)(($postback['message_single_use_notice'] ?? [])[$i] ?? ''),],];
+        }
+        foreach ((array)($postback['file_alias'] ?? []) as $i => $alias) {
+            $originalAlias = (string)(($postback['file_original_alias'] ?? [])[$i] ?? '');
+            $originalPath = (string)(($postback['file_original_path'] ?? [])[$i] ?? '');
+            $fileRows[] = [(string)$alias,(string)(($postback['file_path'] ?? [])[$i] ?? ''),$originalAlias,$originalPath,$originalAlias !== '',];
+        }
+        foreach ((array)($postback['recipient_name'] ?? []) as $i => $name) {
+            $recipientRows[] = [(string)$name,(string)(($postback['recipient_address'] ?? [])[$i] ?? ''),(string)(($postback['recipient_message_key'] ?? [])[$i] ?? ''),postback_alias_list($postback, 'recipient_normal_files', (int)$i),postback_alias_list($postback, 'recipient_single_files', (int)$i),];
+        }
+    } else {
+        foreach ((array)($data['messages'] ?? []) as $key => $message) {
+            $messageRows[] = [(string)$key,(array)$message];
+        }
+        foreach ((array)($data['files'] ?? []) as $alias => $path) {
+            $fileRows[] = [(string)$alias,(string)$path,(string)$alias,(string)$path,true];
+        }
+        $recipientRows = array_map(static fn($row): array=>(array)$row, (array)($data['recipients'] ?? []));
+    }
+    $messageKeys = array_values(array_unique(array_filter(array_map(static fn(array $row): string=>(string)$row[0], $messageRows), static fn(string $value): bool=>$value !== '')));
+    $fileAliases = array_values(array_unique(array_filter(array_map(static fn(array $row): string=>(string)$row[0], $fileRows), static fn(string $value): bool=>$value !== '')));
+    echo'<section id="view-recipients" class="hidden view-animate" role="tabpanel" aria-labelledby="tab-recipients"><form method="post">' . csrf_field() . '<input type="hidden" name="action" value="save_recipients"><input type="hidden" name="recipients_fingerprint" value="' . h($recips['fingerprint']) . '"><input type="hidden" id="allow-broken-message-refs" name="allow_broken_message_refs" value="0"><input type="hidden" id="allow-no-recipients" name="allow_no_recipients" value="0"><div class="sub-nav" role="tablist" aria-label="' . h(t('Recipients sections')) . '"><button type="button" id="tab-recipients-list" class="sub-nav-item active" data-sub="recipients-list" role="tab" aria-selected="true" aria-controls="recipients-list">' . h(t('List')) . '</button><button type="button" id="tab-recipients-messages" class="sub-nav-item" data-sub="recipients-messages" role="tab" aria-selected="false" aria-controls="recipients-messages">' . h(t('Messages')) . '</button><button type="button" id="tab-recipients-files" class="sub-nav-item" data-sub="recipients-files" role="tab" aria-selected="false" aria-controls="recipients-files">' . h(t('Files')) . '</button></div>';
+    render_flash($flash, 'recipients');
+    echo'<div id="recipients-list" class="sub-view" role="tabpanel"><div class="action-bar"><button type="button" class="btn-primary add-row" data-template="recipient-template" data-target="recipient-cards" data-insert="prepend" data-focus="input[name=&quot;recipient_name[]&quot;]">' . h(t('Add Recipient')) . '</button></div><div id="recipient-cards">';
+    $recipientIndex = 0;
+    foreach ($recipientRows as $row) {
+        recipient_row((array)$row, $messageKeys, $fileAliases, $recipientIndex++);
+    }
+    echo'</div></div><div id="recipients-messages" class="sub-view hidden" role="tabpanel"><div class="action-bar"><button type="button" class="btn-primary add-row" data-template="message-template" data-target="message-cards" data-insert="prepend" data-focus="input[name=&quot;message_key[]&quot;]">' . h(t('New Template')) . '</button></div><div id="message-cards">';
+    foreach ($messageRows as $row) {
+        message_row((string)$row[0], (array)$row[1]);
+    }
+    echo'</div></div><div id="recipients-files" class="sub-view hidden" role="tabpanel"><div class="card"><div class="card-header"><h3>' . h(t('File Alias Registry')) . '</h3><div class="header-actions"><button type="button" class="btn-primary add-row" data-template="file-template" data-target="file-registry-body" data-insert="prepend" data-focus="input[name=&quot;file_alias[]&quot;]">' . h(t('Add Alias')) . '</button></div></div><p class="helper-text file-registry-note">' . h(t('Physical files are uploaded, moved, and renamed only via Terminal/SFTP. Removing a saved file alias deletes the referenced physical file.')) . '</p><div id="file-delete-bin"></div><div id="file-registry-body" class="file-registry-grid">';
+    foreach ($fileRows as $row) {
+        file_row((string)$row[0], (string)$row[1], (string)$row[2], (string)$row[3], (bool)$row[4]);
+    }
+    echo'</div></div></div><div class="action-bar"><button type="button" class="btn-secondary reset-unsaved" data-reset-message="' . h(t('Unsaved changes will be discarded; last saved data will be reloaded.')) . '">' . h(t('Reset unsaved changes')) . '</button><button class="btn-primary" type="submit">' . h(t('Save')) . '</button></div></form>';
+    templates($messageKeys, $fileAliases);
+    echo'</section>';
+}
+function render_logs(array $cfg, array $flash): void
+{
+    $path = log_path_from_config($cfg);
+    $page = safe_log_page($cfg);
+    $lines = (array)$page['lines'];
+    $logLines = array_map(static fn(string $line): string=>'<div class="log-line">' . h($line) . '</div>', $lines);
+    $hasMore = !empty($page['has_more']);
+    $nextBefore = (int)($page['next_before'] ?? 0);
+    echo'<section id="view-logs" class="hidden view-animate" role="tabpanel" aria-labelledby="tab-logs"><div class="card terminal-card"><div class="card-header"><h2>' . h(t('Log entries')) . '</h2><span class="badge log-path-badge">' . h($path) . '</span></div><div id="activity-log-window" class="log-window" role="log" aria-live="polite" data-log-window data-log-url="' . h(asset_url_for_query(['ui_api' => 'log'])) . '">' . implode('', $logLines) . '</div><div class="log-actions"><button type="button" class="btn-secondary log-load-more" data-log-load-more data-log-before="' . h((string)$nextBefore) . '"' . (!$hasMore ? ' hidden' : '') . '>' . h(t('Load older entries')) . '</button></div></div><div class="card danger-zone maintenance-danger-zone"><h3>' . h(t('Danger Zone')) . '</h3>';
+    render_flash($flash, 'logs');
+    echo'<p class="helper-text">' . h(t('Resetting the cycle starts fresh, creates a new token, clears escalation progress, and removes one-time download leases. Configuration and recipients stay unchanged.')) . '</p><p class="helper-text">' . h(t('Clearing the log removes the current entries only. Configuration, recipients, cycle data, and physical download files stay unchanged.')) . '</p><form method="post" id="danger-zone-form" class="danger-zone-form">' . csrf_field() . '<div class="danger-action-row"><div class="input-group reauth-field danger-password-field">' . field_label('logs_reauth_password', 'Password', field_tooltip('logs_reauth_password', 'Password', 'Password required before dangerous maintenance actions.')) . field_detail('logs_reauth_password', 'Password required before dangerous maintenance actions.') . password_control('logs_reauth_password', 'reauth_password', '', 'current-password', described_by('logs_reauth_password'), true, '', 'Password') . '</div><button type="submit" name="action" value="reset_runtime" class="btn-secondary danger" disabled data-requires-password="logs_reauth_password" data-confirm="' . h(t('Really reset the cycle? Existing confirmation links and one-time download leases will stop matching the current cycle.')) . '">' . h(t('Reset Runtime State')) . '</button><button type="submit" name="action" value="clear_activity_log" class="btn-secondary danger" disabled data-requires-password="logs_reauth_password" data-confirm="' . h(t('Really clear the log? This cannot be undone here.')) . '">' . h(t('Clear log')) . '</button></div></form></div></section>';
+}
+function input(string $name, string $label, string $value, string $type = 'text', ?string $help = null, string $class = '', string $depends = '', string $autocomplete = 'off'): void
+{
+    $helpText = $help ?? field_help($name, $label);
+    $tooltipText = field_tooltip($name, $label, $helpText);
+    $desc = described_by($name, $helpText, $tooltipText);
+    $attrs = $depends !== '' ? ' data-depends-on="' . h($depends) . '"' : '';
+    $control = $type === 'password' ? password_control($name, $name, $value, $autocomplete, $desc, false, '', $label) : '<input id="' . h($name) . '" name="' . h($name) . '" type="' . h($type) . '" value="' . h($value) . '" spellcheck="false" autocomplete="' . h($autocomplete) . '"' . aria_desc($desc) . '>';
+    echo'<div class="input-group ' . h($class) . '"' . $attrs . '>' . field_label($name, $label, $tooltipText) . field_detail($name, $tooltipText) . $control . helper_text($name, $helpText) . '</div>';
+}
+function password_control(string $id, string $name, string $value, string $autocomplete, string $describedBy, bool $required = false, string $form = '', string $label = 'Password'): string
+{
+    $requiredAttr = $required ? ' required' : '';
+    $formAttr = $form !== '' ? ' form="' . h($form) . '"' : '';
+    $showAria = t('Show password') . ': ' . t($label);
+    $hideAria = t('Hide password') . ': ' . t($label);
+    return'<div class="password-control"><input id="' . h($id) . '" name="' . h($name) . '" type="password" value="' . h($value) . '" spellcheck="false" autocomplete="' . h($autocomplete) . '"' . aria_desc($describedBy) . $requiredAttr . $formAttr . ' data-password-field><button type="button" class="btn-secondary password-toggle" aria-controls="' . h($id) . '" aria-pressed="false" aria-label="' . h($showAria) . '" data-password-toggle data-show-label="' . h(t('Show')) . '" data-hide-label="' . h(t('Hide')) . '" data-show-aria="' . h($showAria) . '" data-hide-aria="' . h($hideAria) . '"><span data-password-toggle-label>' . h(t('Show')) . '</span></button></div>';
+}
+function input_readonly(string $id, string $label, string $value, string $help): void
+{
+    $tooltipText = field_tooltip($id, $label, $help);
+    $desc = described_by($id, $help, $tooltipText);
+    echo'<div class="input-group">' . field_label($id, $label, $tooltipText) . field_detail($id, $tooltipText) . '<input id="' . h($id) . '" type="text" value="' . h($value) . '" readonly spellcheck="false" autocomplete="off"' . aria_desc($desc) . '>' . helper_text($id, $help) . '</div>';
+}
+function textarea(string $name, string $label, string $value, ?string $help = null): void
+{
+    $helpText = $help ?? field_help($name, $label);
+    $tooltipText = field_tooltip($name, $label, $helpText);
+    $desc = described_by($name, $helpText, $tooltipText);
+    echo'<div class="input-group full-width">' . field_label($name, $label, $tooltipText) . field_detail($name, $tooltipText) . '<textarea id="' . h($name) . '" name="' . h($name) . '" class="auto-grow"' . aria_desc($desc) . '>' . h($value) . '</textarea>' . helper_text($name, $helpText) . placeholder_note_for($name) . '</div>';
+}
+function placeholder_note_for(string $name): string
+{
+    $groups = ['body_reminder' => ['{CONFIRM_URL}','{DEADLINE_ISO}','{CYCLE_START_ISO}'],];
+    return isset($groups[$name]) ? placeholder_note($groups[$name]) : '';
+}
+function placeholder_note(array $placeholders): string
+{
+    $items = array_map(static fn(string $placeholder): string=>'<code>' . h($placeholder) . '</code>', $placeholders);
+    return'<p class="helper-text placeholder-list">' . h(t('Available placeholders:')) . ' ' . implode(' ', $items) . '</p>';
+}
+function select_box(string $name, string $label, string $value, array $options, ?string $help = null, string $depends = ''): void
+{
+    $helpText = $help ?? field_help($name, $label);
+    $tooltipText = field_tooltip($name, $label, $helpText);
+    $desc = described_by($name, $helpText, $tooltipText);
+    $attrs = $depends !== '' ? ' data-depends-on="' . h($depends) . '"' : '';
+    echo'<div class="input-group"' . $attrs . '>' . field_label($name, $label, $tooltipText) . field_detail($name, $tooltipText) . '<select id="' . h($name) . '" name="' . h($name) . '"' . aria_desc($desc) . '>';
+    foreach ($options as $k => $v) {
+        echo'<option value="' . h((string)$k) . '"' . ($value === (string)$k ? ' selected' : '') . '>' . h(t((string)$v)) . '</option>';
+    }
+    echo'</select>' . helper_text($name, $helpText) . '</div>';
+}
+function radio_pair(string $name, string $label, bool $value, string $yes = 'Yes', string $no = 'No'): void
+{
+    $helpText = field_help($name, $label);
+    $tooltipText = field_tooltip($name, $label, $helpText);
+    $desc = described_by($name, $helpText, $tooltipText);
+    echo'<div class="input-group">' . field_label($name, $label, $tooltipText, false) . field_detail($name, $tooltipText) . '<div class="segmented-control"><input type="radio" id="' . h($name) . '_yes" name="' . h($name) . '" value="1"' . checked($value) . aria_desc($desc) . '><label for="' . h($name) . '_yes">' . h(t($yes)) . '</label><input type="radio" id="' . h($name) . '_no" name="' . h($name) . '" value="0"' . checked(!$value) . aria_desc($desc) . '><label for="' . h($name) . '_no">' . h(t($no)) . '</label></div>' . helper_text($name, $helpText) . '</div>';
+}
+function described_by(string $id, string $help = '1', string $detail = '1'): string
+{
+    $ids = [];
+    if (trim($help) !== '') {
+        $ids[] = $id . '_help';
+    }
+    if (trim($detail) !== '') {
+        $ids[] = $id . '_details';
+    }
+    return implode(' ', $ids);
+}
+function aria_desc(string $ids): string
+{
+    return $ids === '' ? '' : ' aria-describedby="' . h($ids) . '"';
+}
+function helper_text(string $id, string $help): string
+{
+    return trim($help) === '' ? '' : '<p id="' . h($id) . '_help" class="helper-text">' . h(t($help)) . '</p>';
+}
+function field_detail(string $id, string $help): string
+{
+    return trim($help) === '' ? '' : '<span id="' . h($id) . '_details" class="sr-only">' . h(t($help)) . '</span>';
+}
+function field_label(string $id, string $label, string $help, bool $forControl = true): string
+{
+    $labelText = h(t($label));
+    $labelHtml = $forControl ? '<label for="' . h($id) . '">' . $labelText . '</label>' : '<span class="group-label-text">' . $labelText . '</span>';
+    return'<div class="field-label-row">' . $labelHtml . help_marker($id, $label, $help) . '</div>';
+}
+function help_marker(string $id, string $label, string $help): string
+{
+    if (trim($help) === '') {
+        return'';
+    }
+    return'<span class="help-wrap"><button type="button" class="help-trigger" tabindex="-1" aria-label="' . h(t('Help for') . ' ' . t($label)) . '" aria-describedby="' . h($id) . '_tooltip" aria-expanded="false" data-help-trigger>?</button><span id="' . h($id) . '_tooltip" class="help-popover" role="tooltip">' . h(t($help)) . '</span></span>';
+}
+function repeated_field_label(string $label, string $help, string $id = ''): string
+{
+    static $counter = 0;
+    $counter++;
+    $tooltipId = $id !== '' ? $id : 'repeated_help_' . $counter;
+    $detail = $id !== '' ? field_detail($id, $help) : '';
+    return'<div class="field-label-row"><span class="group-label-text">' . h(t($label)) . '</span>' . help_marker($tooltipId, $label, $help) . '</div>' . $detail;
+}
+function field_help(string $name, string $label = ''): string
+{
+    $map = ['base_url' => 'Public HTTPS base address.','state_dir_display' => '','hmac_secret_display' => 'Active signing secret.','hmac_pending_secret_display' => 'Secret ready to write.','setup_code' => 'One-time setup code.','setup_user' => '','setup_password' => 'At least 10 characters.','setup_password_confirm' => '','setup_state_dir' => 'Folder with configuration files and cycle data.','username' => '','password' => '','recovery_code' => 'Setup or recovery code.','recovery_state_dir' => 'New data folder.','recovery_reauth_password' => 'Password required.','stealth_neutral_for_invalid' => 'Response for invalid tokens.','stealth_level_2_neutral_on_stale' => 'Response for stale tokens.','ip_mode' => 'Source for visitor IP addresses.','trusted_proxies' => 'Proxy IPs allowed to pass client addresses.','trusted_proxy_header' => 'Header read in trusted proxy mode.','rate_limit_enabled' => 'Limits repeated web requests.','rate_limit_max_requests' => 'Allowed web requests per window.','rate_limit_window_seconds' => 'Counting window for web requests.','rate_limit_dir' => 'Custom rate-limit folder, or blank for default.','show_success_details' => 'Details shown after successful confirmation.','web_ui_enabled' => 'Enables this optional administration interface.','download_valid_days' => 'How long download links work.','download_base_dir' => 'Folder containing downloadable files.','download_rate_limit_enabled' => 'Limits repeated downloads.','download_rate_limit_max_requests' => 'Allowed download requests per window.','download_rate_limit_window_seconds' => 'Counting window for downloads.','download_lease_seconds' => 'Short lock for single-use downloads.','log_mode' => 'Where log entries are written.','operator_alert_interval_hours' => 'Pause between repeated operator alerts.','log_file' => 'Custom log path, or blank for default.','lib_file' => '','l18n_dir_name' => '','lock_file' => '','log_file_name' => '','state_file' => '','web_file' => '','web_css_file' => '','recipients_file_display' => 'Active recipients file.','check_interval_seconds' => 'How often a new cycle starts.','confirm_window_seconds' => 'How long confirmation stays open.','remind_every_seconds' => 'How often reminders are sent.','escalate_grace_seconds' => 'Extra delay before escalation.','missed_cycles_before_fire' => 'Missed cycles before escalation.','escalate_ack_enabled' => 'Receipt acknowledgement for final e-mails.','escalate_ack_remind_every_seconds' => 'How often receipt reminders are sent.','escalate_ack_max_reminds' => 'Maximum receipt reminders.','to_self' => 'Addresses for self-reminders.','mail_from' => 'Sender address for outgoing mail.','reply_to' => 'Optional reply address.','sendmail_path' => 'Server path to sendmail.','mail_timezone' => 'Timezone for message timestamps.','mail_date_format' => 'Date format in messages.','mail_time_format' => 'Time format in messages.','mail_datetime_format' => 'Optional combined date/time format.','subject_reminder' => 'Subject for self-reminders.','body_reminder' => 'Body for self-reminders.',];
+    return $map[$name] ?? '';
+}
+function field_tooltip(string $name, string $label, string $hint): string
+{
+    $durationTip = 'Positive whole number plus unit: seconds, minutes, hours, days, or weeks. Months and years are not available. Values are saved as seconds.';
+    $filenameTip = 'Filename only: no slashes, backslashes, parent directory segments, or control characters.';
+    $mailboxTip = "Accepted formats:\nuser@example.com\nName <user@example.com>\n\"Name\" <user@example.com>";
+    $map = ['base_url' => 'Must start with https:// and must not include the web endpoint filename. Example: https://example.org/totman when Web Endpoint is totman.php.','state_dir_display' => 'Read-only here. The generated UI config changes or setup recovery move the data folder.','hmac_secret_display' => 'Rotate only with the HMAC buttons. Rotation invalidates existing confirmation tokens.','hmac_pending_secret_display' => 'Generated by the server. It is written only after confirmed rotation.','setup_code' => t('TOTMAN_UI_SETUP_CODE must be configured in {script} or in the server environment before setup.', ['script' => current_script_name()]),'setup_state_dir' => 'The folder must already exist and contain a Web-UI-enabled totman configuration. Recovery never recreates deleted live configuration files.','recovery_code' => t('Setup/recovery code configured in {script} or the server environment.', ['script' => current_script_name()]),'recovery_state_dir' => 'The folder must already exist and contain a Web-UI-enabled totman configuration. Recovery never recreates deleted live configuration files.','stealth_neutral_for_invalid' => 'Yes returns a neutral page for invalid tokens. No can reveal more detail to visitors.','stealth_level_2_neutral_on_stale' => 'Yes keeps stale-token responses neutral. No makes expired or old states easier to recognise.','ip_mode' => 'REMOTE_ADDR uses the web server address. Trusted Proxy reads the configured header only from trusted proxy IPs.','trusted_proxies' => 'JSON array such as ["127.0.0.1"] or comma-separated IPs. Used only in trusted proxy mode.','trusted_proxy_header' => 'Header name such as X-Forwarded-For. Used only for requests from trusted proxies.','rate_limit_enabled' => 'When enabled, request count and window must both be valid.','rate_limit_max_requests' => 'Positive whole number, for example 30.','rate_limit_window_seconds' => $durationTip,'rate_limit_dir' => 'Blank or null uses {state_dir}/ratelimit. Custom values must be absolute server paths. 0 is invalid.','web_ui_enabled' => 'When disabled, totman-ui.php refuses setup, sign-in, API access, and write actions. The runtime continues to work.','download_valid_days' => 'Positive whole number plus unit: days or weeks. Stored as whole days.','download_base_dir' => 'Absolute server path required. File upload, moving, and renaming happen manually via Terminal/SFTP.','download_rate_limit_enabled' => 'When enabled, request count and window must both be valid.','download_rate_limit_max_requests' => 'Positive whole number, for example 20.','download_rate_limit_window_seconds' => $durationTip,'download_lease_seconds' => $durationTip . ' Must not be longer than the download validity period.','log_mode' => 'File writes the configured log file. Syslog uses server syslog. File & Syslog writes both. None disables logging.','operator_alert_interval_hours' => 'Whole hours from 1 to 24.','log_file' => 'Blank or null uses the default data-folder log. Absolute paths and safe relative paths are runtime-compatible; display and clear stay limited by the Web UI safety policy.','lib_file' => $filenameTip,'l18n_dir_name' => $filenameTip,'lock_file' => $filenameTip,'log_file_name' => $filenameTip,'state_file' => $filenameTip,'web_file' => $filenameTip,'web_css_file' => $filenameTip,'recipients_file_display' => 'Read-only here. Renaming this file needs a migration flow so recipients are not silently moved.','check_interval_seconds' => $durationTip,'confirm_window_seconds' => $durationTip . ' Self-reminder interval must not be longer than this window.','remind_every_seconds' => $durationTip . ' Must not be longer than the confirmation window.','escalate_grace_seconds' => $durationTip,'missed_cycles_before_fire' => 'Positive whole number. Higher values delay escalation after missed cycles.','escalate_ack_enabled' => 'When enabled, final e-mails can include an acknowledgement link. A submitted acknowledgement stops further escalation e-mails for the current escalation event; the cycle is not reset.','escalate_ack_remind_every_seconds' => $durationTip,'escalate_ack_max_reminds' => 'Whole number, zero or higher. Zero means no repeated receipt reminders after the first escalation notice.','to_self' => 'One address per line. ' . $mailboxTip,'mail_from' => $mailboxTip,'reply_to' => $mailboxTip,'sendmail_path' => 'Executable server path required, for example /usr/sbin/sendmail or /usr/lib/sendmail.','mail_timezone' => 'IANA timezone required, for example Europe/London or Europe/Berlin. Invalid values are rejected.','mail_date_format' => 'PHP DateTime format, for example j F Y or Y-m-d. Tokens are not translated.','mail_time_format' => 'PHP DateTime format, for example H:i:s or H:i. Tokens are not translated.','mail_datetime_format' => 'Only needed when the separate Date Format and Time Format fields are not enough. Empty value uses those two fields.','body_reminder' => 'Allowed placeholders: {CONFIRM_URL}, {DEADLINE_ISO}, {CYCLE_START_ISO}. Placeholder names must remain unchanged.',];
+    return $map[$name] ?? '';
+}
+function duration_control(string $name, string $label, int $seconds, ?string $help = null, string $depends = '', ?array $allowedUnits = null): void
+{
+    $unitOptions = $allowedUnits ?? ['seconds' => 'Seconds','minutes' => 'Minutes','hours' => 'Hours','days' => 'Days','weeks' => 'Weeks'];
+    [$value,$unit] = duration_parts($seconds, $unitOptions);
+    $helpText = $help ?? field_help($name, $label);
+    $tooltipText = field_tooltip($name, $label, $helpText);
+    $desc = described_by($name, $helpText, $tooltipText);
+    $attrs = $depends !== '' ? ' data-depends-on="' . h($depends) . '"' : '';
+    echo'<div class="input-group duration-group"' . $attrs . '>' . field_label($name . '_value', $label, $tooltipText) . field_detail($name, $tooltipText) . '<div class="duration-control"><input id="' . h($name) . '_value" name="' . h($name) . '_value" type="number" min="1" step="1" value="' . h((string)$value) . '" inputmode="numeric"' . aria_desc($desc) . '><select id="' . h($name) . '_unit" name="' . h($name) . '_unit" aria-label="' . h(t($label) . ' ' . t('unit')) . '"' . aria_desc($desc) . '>';
+    foreach ($unitOptions as $key => $unitLabel) {
+        echo'<option value="' . h($key) . '"' . ($unit === $key ? ' selected' : '') . '>' . h(t($unitLabel)) . '</option>';
+    }
+    echo'</select></div>' . helper_text($name, $helpText) . '</div>';
+}
+function timezone_input(string $name, string $label, string $value): void
+{
+    $value = trim($value);
+    $helpText = field_help($name, $label);
+    $tooltipText = field_tooltip($name, $label, $helpText);
+    $desc = described_by($name, $helpText, $tooltipText);
+    echo'<div class="input-group">' . field_label($name, $label, $tooltipText) . field_detail($name, $tooltipText) . '<select id="' . h($name) . '" name="' . h($name) . '" class="timezone-select"' . aria_desc($desc) . '>';
+    foreach (DateTimeZone::listIdentifiers() as $zone) {
+        echo'<option value="' . h($zone) . '"' . ($value === $zone ? ' selected' : '') . '>' . h($zone) . '</option>';
+    }
+    echo'</select>' . helper_text($name, $helpText) . '</div>';
+}
+function select_options(array $values, array $selected, bool $includeEmpty = false): string
+{
+    $selectedLookup = array_fill_keys($selected, true);
+    foreach ($selected as $value) {
+        if ($value !== '' && !in_array($value, $values, true)) {
+            $values[] = $value;
+        }
+    }
+    $html = $includeEmpty ? '<option value="">' . h(t('No template selected')) . '</option>' : '';
+    foreach ($values as $value) {
+        $value = (string)$value;
+        if ($value === '') {
+            continue;
+        }
+        $html .= '<option value="' . h($value) . '"' . (isset($selectedLookup[$value]) ? ' selected' : '') . '>' . h($value) . '</option>';
+    }
+    return $html;
+}
+function alias_choice_list(string $field, int|string $index, array $fileAliases, array $selected, string $label, string $describedBy = ''): string
+{
+    $selectedLookup = array_fill_keys($selected, true);
+    $html = '<div class="choice-list" role="group" data-file-alias-choice-list data-field="' . h($field) . '" data-index="' . h((string)$index) . '" aria-label="' . h(t($label)) . '"' . ($describedBy !== '' ? ' aria-describedby="' . h($describedBy) . '"' : '') . '>';
+    foreach ($fileAliases as $alias) {
+        $alias = (string)$alias;
+        if ($alias === '') {
+            continue;
+        }
+        $id = $field . '_' . $index . '_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', $alias);
+        $html .= '<label class="choice-option" for="' . h($id) . '"><input id="' . h($id) . '" type="checkbox" name="' . h($field) . '[' . h((string)$index) . '][]" value="' . h($alias) . '"' . checked(isset($selectedLookup[$alias])) . ' data-file-alias-choice> <span>' . h($alias) . '</span></label>';
+    }
+    if ($fileAliases === []) {
+        $html .= '<span class="choice-empty helper-text">' . h(t('No file aliases configured yet.')) . '</span>';
+    }
+    return $html . '</div>';
+}
+function recipient_title(string $name): string
+{
+    $name = trim($name);
+    return $name === '' ? t('Recipient') : t('Recipient') . ': ' . $name;
+}
+function recipient_row(array $row, array $templateKeys, array $fileAliases, int|string $index = 0): void
+{
+    $normal = isset($row[3]) && is_array($row[3]) ? implode(', ', $row[3]) : '';
+    $single = isset($row[4]) && is_array($row[4]) ? implode(', ', $row[4]) : '';
+    $messageKey = (string)($row[2] ?? '');
+    $mailHelp = "Accepted formats:\nuser@example.com\nName <user@example.com>\n\"Name\" <user@example.com>";
+    $name = (string)($row[0] ?? '');
+    $prefix = 'recipient_' . preg_replace('/[^a-zA-Z0-9_-]/', '_', (string)$index);
+    echo'<div class="card recipient-card" data-recipient-row><div class="card-header"><h3 data-recipient-title data-empty-title="' . h(t('Recipient')) . '">' . h(recipient_title($name)) . '</h3><button type="button" class="btn-icon delete-row" aria-label="' . h(t('Remove recipient')) . '">' . delete_icon() . '</button></div><div class="form-grid nested recipient-grid">';
+    echo'<div class="input-group">' . repeated_field_label('Name', 'Used for the {RECIPIENT_NAME} placeholder in messages.', $prefix . '_name') . '<input name="recipient_name[]" value="' . h($name) . '" aria-label="' . h(t('Recipient name')) . '" aria-describedby="' . h(described_by($prefix . '_name')) . '" data-recipient-name><p id="' . h($prefix) . '_name_help" class="helper-text">' . h(t('Display name for messages.')) . '</p></div>';
+    echo'<div class="input-group">' . repeated_field_label('Mailbox', $mailHelp, $prefix . '_mailbox') . '<input name="recipient_address[]" value="' . h((string)($row[1] ?? '')) . '" aria-label="' . h(t('Recipient mailbox')) . '" aria-describedby="' . h(described_by($prefix . '_mailbox')) . '"><p id="' . h($prefix) . '_mailbox_help" class="helper-text">' . h(t('E-mail address plus optional display name.')) . '</p></div>';
+    echo'<div class="input-group">' . repeated_field_label('Template', 'Configured message required.', $prefix . '_template') . '<select name="recipient_message_key[]" data-template-key-select data-empty-label="' . h(t('No template selected')) . '" aria-label="' . h(t('Recipient message')) . '" aria-describedby="' . h(described_by($prefix . '_template')) . '">' . select_options($templateKeys, [$messageKey], true) . '</select><p id="' . h($prefix) . '_template_help" class="helper-text">' . h(t('Message for this recipient.')) . '</p></div>';
+    echo'<div class="input-group">' . repeated_field_label('Downloads (Normal)', 'One or more aliases from File Alias Registry can be selected. These links remain reusable.', $prefix . '_normal_downloads') . alias_choice_list('recipient_normal_files', $index, $fileAliases, alias_list($normal), 'Normal download aliases', described_by($prefix . '_normal_downloads')) . '<p id="' . h($prefix) . '_normal_downloads_help" class="helper-text">' . h(t('Reusable download aliases for this recipient.')) . '</p></div>';
+    echo'<div class="input-group">' . repeated_field_label('Downloads (Single-use)', 'Only for files that should be available once. After the first successful opening, the same link stops working.', $prefix . '_single_downloads') . alias_choice_list('recipient_single_files', $index, $fileAliases, alias_list($single), 'Single-use download aliases', described_by($prefix . '_single_downloads')) . '<p id="' . h($prefix) . '_single_downloads_help" class="helper-text">' . h(t('One-time links for files that should be saved immediately.')) . '</p></div>';
+    echo'</div></div>';
+}
+function message_row(string $key, array $message): void
+{
+    $noticePlaceholder = 'Save this file straight away. This download link works only once.';
+    $isTemplate = $key === '' && (string)($message['subject'] ?? '') === '' && (string)($message['body'] ?? '') === '';
+    $prefix = $isTemplate ? 'message___INDEX__' : 'message_' . substr(hash('sha256', $key . serialize($message) . random_int(0, PHP_INT_MAX)), 0, 10);
+    echo'<div class="card"><div class="card-header"><h3>' . h(t('Template')) . '</h3><button type="button" class="btn-icon delete-row" aria-label="' . h(t('Remove message template')) . '">' . delete_icon() . '</button></div><input type="hidden" name="message_original_key[]" value="' . h($key) . '"><div class="form-grid">';
+    echo'<div class="input-group">' . repeated_field_label('Key', 'Allowed characters: lowercase letters, numbers, underscore, and hyphen. Recipients reference this value.', $prefix . '_key') . '<input name="message_key[]" value="' . h($key) . '" aria-label="' . h(t('Message key')) . '" aria-describedby="' . h(described_by($prefix . '_key')) . '" data-message-key-input data-last-key="' . h($key) . '"><p id="' . h($prefix) . '_key_help" class="helper-text">' . h(t('Stable key used by recipients.')) . '</p></div>';
+    echo'<div class="input-group full-width">' . repeated_field_label('Subject', 'Plain text subject line. Short wording improves display in common mail clients.', $prefix . '_subject') . '<input name="message_subject[]" value="' . h((string)($message['subject'] ?? '')) . '" aria-label="' . h(t('Message subject')) . '" aria-describedby="' . h(described_by($prefix . '_subject')) . '"><p id="' . h($prefix) . '_subject_help" class="helper-text">' . h(t('Subject line sent to recipients.')) . '</p></div>';
+    echo'<div class="input-group full-width">' . repeated_field_label('Body', 'May contain placeholders such as {RECIPIENT_NAME}, {ACK_BLOCK}, and {DOWNLOAD_LINKS}. Placeholder names must remain unchanged.', $prefix . '_body') . '<textarea class="auto-grow" name="message_body[]" aria-label="' . h(t('Message body')) . '" aria-describedby="' . h(described_by($prefix . '_body')) . '">' . h((string)($message['body'] ?? '')) . '</textarea><p id="' . h($prefix) . '_body_help" class="helper-text">' . h(t('Message body for this template.')) . '</p>' . placeholder_note(['{LAST_CONFIRM_ISO}','{CYCLE_START_ISO}','{DEADLINE_ISO}','{RECIPIENT_NAME}','{ACK_BLOCK}','{ACK_URL}','{DOWNLOAD_LINKS}']) . '</div>';
+    echo'<div class="input-group full-width">' . repeated_field_label('Single-use Notice', 'Required when this message is used with Downloads (Single-use). The text should state that files must be saved immediately because each one-time link works only once.', $prefix . '_notice') . '<input name="message_single_use_notice[]" value="' . h((string)($message['single_use_notice'] ?? '')) . '" placeholder="' . h(t($noticePlaceholder)) . '" aria-label="' . h(t('Single-use notice')) . '" aria-describedby="' . h(described_by($prefix . '_notice')) . '"><p id="' . h($prefix) . '_notice_help" class="helper-text">' . h(t('Shown above one-time links; immediate file saving should be stated.')) . '</p></div></div></div>';
+}
+function file_row(string $alias, string $path, string $originalAlias = '', string $originalPath = '', bool $saved = false): void
+{
+    $prefix = ($alias === '' && $path === '') ? 'file___INDEX__' : 'file_' . substr(hash('sha256', $alias . $path . random_int(0, PHP_INT_MAX)), 0, 10);
+    $pathAttrs = $saved ? ' readonly data-file-path-readonly="1"' : ' data-new-file-path="1"';
+    $pathHelp = $saved ? 'The saved path is locked here. File moves or renames happen via Terminal/SFTP; a new alias can then be created if needed.' : 'Relative path of a manually uploaded file. Leading slash and .. parent segments are not allowed.';
+    echo'<div class="file-row" data-file-row><div class="file-field"><input type="hidden" name="file_original_alias[]" value="' . h($originalAlias) . '"><input type="hidden" name="file_original_path[]" value="' . h($originalPath) . '">' . repeated_field_label('Alias', 'Allowed characters: lowercase letters, numbers, underscore, and hyphen. Recipients reference this alias in download lists.', $prefix . '_alias') . '<input name="file_alias[]" value="' . h($alias) . '" maxlength="64" aria-label="' . h(t('File alias')) . '" aria-describedby="' . h(described_by($prefix . '_alias')) . '" data-file-alias-input><p id="' . h($prefix) . '_alias_help" class="helper-text">' . h(t('Short name used in recipient download lists.')) . '</p></div><div class="file-field">' . repeated_field_label('Path', $pathHelp, $prefix . '_path') . '<input name="file_path[]" value="' . h($path) . '" aria-label="' . h(t('Relative file path')) . '" aria-describedby="' . h(described_by($prefix . '_path')) . '" data-file-path-input' . $pathAttrs . '><p id="' . h($prefix) . '_path_help" class="helper-text">' . h(t($saved ? 'Read-only after saving.' : 'Relative path below the download folder.')) . '</p></div><div class="file-action"><button type="button" class="btn-icon delete-row" aria-label="' . h(t('Remove file alias')) . '" data-delete-kind="file" data-delete-confirm="' . h(t('This removes the alias and deletes the physical file. This cannot be undone here.')) . '">' . delete_icon() . '</button><button type="button" class="btn-secondary undo-file-delete" data-undo-file-delete>' . h(t('Undo')) . '</button></div><p class="helper-text pending-delete-note">' . h(t('Deletion occurs on save.')) . '</p></div>';
+}
+function templates(array $templateKeys, array $fileAliases): void
+{
+    echo'<template id="recipient-template">';
+    recipient_row(['','','',[],[]], $templateKeys, $fileAliases, '__INDEX__');
+    echo'</template><template id="message-template">';
+    message_row('', ['subject' => '','body' => '','single_use_notice' => '']);
+    echo'</template><template id="file-template">';
+    file_row('', '', '', '', false);
+    echo'</template>';
+}
+function css(): string
+{
+    return<<<'CSS'
+:root{--bg-main:#f1f5f9;--bg-surface:#fff;--text-primary:#0f172a;--text-muted:#334155;--bg-card:rgba(255,255,255,.9);--accent:#c1121f;--accent-hover:#9f0f1a;--accent-glow:rgba(193,18,31,.16);--border:#cbd5e1;--success:#15803d;--warning:#2563eb;--danger:#b91c1c;--radius-s:8px;--radius-m:12px;--space-s:.5rem;--space-m:1rem;--space-l:1.6rem}
+html[data-theme=dark]{--bg-main:#0b0f1a;--bg-surface:#161e2e;--bg-card:rgba(22,30,46,.92);--text-primary:#f8fafc;--text-muted:#cbd5e1;--accent:#e63946;--accent-hover:#ff5d68;--accent-glow:rgba(230,57,70,.25);--border:#334155;--success:#22c55e;--warning:#60a5fa;--danger:#f87171}*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:var(--bg-main);color:var(--text-primary);line-height:1.55;min-height:100vh}.container{width:min(100% - 3rem,1200px);margin-inline:auto;padding-block:var(--space-l)}
+h1,h2,h3{font-weight:800;line-height:1.1;color:var(--text-primary)}
+h1{font-size:clamp(1.4rem,1rem + 2vw,2.2rem);margin-bottom:6px}.tagline{font-size:clamp(.75rem,.65rem + .5vw,1rem);font-weight:500;opacity:.75}
+h3{font-size:1.25rem;margin-bottom:var(--space-m)}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}.header{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;margin-bottom:var(--space-m);gap:var(--space-m)}.brand{display:flex;align-items:center;gap:1rem}.brand-logo{width:clamp(40px,9vw,112px);height:auto}.card{background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-m);padding:var(--space-l);margin-bottom:var(--space-l);box-shadow:0 1px 3px rgba(0,0,0,.1)}.card>h2,.card>h3{margin-bottom:calc(var(--space-m)+ .45rem)}.card>h2+form,.card>h3+form,.card>h2+.form-grid,.card>h3+.form-grid{margin-top:var(--space-m)}.dashboard-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:var(--space-s);margin-bottom:var(--space-m)}.stat-card{display:flex;align-items:center;gap:1rem;padding:1rem;margin-bottom:0;background:var(--bg-surface);min-height:86px}.stat-icon{width:42px;height:42px;background:var(--accent-glow);color:var(--accent);border-radius:10px;display:grid;place-items:center;font-weight:900}.stat-content{display:flex;flex-direction:column;gap:2px}.stat-label{font-size:.72rem;font-weight:800;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em}.stat-value{font-size:clamp(1rem,.8rem + 1vw,1.35rem);font-weight:900}.stat-desc,.helper-text,.text-muted{color:var(--text-muted);font-size:.85rem}.status-badge{background:rgba(16,185,129,.1);color:var(--success);border:1px solid rgba(16,185,129,.25);font-size:.65rem;font-weight:900;padding:2px 8px;border-radius:4px;text-transform:uppercase}
+nav{display:flex;flex-wrap:wrap;padding:.5rem;background:var(--bg-surface);border:1px solid var(--border);border-radius:100px;margin-bottom:var(--space-m);gap:.5rem}.nav-item{flex:1 1 auto;text-align:center;padding:.7rem 1rem;border-radius:100px;font-weight:800;cursor:pointer;color:var(--text-muted);background:transparent;border:0;font:inherit}.nav-item.active{background:var(--accent);color:white;box-shadow:0 4px 15px var(--accent-glow)}.sub-nav{display:flex;flex-wrap:wrap;gap:1rem;margin-bottom:var(--space-l);border-bottom:1px solid var(--border)}.sub-nav-item{flex:1 1 auto;padding:.75rem 0;font-weight:900;text-align:center;cursor:pointer;color:var(--text-muted);position:relative;background:transparent;border:0;font:inherit}.sub-nav-item.active{color:var(--accent)}.sub-nav-item.active:after{content:"";position:absolute;bottom:-1px;left:0;width:100%;height:2px;background:var(--accent)}.preflight-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,260px),1fr));gap:.75rem}.preflight-item{display:flex;flex-direction:column;gap:.25rem;border:1px solid var(--border);border-left-width:5px;border-radius:var(--radius-s);padding:.75rem;background:var(--bg-surface)}.preflight-item span{font-size:.85rem;color:var(--text-muted)}.status-ok{border-left-color:var(--success)}.status-warn{border-left-color:var(--warning)}.status-error{border-left-color:var(--danger)}.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:var(--space-m)var(--space-l)}.form-grid.nested{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}.full-width{grid-column:1/-1}.input-group{margin-bottom:.85rem}.input-group label,.group-label{display:flex;align-items:center;gap:.5rem;font-size:1rem;font-weight:800;color:var(--text-muted);margin-bottom:.55rem}
+input,textarea,select{width:100%;padding:.85rem 1rem;background:var(--bg-main);border:1.5px solid var(--border);border-radius:var(--radius-s);color:var(--text-primary);font:inherit;font-weight:600}
+textarea{resize:vertical;min-height:110px}
+input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent);background:var(--bg-surface);box-shadow:0 0 0 4px var(--accent-glow)}
+input:disabled,button:disabled{opacity:.65;cursor:not-allowed}
+input[readonly]{opacity:.78}.segmented-control{display:flex;background:var(--bg-main);padding:4px;border-radius:var(--radius-s);border:1.5px solid var(--border)}.segmented-control input{position:absolute;opacity:0;width:0;height:0}.segmented-control label{flex:1;padding:.6rem;text-align:center;border-radius:6px;cursor:pointer;font-weight:800;font-size:.85rem;margin:0}.segmented-control input:checked+label{background:var(--accent);color:white}.btn-primary,.btn-secondary,.btn-icon{border-radius:var(--radius-m);font-weight:700;cursor:pointer;transition:.2s;display:inline-flex;align-items:center;justify-content:center;gap:.6rem}.btn-primary{background:var(--accent);color:white;border:0;padding:.85rem 1.4rem}.btn-primary:hover:not(:disabled){background:var(--accent-hover);transform:translateY(-1px)}.btn-secondary{background:var(--bg-main);color:var(--text-primary);border:1.5px solid var(--border);padding:.8rem 1.2rem}.btn-secondary:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}.btn-icon{background:var(--bg-surface);border:1px solid var(--border);width:42px;height:42px;color:var(--text-muted)}.danger{border-color:var(--danger)!important;color:var(--danger)!important}.danger-zone{border-color:color-mix(in srgb,var(--danger),var(--border)60%)}.action-bar{display:flex;justify-content:flex-end;align-items:center;gap:.8rem;width:100%;margin-block:var(--space-l);flex-wrap:wrap}.inline-action{display:inline-flex;margin:0 .5rem var(--space-m)0}.card-header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:var(--space-m)}
+table{width:100%;border-collapse:separate;border-spacing:.5rem}.file-registry-grid{display:grid;gap:.9rem}.file-row{display:grid;grid-template-columns:minmax(12rem,.9fr)minmax(16rem,2.4fr)auto;gap:.55rem .65rem;align-items:start}.file-field{min-width:0}.file-action{display:flex;align-items:flex-start;gap:.5rem;padding-top:2rem}.pending-delete-note{display:none;grid-column:1/-1;padding:.55rem .75rem;border:1px solid rgba(185,28,28,.35);border-radius:var(--radius-s);background:rgba(185,28,28,.1);color:var(--danger)!important;font-weight:750}.undo-file-delete{display:none}.file-row.is-pending-delete{opacity:.8}.file-row.is-pending-delete input[name="file_alias[]"],.file-row.is-pending-delete input[name="file_path[]"]{border-color:var(--danger);background:rgba(185,28,28,.08);text-decoration:line-through}.file-row.is-pending-delete .delete-row{display:none}.file-row.is-pending-delete .undo-file-delete{display:inline-flex}.file-row.is-pending-delete .pending-delete-note{display:block}.badge{font-size:.75rem;font-weight:900;color:var(--text-muted)}.log-path-badge{max-width:100%;overflow-wrap:anywhere;text-align:right;line-height:1.35}.notice{padding:.9rem 1rem;border-radius:var(--radius-s);margin-bottom:var(--space-m);font-weight:800}.notice.ok{background:rgba(21,128,61,.12);color:var(--success);border:1px solid rgba(21,128,61,.3)}.notice.error{background:rgba(185,28,28,.12);color:var(--danger);border:1px solid rgba(185,28,28,.3)}.auth-main{display:grid;place-items:center;min-height:50vh}.auth-card{width:min(100%,680px)}.logout-form{display:flex;justify-content:flex-end;margin-bottom:var(--space-m)}.terminal-card{background:var(--bg-card);color:var(--text-primary)}.log-window{white-space:pre-wrap;max-height:560px;overflow:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85rem}.footer.centered{text-align:center;margin-top:4rem;padding-top:2rem;color:var(--text-muted);font-weight:800}.hidden{display:none}.view-animate{animation:slideIn .25s ease-out}@keyframes slideIn{from{opacity:0;transform:translateY(8px)}
+to{opacity:1;transform:none}}:focus-visible{outline:3px solid var(--accent);outline-offset:3px}@media(max-width:700px){.container{width:min(100% - 1rem,1200px)}.header{justify-content:center;text-align:center}.brand{justify-content:center;width:100%;flex-direction:column;gap:.65rem}.brand-logo{width:clamp(84px,24vw,116px)}.brand-text{text-align:center}
+nav{border-radius:16px}.nav-item{min-width:100%}.card{padding:1rem}
+table{border-spacing:.25rem}
+td,th{display:block;width:100%}.file-row{grid-template-columns:1fr}.file-action{padding-top:0;align-items:stretch}.file-action .btn-icon,.file-action .btn-secondary{width:100%}}.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.header-actions{display:flex;align-items:center;gap:.5rem;flex-wrap:wrap}.compact-select,.compact-btn{min-height:42px;padding:.45rem .7rem}.theme-select{font-weight:850;min-width:7.2rem}.language-form,.header-logout-form{display:inline-flex;margin:0}.header>.header-actions{justify-content:flex-end;gap:.65rem;max-width:min(100%,42rem)}.header>.header-actions .language-form,.header>.header-actions .header-logout-form{flex:0 0 auto}@media(max-width:700px){.header>.header-actions{width:100%;max-width:none;justify-content:center}.header>.header-actions .language-form,.header>.header-actions .header-logout-form{flex:0 1 auto}}.theme-toggle{width:46px;height:46px;min-height:46px;padding:0!important;font-size:1.35rem}.theme-icon{display:none;line-height:1}.theme-toggle[data-theme-resolved=light] .theme-icon-light,.theme-toggle[data-theme-resolved=dark] .theme-icon-dark{display:block}.stat-icon{width:58px;height:58px;font-size:1.65rem}.preflight-card{padding:0}.preflight-summary{list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:var(--space-l);padding-right:calc(var(--space-l) + 2rem);position:relative}.preflight-summary::-webkit-details-marker{display:none}.preflight-summary:after{content:"";position:absolute;right:1rem;top:50%;width:.65rem;height:.65rem;border-right:2px solid var(--text-muted);border-bottom:2px solid var(--text-muted);transform:translateY(-65%)rotate(45deg);transition:transform .16s ease,top .16s ease}.preflight-card[open] .preflight-summary:after{transform:translateY(-25%)rotate(225deg)}.preflight-heading{display:flex;flex-direction:column;gap:.25rem}.preflight-status{font-size:clamp(1.25rem,1rem + 1vw,1.75rem);font-weight:900;color:var(--text-primary);line-height:1.05}.preflight-next{font-size:.92rem;color:var(--text-muted);font-weight:650}.preflight-grid{padding:0 var(--space-l)var(--space-l)}.preflight-fix{border-top:1px solid var(--border);padding-top:.35rem;margin-top:.25rem}.card-header+.helper-text{margin-top:.25rem}.file-registry-note{margin-bottom:var(--space-l)}.field-label-row{display:flex;align-items:center;gap:.5rem;font-size:1rem;font-weight:800;color:var(--text-muted);margin-bottom:.55rem}.field-label-row label,.field-label-row .group-label-text{margin:0;color:inherit;font:inherit}.field-label-row label,.field-label-row .group-label-text{cursor:text}.help-wrap{position:relative;display:inline-flex;align-items:center;flex:0 0 auto}.help-trigger{display:inline-grid;place-items:center;width:1.25rem;height:1.25rem;border-radius:999px;border:1px solid var(--border);background:var(--bg-surface);color:var(--text-muted);font-size:.8rem;font-weight:900;cursor:help}.help-popover{position:absolute;top:calc(100% + .45rem);left:0;width:min(22rem,calc(100vw - 2rem));padding:.65rem .75rem;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--bg-surface);box-shadow:0 10px 30px rgba(15,23,42,.22);color:var(--text-primary);font-size:.82rem;font-weight:600;line-height:1.4;z-index:30;display:none;pointer-events:auto}.help-popover.is-positioned{position:fixed;top:var(--help-top);left:var(--help-left);width:var(--help-width);max-height:min(var(--help-max-height,50vh),24rem);overflow:auto}.help-wrap:hover .help-popover,.help-wrap.is-open .help-popover{display:block}.duration-control{display:grid;grid-template-columns:minmax(7rem,1fr)minmax(9rem,.8fr);gap:.5rem}
+select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--text-muted)50%),linear-gradient(135deg,var(--text-muted)50%,transparent 50%);background-position:calc(100% - 18px)50%,calc(100% - 12px)50%;background-size:6px 6px;background-repeat:no-repeat;padding-right:2.4rem}.help-popover{white-space:pre-line}.is-disabled-by-toggle{opacity:.5}.is-disabled-by-toggle input,.is-disabled-by-toggle select,.is-disabled-by-toggle textarea{cursor:not-allowed}.notice.warn{background:rgba(37,99,235,.12);color:var(--warning);border:1px solid rgba(37,99,235,.3)}@media(max-width:700px){.header-actions{width:100%;justify-content:center}.duration-control{grid-template-columns:minmax(0,1fr)minmax(8.5rem,.9fr)}.stat-icon{width:50px;height:50px;font-size:1.35rem}.preflight-summary{align-items:flex-start;flex-direction:column}.preflight-counts{align-self:flex-start}}@media(max-width:340px){.duration-control{grid-template-columns:1fr}}.btn-primary,.btn-secondary{min-height:54px;font-size:1rem;line-height:1.2}.btn-primary{padding:1rem 1.65rem}.btn-secondary{padding:.95rem 1.45rem}.compact-btn{min-height:42px;padding:.45rem .7rem}.delete-row{width:54px;height:54px;min-height:54px;font-size:1.1rem}.row-action-cell{width:1%;vertical-align:top;padding-top:2.15rem}.recipient-card .recipient-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.hmac-actions{display:flex;gap:.8rem;align-items:center;flex-wrap:wrap;margin-top:var(--space-m)}.hmac-card .form-grid{margin-bottom:var(--space-m)}.timezone-select{min-height:54px;font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:1rem;font-weight:700;line-height:1.55;background-color:var(--bg-main)}.timezone-select option{font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:1rem}@media(max-width:980px){.recipient-card .recipient-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,220px),1fr))}}@media(max-width:700px){.row-action-cell{padding-top:0}.delete-row{width:54px;height:54px}}.header-actions{gap:.65rem}.language-form{position:relative}.language-menu{position:relative}.language-menu summary{list-style:none;min-height:46px;display:inline-flex;align-items:center;gap:.65rem;border:1.5px solid var(--border);border-radius:var(--radius-m);background:var(--bg-surface);color:var(--text-primary);font-weight:900;font-size:.95rem;padding:.65rem 2.15rem .65rem .9rem;cursor:pointer;user-select:none}.language-menu summary::-webkit-details-marker{display:none}.language-menu summary:after{content:"";position:absolute;right:.9rem;top:50%;width:.55rem;height:.55rem;border-right:2px solid var(--text-muted);border-bottom:2px solid var(--text-muted);transform:translateY(-65%)rotate(45deg);pointer-events:none}.language-menu[open] summary{border-color:var(--accent);box-shadow:0 0 0 4px var(--accent-glow);background:var(--bg-surface)}.language-menu[open] summary:after{transform:translateY(-25%)rotate(225deg)}.language-options{position:absolute;right:0;top:calc(100% + .45rem);z-index:50;min-width:100%;padding:.35rem;border:1px solid var(--border);border-radius:var(--radius-m);background:var(--bg-surface);box-shadow:0 14px 36px rgba(15,23,42,.2);display:grid;gap:.25rem}.language-options button{border:0;border-radius:8px;background:transparent;color:var(--text-primary);font:inherit;font-weight:800;text-align:left;padding:.6rem .75rem;cursor:pointer}.language-options button:hover,.language-options button[aria-current=true]{background:var(--accent-glow);color:var(--accent)}.theme-btn{width:46px;height:46px;min-height:46px;font-size:1.25rem;line-height:1;color:var(--text-primary);font-weight:900}.signout-btn{border-color:rgba(185,28,28,.35)!important;background:rgba(185,28,28,.08)!important;color:var(--danger)!important}.signout-btn:hover:not(:disabled){border-color:var(--danger)!important;background:rgba(185,28,28,.14)!important;color:var(--danger)!important}
+select[multiple]{min-height:8.5rem;background-image:none;padding-right:1rem}.placeholder-list code{display:inline-block;margin:.15rem .2rem .15rem 0;padding:.1rem .35rem;border:1px solid var(--border);border-radius:6px;background:var(--bg-main);font-size:.78rem}.delete-row{background:var(--danger)!important;border-color:var(--danger)!important;color:#fff!important}.delete-row svg{width:1.35rem;height:1.35rem;display:block}.delete-row:hover:not(:disabled){background:color-mix(in srgb,var(--danger),#000 12%)!important;border-color:color-mix(in srgb,var(--danger),#000 12%)!important;color:#fff!important}.nav-item,.sub-nav-item{font-size:1.05rem!important;font-weight:700!important}.btn-primary,.btn-secondary,.btn-icon{font-weight:600!important}.segmented-control label{position:relative;transition:background-color .18s ease,color .18s ease,transform .18s ease,box-shadow .18s ease}.segmented-control label:hover{color:var(--text-primary);background:color-mix(in srgb,var(--accent-glow),transparent 35%)}.segmented-control input:focus-visible+label{outline:3px solid var(--accent);outline-offset:2px}.segmented-control input:checked+label{box-shadow:0 8px 20px var(--accent-glow);animation:toggleSelect .18s ease-out}.nav-item,.sub-nav-item{transition:background-color .18s ease,color .18s ease,transform .18s ease,box-shadow .18s ease}.nav-item.active,.sub-nav-item.active{animation:toggleSelect .18s ease-out}@keyframes toggleSelect{0%{transform:scale(.96)}70%{transform:scale(1.025)}100%{transform:scale(1)}}@media(prefers-reduced-motion:reduce){.segmented-control label,.nav-item,.sub-nav-item{transition:none}.segmented-control input:checked+label,.nav-item.active,.sub-nav-item.active{animation:none}}
+p+p{margin-top:.75rem}
+.danger-action-row{display:grid;grid-template-columns:minmax(14rem,22rem)auto auto;gap:.8rem;align-items:end;margin-top:var(--space-l)}.danger-password-field{margin:0}.danger-action-row .btn-secondary{min-height:54px;white-space:nowrap}p+form{margin-top:var(--space-m)}.maintenance-danger-zone{background:#fff1f2;border-color:#b91c1c;border-left:6px solid #7f1d1d;color:#0f172a}.maintenance-danger-zone h3{color:#7f1d1d}.maintenance-danger-zone .helper-text{color:#3f1d1d}.maintenance-danger-zone .btn-secondary.danger{background:#7f1d1d!important;border-color:#7f1d1d!important;color:#fff!important}.maintenance-danger-zone .btn-secondary.danger:hover:not(:disabled){background:#991b1b!important;border-color:#991b1b!important;color:#fff!important}
+html[data-theme=dark] .maintenance-danger-zone{background:#2a1014;border-color:#f87171;border-left-color:#fca5a5;color:#f8fafc}
+html[data-theme=dark] .maintenance-danger-zone h3{color:#fecaca}
+html[data-theme=dark] .maintenance-danger-zone .helper-text{color:#fee2e2}
+html[data-theme=dark] .maintenance-danger-zone .btn-secondary.danger{background:#991b1b!important;border-color:#fecaca!important;color:#fff!important}
+html[data-theme=dark] .maintenance-danger-zone .btn-secondary.danger:hover:not(:disabled){background:#b91c1c!important;border-color:#fff!important;color:#fff!important}.terminal-card{background:var(--bg-card);color:var(--text-primary)}.terminal-card .badge{color:var(--text-muted)}.log-window{display:block;white-space:normal;border:1px solid var(--border);border-radius:var(--radius-s);background:var(--bg-main);color:var(--text-primary);padding:.35rem;min-height:18rem;max-height:clamp(18rem,52vh,42rem);overflow:auto}.log-line{white-space:pre-wrap;overflow-wrap:anywhere;padding:.42rem .55rem;border-radius:6px}.log-line:nth-child(odd){background:rgba(15,23,42,.035)}.log-line:nth-child(even){background:rgba(193,18,31,.06)}.log-line+.log-line{margin-top:2px}.log-actions{display:flex;justify-content:center;margin-top:var(--space-m)}.log-load-more[hidden]{display:none}
+html[data-theme=dark] .log-line:nth-child(odd){background:rgba(248,250,252,.045)}
+html[data-theme=dark] .log-line:nth-child(even){background:rgba(230,57,70,.12)}.brand-link{color:inherit;text-decoration:none;border-radius:var(--radius-m);transition:transform .16s ease,color .16s ease}.brand-link:hover,.brand-link:focus-visible{color:var(--accent);transform:translateY(-1px)}.brand-link h1{color:inherit}.site-footer{border-top:1px solid var(--border);padding-block:clamp(1.2rem,3vw,2rem)clamp(1.6rem,4vw,2.5rem);margin-top:4rem}.footer-nav{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;gap:clamp(.75rem,2vw,1.4rem);padding:.5rem 0}.footer-nav>a{color:var(--text-muted);font-weight:700;text-decoration:none;width:fit-content;transition:color .16s ease}.footer-nav>a:hover,.footer-nav>a:focus-visible{color:var(--accent)}.footer-nav>a:first-child{justify-self:start}.footer-nav>a:nth-child(2){justify-self:center}.footer-nav>a:nth-child(3){justify-self:end}@media(max-width:48rem){.footer-nav{display:flex;flex-wrap:wrap;justify-content:center;text-align:center}.footer-nav>a{width:auto;max-width:100%}}.brand-mark{width:clamp(56px,7vw,84px);aspect-ratio:1;display:grid;place-items:center;border-radius:18px;background:linear-gradient(145deg,#e63946,#7f1d1d);color:#fff;border:1px solid rgba(255,255,255,.28);box-shadow:0 10px 28px rgba(127,29,29,.28);font-weight:900;line-height:.82;text-transform:uppercase;letter-spacing:.02em}.brand-mark span{display:block}.go-live-card{display:grid;grid-template-columns:minmax(0,1fr)auto;gap:var(--space-l);align-items:center;border-left:6px solid var(--accent)}.go-live-card.status-ready{border-left-color:var(--success)}.go-live-card.status-attention{border-left-color:var(--warning)}.go-live-card.status-blocked{border-left-color:var(--danger)}.go-live-kicker{font-size:.78rem;font-weight:900;color:var(--text-muted);letter-spacing:.06em;text-transform:uppercase}.go-live-status{font-size:clamp(1.45rem,1.1rem + 1.5vw,2.25rem);font-weight:900;line-height:1.05;margin:.35rem 0}.go-live-next{color:var(--text-muted);font-weight:650}.reauth-field{min-width:min(100%,20rem)}.save-reauth{align-items:flex-end}.compact-reauth{max-width:24rem;flex:1 1 20rem;margin-bottom:0}.compact-reauth .helper-text{margin-top:.3rem}.advanced-help{margin-top:var(--space-m);border-top:1px solid var(--border);padding-top:var(--space-m)}.advanced-help summary{cursor:pointer;font-weight:800;color:var(--text-muted)}@media(max-width:760px){.brand-mark{width:58px}.save-reauth{align-items:stretch}.save-reauth .btn-primary,.save-reauth .btn-secondary{width:100%}.danger-action-row{grid-template-columns:1fr}.danger-action-row .btn-secondary{width:100%}}.choice-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,9rem),1fr));gap:.45rem 1rem;align-items:start;padding:.25rem 0 0;background:transparent;min-height:2.2rem}.choice-empty{grid-column:1/-1}.choice-option{display:inline-flex!important;align-items:center!important;gap:.55rem;margin:0!important;padding:.1rem 0;color:var(--text-primary);font-size:.95rem!important;font-weight:650!important;line-height:1.35;cursor:pointer}.choice-option input{width:1.05rem;height:1.05rem;margin:0;accent-color:var(--text-muted);flex:0 0 auto}.choice-option span{overflow-wrap:anywhere}.choice-option:hover span{color:var(--accent)}.choice-option:has(input:checked)span{color:var(--text-primary);font-weight:850}.password-control{display:grid;grid-template-columns:minmax(0,1fr)auto;gap:.5rem;align-items:stretch}.password-control input{min-width:0}.password-toggle{min-height:54px;white-space:nowrap;padding:.75rem 1rem!important}@media(max-width:420px){.password-control{grid-template-columns:1fr}.password-toggle{width:100%}}.modal-backdrop{position:fixed;inset:0;z-index:100;display:grid;place-items:center;padding:1rem;background:rgba(15,23,42,.58);backdrop-filter:blur(6px)}.modal-backdrop.hidden{display:none}.confirm-dialog{width:min(100%,34rem);background:var(--bg-card);border:1px solid var(--border);border-left:6px solid var(--danger);border-radius:var(--radius-m);box-shadow:0 26px 70px rgba(15,23,42,.38);padding:var(--space-l);color:var(--text-primary)}.confirm-dialog h2{font-size:1.35rem;margin-bottom:.85rem}.confirm-dialog p{color:var(--text-muted);font-size:1rem}.modal-actions{justify-content:flex-end;margin-bottom:0}.modal-confirm-button{background:var(--danger)!important;border-color:var(--danger)!important;color:#fff!important}.modal-confirm-button:hover:not(:disabled){background:color-mix(in srgb,var(--danger),#000 15%)!important;color:#fff!important}@media(max-width:700px){.modal-backdrop{place-items:end stretch}.confirm-dialog{width:100%}}.notification-backdrop{position:fixed;inset:0;z-index:120;display:grid;place-items:center;padding:1rem;background:rgba(15,23,42,.32);backdrop-filter:blur(3px)}.notification-backdrop.hidden{display:none}.notification-dialog{position:relative;overflow:hidden;width:min(100%,34rem);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-m);box-shadow:0 24px 70px rgba(15,23,42,.34);padding:var(--space-l);color:var(--text-primary);cursor:pointer}.notification-close{position:absolute;top:.65rem;right:.65rem;width:2rem;height:2rem;border:1px solid var(--border);border-radius:999px;background:var(--bg-surface);color:var(--text-muted);font:inherit;font-weight:900;cursor:pointer}.notification-item{padding:.7rem .9rem;border-radius:var(--radius-s);border:1px solid var(--border);font-weight:750}.notification-item+.notification-item{margin-top:.55rem}.notification-item.ok{border-color:rgba(21,128,61,.32);background:rgba(21,128,61,.12)}.notification-item.warn{border-color:rgba(37,99,235,.35);background:rgba(37,99,235,.12)}.notification-item.error{border-color:rgba(185,28,28,.35);background:rgba(185,28,28,.12)}.notification-progress{position:absolute;left:0;right:0;bottom:0;height:5px;background:color-mix(in srgb,var(--border),transparent 35%)}.notification-progress span{display:block;width:100%;height:100%;background:var(--accent);transform-origin:left center;transform:scaleX(1)}.notification-progress span.is-running{animation:notificationProgress linear forwards}@keyframes notificationProgress{to{transform:scaleX(0)}}.stat-icon{background:rgba(100,116,139,.14);color:#475569}.stat-icon svg{width:1.75rem;height:1.75rem;display:block;stroke:currentColor}
+html[data-theme=dark] .stat-icon{background:rgba(148,163,184,.14);color:#cbd5e1}
+.mobile-status-details{display:none}.mobile-toggle-closed,.mobile-toggle-open{display:none}.when-open{display:none}details[open] .when-closed{display:none}details[open] .when-open{display:inline}.desktop-disclosure-label{display:inline}@media(max-width:700px){.desktop-status-grid{display:none}.mobile-status-details{display:block;margin-bottom:var(--space-m);background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius-m);box-shadow:0 1px 3px rgba(0,0,0,.1);overflow:hidden}.mobile-status-summary{list-style:none;cursor:pointer;display:grid;gap:.55rem;margin:.75rem;padding:.85rem 3rem .85rem 1rem;border:1.5px solid var(--border);border-radius:var(--radius-m);background:var(--bg-main);position:relative}.mobile-status-summary::-webkit-details-marker{display:none}.mobile-status-summary:after,.preflight-summary:after{content:"";position:absolute;right:1rem;top:1.05rem;width:.65rem;height:.65rem;border-right:2px solid var(--text-muted);border-bottom:2px solid var(--text-muted);transform:rotate(45deg);transition:transform .16s ease,top .16s ease}.mobile-status-details[open] .mobile-status-summary:after,.preflight-card[open] .preflight-summary:after{transform:rotate(225deg);top:1.35rem}.mobile-status-title{font-weight:900;color:var(--text-primary)}.mobile-status-line{display:flex;flex-wrap:wrap;gap:.18rem .55rem;color:var(--text-muted);font-size:.84rem;font-weight:700}.mobile-status-line span{display:inline;padding:0;border:0;border-radius:0;background:transparent}.mobile-status-details[data-status-has-issues="1"] .mobile-status-title{color:var(--warning)}.mobile-status-grid{padding:0 1rem 1rem;margin:0;grid-template-columns:1fr;gap:.55rem}.mobile-status-grid .stat-card{min-height:auto;padding:.75rem;gap:.75rem}.mobile-status-grid .stat-icon{width:42px;height:42px}.mobile-status-grid .stat-value{font-size:1rem}.mobile-status-grid .stat-desc{font-size:.8rem}.desktop-disclosure-label{display:none}.mobile-toggle-closed{display:inline}.preflight-card[open] .mobile-toggle-closed{display:none}.preflight-card[open] .mobile-toggle-open{display:inline}.preflight-card{margin-bottom:var(--space-m)}.preflight-summary{display:grid;align-items:start;gap:.55rem;margin:.75rem;padding:.85rem 3rem .85rem 1rem;border:1.5px solid var(--border);border-radius:var(--radius-m);background:var(--bg-main);position:relative}.preflight-heading{gap:.35rem}.preflight-next{font-size:.86rem}.preflight-counts{justify-self:start}.preflight-grid{padding:0 1rem 1rem;grid-template-columns:1fr}}
+nav[role=tablist]{padding:.35rem;background:color-mix(in srgb,var(--bg-surface),var(--bg-main)26%);border:1px solid var(--border);border-radius:999px;box-shadow:0 10px 28px rgba(15,23,42,.06);gap:.35rem;margin-bottom:.65rem}.nav-item{min-width:0!important;flex:1 1 8rem!important;border-radius:999px!important;padding:.85rem 1.1rem!important;font-size:1.12rem!important;font-weight:850!important}.nav-item:not(.active):hover,.sub-nav-item:not(.active):hover{background:color-mix(in srgb,var(--accent-glow),transparent 35%);color:var(--text-primary)}.sub-nav{display:flex;flex-wrap:wrap;gap:.3rem;padding:.3rem;background:color-mix(in srgb,var(--bg-surface),var(--bg-main)38%);border:1px solid var(--border);border-radius:999px;margin-top:-.15rem;margin-bottom:var(--space-l);box-shadow:0 6px 18px rgba(15,23,42,.045)}.sub-nav-item{flex:1 1 6.5rem!important;border-radius:999px!important;padding:.58rem .85rem!important;font-size:.94rem!important;font-weight:760!important}.sub-nav-item.active{background:var(--bg-card);color:var(--accent);box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent),transparent 72%),0 5px 14px rgba(15,23,42,.06)}.sub-nav-item.active:after{display:none}.site-footer{border-top:0;margin-top:3rem;padding-block:clamp(1rem,2.4vw,1.5rem)clamp(1.4rem,3vw,2rem)}.footer-nav{display:flex;flex-wrap:wrap;justify-content:center;gap:.35rem;width:fit-content;max-width:100%;margin-inline:auto;padding:.45rem;background:color-mix(in srgb,var(--bg-surface),var(--bg-main)30%);border:1px solid var(--border);border-radius:999px}.footer-nav>a{justify-self:auto!important;padding:.38rem .65rem;border-radius:999px}.footer-nav>a:hover,.footer-nav>a:focus-visible{background:var(--accent-glow);color:var(--accent)}@media(max-width:700px){nav[role=tablist],.sub-nav{border-radius:26px;padding:.35rem;gap:.35rem}.nav-item{flex:1 1 7.5rem!important;border-radius:999px!important;padding:.78rem .85rem!important}.sub-nav-item{flex:1 1 5.8rem!important;border-radius:999px!important}.footer-nav{border-radius:24px;width:100%}}
+CSS;
+}
+function js(): string
+{
+    $uiText = json_encode(['continue' => t('Continue?'),'discardUnsavedChanges' => t('Unsaved changes will be discarded; last saved data will be reloaded.'),'howToFix' => t('How to fix:'),'invalidFilePath' => t('Invalid file path. Required: relative path below the download data root, without /, .., or backslashes.'),'fileAliasTooLong' => t('File aliases must be 64 characters or fewer.'),'deleteFileAlias' => t('This removes the alias and deletes the physical file. This cannot be undone here.'),'noFileAliases' => t('No file aliases configured yet.'),'recipient' => t('Recipient'),'loadingOlderEntries' => t('Loading older entries...'),'noMessageTemplatesWarning' => t('No message templates remain. This configuration stays non-runtime-ready until at least one message template exists and each recipient uses one. Save this state?'),'noRecipientsWarning' => t('No recipients remain. This configuration cannot notify anyone until at least one recipient exists. Save this state?'),], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);$js = <<<'JS'
+(() => {
+'use strict';
+const animatePanel = target => {
+if (!target || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+target.classList.remove('view-animate');
+void target.offsetWidth;
+target.classList.add('view-animate');
+};
+const switchView = (type, targetId, containerId = null, save = true) => {
+if (type === 'main') {
+const items = [...document.querySelectorAll('.nav-item')];
+if (items.length === 0) return;
+const target = document.getElementById(targetId) || document.getElementById('view-config');
+if (!target) return;
+targetId = target.id;
+items.forEach(i => {
+const active = i.dataset.target === targetId;
+i.classList.toggle('active', active);
+i.setAttribute('aria-selected', active ? 'true' : 'false');
+i.tabIndex = active ? 0 : -1;
+});
+document.querySelectorAll('main > section').forEach(s => s.classList.toggle('hidden', s.id !== targetId));
+if (save) animatePanel(target);
+target.querySelectorAll('textarea.auto-grow').forEach(autoGrow);
+if (save) localStorage.setItem('totman_active_main', targetId);
+} else {
+const group = document.getElementById(containerId);
+if (!group) return;
+const found = document.getElementById(targetId);
+const target = (found && group.contains(found)) ? found : group.querySelector('.sub-view');
+if (!target) return;
+targetId = target.id;
+group.querySelectorAll('.sub-nav-item').forEach(i => {
+const active = i.dataset.sub === targetId;
+i.classList.toggle('active', active);
+i.setAttribute('aria-selected', active ? 'true' : 'false');
+i.tabIndex = active ? 0 : -1;
+});
+group.querySelectorAll('.sub-view').forEach(v => v.classList.toggle('hidden', v.id !== targetId));
+if (save) animatePanel(target);
+target.querySelectorAll('textarea.auto-grow').forEach(autoGrow);
+if (containerId === 'view-config') updateConfigFlashScope(target.querySelector('[data-config-scope]')?.dataset.configScope || 'config-core');
+if (save) localStorage.setItem(`totman_active_sub_${containerId}`, targetId);
+}
+};
+const updateConfigFlashScope = scope => {
+const input = document.getElementById('config-flash-scope');
+if (input && scope) input.value = scope;
+};
+const themeMedia = window.matchMedia('(prefers-color-scheme: dark)');
+const themeStorageKey = 'totman_theme_mode';
+const storageGet = key => {
+try { return localStorage.getItem(key); } catch (error) { return null; }
+};
+const storageSet = (key, value) => {
+try { localStorage.setItem(key, value); } catch (error) {}
+};
+const storageRemove = key => {
+try { localStorage.removeItem(key); } catch (error) {}
+};
+const normaliseThemeMode = mode => ['light','dark'].includes(mode) ? mode : null;
+const systemThemeMode = () => themeMedia.matches ? 'dark' : 'light';
+const applyThemeMode = mode => {
+mode = normaliseThemeMode(mode);
+try { sessionStorage.removeItem('totman_session_theme'); } catch (error) {}
+const resolved = mode || systemThemeMode();
+document.documentElement.setAttribute('data-theme', resolved);
+document.documentElement.dataset.themeMode = mode || 'system';
+const toggle = document.getElementById('theme-toggle');
+if (toggle) {
+toggle.dataset.themeResolved = resolved;
+toggle.setAttribute('aria-pressed', resolved === 'dark' ? 'true' : 'false');
+}
+};
+const setThemeMode = mode => {
+mode = normaliseThemeMode(mode);
+if (!mode) storageRemove(themeStorageKey);
+else storageSet(themeStorageKey, mode);
+applyThemeMode(mode);
+};
+const toggleThemeMode = () => {
+const next = (document.documentElement.getAttribute('data-theme') || systemThemeMode()) === 'dark' ? 'light' : 'dark';
+storageSet(themeStorageKey, next);
+applyThemeMode(next);
+};
+const autoGrow = el => {
+if (!el) return;
+el.style.height = 'auto';
+el.style.height = `${el.scrollHeight + 2}px`;
+};
+const dependencyActive = rule => {
+const [name, expected = '1'] = String(rule).split(':');
+const selected = document.querySelector(`[name="${CSS.escape(name)}"]:checked`) || document.querySelector(`[name="${CSS.escape(name)}"]`);
+if (!selected) return true;
+return selected.value === expected;
+};
+const refreshDependencies = () => {
+document.querySelectorAll('[data-depends-on]').forEach(group => {
+const active = dependencyActive(group.dataset.dependsOn);
+group.classList.toggle('is-disabled-by-toggle', !active);
+group.querySelectorAll('input,select,textarea').forEach(field => {
+field.disabled = !active;
+});
+});
+};
+const renderPreflight = data => {
+const root = document.querySelector('.preflight-card');
+const grid = root?.querySelector('[data-preflight-grid]');
+const counts = root?.querySelector('[data-preflight-counts]');
+if (!root || !grid || !counts || !data?.checks) return;
+counts.textContent = data.summary_text || `${data.summary?.error || 0} errors / ${data.summary?.warn || 0} warnings`;
+const hasIssues = (data.summary?.error || 0) > 0 || (data.summary?.warn || 0) > 0;
+root.dataset.preflightHasIssues = hasIssues ? '1' : '0';
+root.dataset.preflightStatus = (data.summary?.error || 0) > 0 ? 'blocked' : (hasIssues ? 'attention' : 'ready');
+if (hasIssues) root.open = true;
+grid.replaceChildren(...data.checks.map(check => {
+const [status, label, detail, fix] = check;
+const item = document.createElement('div');
+item.className = `preflight-item status-${status}`;
+const strong = document.createElement('strong');
+strong.textContent = label;
+const span = document.createElement('span');
+span.textContent = detail;
+item.append(strong, span);
+if (status !== 'ok' && fix) {
+const fixSpan = document.createElement('span');
+fixSpan.className = 'preflight-fix';
+fixSpan.textContent = `${data.fix_prefix || uiText.howToFix} ${fix}`;
+item.append(fixSpan);
+}
+return item;
+}));
+};
+const durationSeconds = name => {
+const value = parseInt(document.querySelector(`[name="${name}_value"]`)?.value || '0', 10);
+const unit = document.querySelector(`[name="${name}_unit"]`)?.value || 'minutes';
+const map = { seconds: 1, minutes: 60, hours: 3600, days: 86400, weeks: 604800 };
+return Math.max(0, value * (map[unit] || 1));
+};
+const uniqueCleanValues = selector => [...document.querySelectorAll(selector)]
+.map(el => String(el.value || '').trim())
+.filter((value, index, values) => value !== '' && values.indexOf(value) === index);
+const splitAliasList = value => String(value || '').split(/[\s,]+/).map(v => v.trim()).filter(Boolean);
+const replaceOptions = (select, values, selected, emptyLabel = '') => {
+const selectedSet = new Set(selected.filter(Boolean));
+const merged = [...values];
+selectedSet.forEach(value => {
+if (!merged.includes(value)) merged.push(value);
+});
+select.replaceChildren();
+if (emptyLabel) {
+const option = document.createElement('option');
+option.value = '';
+option.textContent = emptyLabel;
+select.append(option);
+}
+merged.forEach(value => {
+const option = document.createElement('option');
+option.value = value;
+option.textContent = value;
+option.selected = selectedSet.has(value);
+select.append(option);
+});
+};
+const replaceAliasChoices = (list, values) => {
+const field = list.dataset.field;
+const index = list.dataset.index;
+if (!field || !index) return;
+const selected = new Set([...list.querySelectorAll('[data-file-alias-choice]:checked')].map(input => input.value));
+list.replaceChildren();
+if (!values.length) {
+const empty = document.createElement('span');
+empty.className = 'choice-empty helper-text';
+empty.textContent = uiText.noFileAliases;
+list.append(empty);
+return;
+}
+values.forEach(value => {
+const id = `${field}_${index}_${String(value).replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+const label = document.createElement('label');
+label.className = 'choice-option';
+label.setAttribute('for', id);
+const input = document.createElement('input');
+input.id = id;
+input.type = 'checkbox';
+input.name = `${field}[${index}][]`;
+input.value = value;
+input.checked = selected.has(value);
+input.dataset.fileAliasChoice = '';
+const span = document.createElement('span');
+span.textContent = value;
+label.append(input, span);
+list.append(label);
+});
+};
+const refreshRecipientTitle = input => {
+const card = input.closest('[data-recipient-row]');
+const title = card?.querySelector('[data-recipient-title]');
+if (!title) return;
+const emptyTitle = title.dataset.emptyTitle || uiText.recipient;
+const value = String(input.value || '').trim();
+title.textContent = value ? `${emptyTitle}: ${value}` : emptyTitle;
+};
+const validTemplateKey = value => /^[a-z0-9_-]+$/.test(value);
+const syncTemplateRename = input => {
+const previous = String(input.dataset.lastKey || '').trim();
+const current = String(input.value || '').trim();
+if (!validTemplateKey(current)) return;
+const currentCount = [...document.querySelectorAll('input[name="message_key[]"]')]
+.filter(field => String(field.value || '').trim() === current).length;
+if (currentCount !== 1) return;
+if (previous && previous !== current) {
+document.querySelectorAll('[data-template-key-select]').forEach(select => {
+if (select.value === previous) select.dataset.pendingTemplateKey = current;
+});
+}
+input.dataset.lastKey = current;
+};
+const currentFileAliasValues = () => [...document.querySelectorAll('[data-file-row]:not(.is-pending-delete) input[name="file_alias[]"]')]
+.map(el => String(el.value || '').trim())
+.filter((value, index, values) => value !== '' && values.indexOf(value) === index);
+const refreshRecipientChoiceLists = () => {
+const templateKeys = uniqueCleanValues('input[name="message_key[]"]');
+const fileAliases = currentFileAliasValues();
+document.querySelectorAll('[data-template-key-select]').forEach(select => {
+const selected = select.dataset.pendingTemplateKey || select.value;
+delete select.dataset.pendingTemplateKey;
+replaceOptions(select, templateKeys, [selected], select.dataset.emptyLabel || '');
+});
+document.querySelectorAll('[data-file-alias-choice-list]').forEach(list => replaceAliasChoices(list, fileAliases));
+};
+const positionHelpPopover = trigger => {
+const wrap = trigger?.closest('.help-wrap');
+const popover = wrap?.querySelector('.help-popover');
+if (!trigger || !popover) return;
+const margin = 12;
+const gap = 8;
+const width = Math.max(220, Math.min(352, window.innerWidth - margin * 2));
+popover.classList.add('is-positioned');
+popover.style.setProperty('--help-width', `${width}px`);
+const rect = trigger.getBoundingClientRect();
+const belowTop = rect.bottom + gap;
+const belowSpace = window.innerHeight - belowTop - margin;
+const aboveSpace = rect.top - margin - gap;
+const naturalHeight = popover.scrollHeight || 160;
+const useBelow = belowSpace >= 120 || belowSpace >= aboveSpace;
+const maxHeight = Math.max(120, Math.min(384, useBelow ? belowSpace : aboveSpace));
+const height = Math.min(naturalHeight, maxHeight);
+const centredLeft = rect.left + rect.width / 2 - width / 2;
+const left = Math.min(Math.max(margin, centredLeft), Math.max(margin, window.innerWidth - width - margin));
+let top = useBelow ? belowTop : rect.top - height - gap;
+top = Math.min(Math.max(margin, top), Math.max(margin, window.innerHeight - height - margin));
+popover.style.setProperty('--help-left', `${left}px`);
+popover.style.setProperty('--help-top', `${top}px`);
+popover.style.setProperty('--help-max-height', `${maxHeight}px`);
+};
+const positionOpenHelpPopovers = () => {
+document.querySelectorAll('.help-wrap.is-open [data-help-trigger]').forEach(positionHelpPopover);
+};
+let helpCloseTimer = null;
+const setHelpOpen = (wrap, open, pinned = false) => {
+if (!wrap) return;
+const trigger = wrap.querySelector('[data-help-trigger]');
+if (open) {
+if (helpCloseTimer) window.clearTimeout(helpCloseTimer);
+wrap.classList.add('is-open');
+if (pinned) wrap.dataset.helpPinned = '1';
+trigger?.setAttribute('aria-expanded', 'true');
+if (trigger) positionHelpPopover(trigger);
+return;
+}
+wrap.classList.remove('is-open');
+delete wrap.dataset.helpPinned;
+trigger?.setAttribute('aria-expanded', 'false');
+};
+const closeUnpinnedHelp = wrap => {
+if (!wrap || wrap.dataset.helpPinned === '1') return;
+if (helpCloseTimer) window.clearTimeout(helpCloseTimer);
+helpCloseTimer = window.setTimeout(() => {
+if (!wrap.matches(':hover')) setHelpOpen(wrap, false);
+}, 220);
+};
+const selectFieldFromLabel = label => {
+if (!label || label.closest('.help-wrap')) return;
+let control = null;
+const id = label.getAttribute?.('for') || '';
+if (id) control = document.getElementById(id);
+if (!control) control = label.closest('.input-group,td')?.querySelector('input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"]),textarea,select');
+if (!control || control.disabled) return;
+window.requestAnimationFrame(() => {
+control.focus({ preventScroll: true });
+if ((control instanceof HTMLInputElement || control instanceof HTMLTextAreaElement) && typeof control.select === 'function') control.select();
+});
+};
+const showConfirmModal = message => new Promise(resolve => {
+const modal = document.getElementById('confirm-modal');
+const messageNode = document.getElementById('confirm-modal-message');
+const cancel = modal?.querySelector('[data-confirm-cancel]');
+const ok = modal?.querySelector('[data-confirm-ok]');
+if (!modal || !messageNode || !cancel || !ok) {
+resolve(false);
+return;
+}
+const previousFocus = document.activeElement;
+const close = confirmed => {
+modal.classList.add('hidden');
+modal.setAttribute('aria-hidden', 'true');
+cancel.removeEventListener('click', cancelClick);
+ok.removeEventListener('click', okClick);
+modal.removeEventListener('click', backdropClick);
+document.removeEventListener('keydown', keyHandler);
+if (previousFocus && typeof previousFocus.focus === 'function') previousFocus.focus({ preventScroll: true });
+resolve(confirmed);
+};
+const focusable = () => [...modal.querySelectorAll('button,[href],input,select,textarea,[tabindex]:not([tabindex="-1"])')]
+.filter(el => !el.disabled && !el.hidden && el.offsetParent !== null);
+const cancelClick = () => close(false);
+const okClick = () => close(true);
+const backdropClick = event => {
+if (event.target === modal) close(false);
+};
+const keyHandler = event => {
+if (event.key === 'Escape') {
+event.preventDefault();
+close(false);
+return;
+}
+if (event.key !== 'Tab') return;
+const items = focusable();
+if (items.length === 0) {
+event.preventDefault();
+return;
+}
+const first = items[0];
+const last = items[items.length - 1];
+if (event.shiftKey && document.activeElement === first) {
+event.preventDefault();
+last.focus();
+} else if (!event.shiftKey && document.activeElement === last) {
+event.preventDefault();
+first.focus();
+}
+};
+messageNode.textContent = message || uiText.continue;
+modal.classList.remove('hidden');
+modal.setAttribute('aria-hidden', 'false');
+cancel.addEventListener('click', cancelClick);
+ok.addEventListener('click', okClick);
+modal.addEventListener('click', backdropClick);
+document.addEventListener('keydown', keyHandler);
+window.requestAnimationFrame(() => cancel.focus());
+});
+let notificationTimer = null;
+const notificationDuration = 5200;
+const hideNotificationModal = () => {
+const modal = document.getElementById('notification-modal');
+if (!modal) return;
+modal.classList.add('hidden');
+const progress = modal.querySelector('[data-notification-progress]');
+if (progress) {
+progress.classList.remove('is-running');
+progress.style.animationDuration = '';
+}
+if (notificationTimer) {
+window.clearTimeout(notificationTimer);
+notificationTimer = null;
+}
+};
+const showNotificationModal = items => {
+const modal = document.getElementById('notification-modal');
+const target = modal?.querySelector('[data-notification-items]');
+if (!modal || !target) return;
+const list = Array.isArray(items) ? items : [{ type: 'info', message: String(items || '') }];
+const filtered = list.filter(item => String(item?.message || '').trim() !== '');
+if (filtered.length === 0) return;
+target.replaceChildren(...filtered.map(item => {
+const node = document.createElement('div');
+node.className = `notification-item ${['ok', 'warn', 'error', 'info'].includes(item.type) ? item.type : 'info'}`;
+node.textContent = String(item.message || '');
+return node;
+}));
+modal.classList.remove('hidden');
+if (notificationTimer) window.clearTimeout(notificationTimer);
+const progress = modal.querySelector('[data-notification-progress]');
+if (progress) {
+progress.classList.remove('is-running');
+progress.style.animationDuration = `${notificationDuration}ms`;
+void progress.offsetWidth;
+progress.classList.add('is-running');
+}
+notificationTimer = window.setTimeout(hideNotificationModal, notificationDuration);
+};
+const validRelativeFilePath = value => {
+const path = String(value || '').replace(/\\/g, '/').trim();
+return path !== '' && !path.startsWith('/') && !path.includes('..') && !/[\u0000-\u001f\u007f]/.test(path);
+};
+const validateRecipientFileInputs = () => {
+for (const alias of document.querySelectorAll('input[name="file_alias[]"]:not([data-pending-delete-input])')) {
+if (String(alias.value || '').trim().length > 64) {
+showNotificationModal([{ type: 'error', message: uiText.fileAliasTooLong }]);
+alias.focus({ preventScroll: false });
+return false;
+}
+}
+for (const path of document.querySelectorAll('[data-new-file-path]:not([data-pending-delete-input])')) {
+const row = path.closest('[data-file-row]');
+const aliasValue = row?.querySelector('input[name="file_alias[]"]')?.value.trim() || '';
+const pathValue = String(path.value || '').trim();
+if (aliasValue === '' && pathValue === '') continue;
+if (!validRelativeFilePath(pathValue)) {
+showNotificationModal([{ type: 'error', message: uiText.invalidFilePath }]);
+path.focus({ preventScroll: false });
+return false;
+}
+}
+return true;
+};
+const meaningfulMessagesCount = () => [...document.querySelectorAll('#message-cards .card')].filter(card => {
+const key = card.querySelector('input[name="message_key[]"]')?.value.trim() || '';
+const subject = card.querySelector('input[name="message_subject[]"]')?.value.trim() || '';
+const body = card.querySelector('textarea[name="message_body[]"]')?.value.trim() || '';
+return key !== '' || subject !== '' || body !== '';
+}).length;
+const meaningfulRecipientsCount = () => [...document.querySelectorAll('#recipient-cards [data-recipient-row]')].filter(card => {
+const name = card.querySelector('input[name="recipient_name[]"]')?.value.trim() || '';
+const address = card.querySelector('input[name="recipient_address[]"]')?.value.trim() || '';
+const message = card.querySelector('select[name="recipient_message_key[]"]')?.value.trim() || '';
+return name !== '' || address !== '' || message !== '';
+}).length;
+const restoreScrollKey = 'totman_restore_scroll';
+const rememberHmacScroll = form => {
+if (!form || !['generate-hmac-form', 'rotate-hmac-form'].includes(form.id)) return;
+sessionStorage.setItem(restoreScrollKey, String(window.scrollY));
+localStorage.setItem('totman_active_main', 'view-config');
+localStorage.setItem('totman_active_sub_view-config', 'config-general');
+};
+const refreshPasswordGatedButtons = () => {
+document.querySelectorAll('[data-requires-password]').forEach(button => {
+const password = document.getElementById(button.dataset.requiresPassword || '');
+const hasPassword = password instanceof HTMLInputElement && password.value.trim() !== '';
+const hasRequiredSecret = button.dataset.hasSecret === undefined || button.dataset.hasSecret === '1';
+button.disabled = !(hasPassword && hasRequiredSecret);
+});
+};
+const registerPwaServiceWorker = () => {
+const workerUrl = document.documentElement.dataset.pwaWorker || '';
+if (!workerUrl || !('serviceWorker' in navigator) || !window.isSecureContext) return;
+window.addEventListener('load', () => {
+navigator.serviceWorker.register(workerUrl, { scope: './' }).catch(error => {
+if (window.console && typeof window.console.warn === 'function') {
+window.console.warn('totman PWA service worker registration failed.', error);
+}
+});
+});
+};
+const appendLogLines = (windowEl, lines) => {
+lines.forEach(line => {
+const item = document.createElement('div');
+item.className = 'log-line';
+item.textContent = String(line);
+windowEl.append(item);
+});
+};
+const initLogPaging = () => {
+const windowEl = document.querySelector('[data-log-window]');
+const button = document.querySelector('[data-log-load-more]');
+if (!windowEl || !button || !windowEl.dataset.logUrl) return;
+let loading = false;
+button.addEventListener('click', () => {
+if (loading) return;
+const before = button.dataset.logBefore || '0';
+if (!before || before === '0') {
+button.hidden = true;
+return;
+}
+loading = true;
+button.disabled = true;
+const originalText = button.textContent;
+button.textContent = uiText.loadingOlderEntries || 'Loading older entries...';
+fetch(`${windowEl.dataset.logUrl}&before=${encodeURIComponent(before)}`, { headers: { Accept: 'application/json' } })
+.then(response => response.ok ? response.json() : null)
+.then(data => {
+if (!data || !Array.isArray(data.lines)) return;
+appendLogLines(windowEl, data.lines);
+button.dataset.logBefore = String(data.next_before || 0);
+if (!data.has_more || !data.next_before) button.hidden = true;
+})
+.catch(() => {})
+.finally(() => {
+loading = false;
+button.disabled = false;
+if (!button.hidden) button.textContent = originalText;
+});
+});
+};
+document.addEventListener('DOMContentLoaded', () => {
+registerPwaServiceWorker();
+initLogPaging();
+applyThemeMode(storageGet(themeStorageKey));
+themeMedia.addEventListener?.('change', () => {
+storageRemove(themeStorageKey);
+applyThemeMode(null);
+});
+const notificationModal = document.getElementById('notification-modal');
+if (notificationModal) {
+try {
+showNotificationModal(JSON.parse(notificationModal.dataset.notifications || '[]'));
+} catch (error) {
+showNotificationModal([]);
+}
+notificationModal.addEventListener('click', hideNotificationModal);
+notificationModal.querySelector('[data-notification-close]')?.addEventListener('click', hideNotificationModal);
+document.addEventListener('keydown', event => {
+if (event.key === 'Escape' && !notificationModal.classList.contains('hidden')) hideNotificationModal();
+});
+}
+document.getElementById('theme-toggle')?.addEventListener('click', toggleThemeMode);
+document.getElementById('ui_lang')?.addEventListener('change', e => e.target.form?.submit());
+document.querySelectorAll('textarea.auto-grow').forEach(autoGrow);
+document.addEventListener('input', e => {
+if (e.target.matches('textarea.auto-grow')) autoGrow(e.target);
+if (e.target.matches('[data-password-field]')) refreshPasswordGatedButtons();
+if (e.target.matches('[data-recipient-name]')) refreshRecipientTitle(e.target);
+if (e.target.matches('[data-message-key-input]')) syncTemplateRename(e.target);
+if (e.target.matches('input[name="message_key[]"], input[name="file_alias[]"]')) refreshRecipientChoiceLists();
+});
+document.addEventListener('change', e => {
+if (e.target.matches('input[type="radio"], select')) refreshDependencies();
+if (e.target.matches('[data-message-key-input]')) syncTemplateRename(e.target);
+if (e.target.matches('input[name="message_key[]"], input[name="file_alias[]"]')) refreshRecipientChoiceLists();
+});
+document.getElementById('main-config-form')?.addEventListener('focusin', e => {
+updateConfigFlashScope(e.target.closest('[data-config-scope]')?.dataset.configScope || '');
+});
+refreshPasswordGatedButtons();
+document.addEventListener('click', async e => {
+const confirmTarget = e.target.closest('[data-confirm]');
+if (confirmTarget) {
+e.preventDefault();
+const confirmed = await showConfirmModal(confirmTarget.dataset.confirm || uiText.continue);
+if (!confirmed) return;
+const form = confirmTarget.form;
+if (form) {
+form.requestSubmit ? form.requestSubmit(confirmTarget) : form.submit();
+} else if (confirmTarget.href) {
+window.location.href = confirmTarget.href;
+}
+return;
+}
+const trigger = e.target.closest('[data-help-trigger]');
+document.querySelectorAll('.help-wrap.is-open').forEach(wrap => {
+if (wrap !== trigger?.closest('.help-wrap')) {
+setHelpOpen(wrap, false);
+}
+});
+const fieldLabel = e.target.closest('.field-label-row label,.field-label-row .group-label-text');
+if (fieldLabel) {
+selectFieldFromLabel(fieldLabel);
+return;
+}
+if (!trigger) return;
+e.preventDefault();
+const wrap = trigger.closest('.help-wrap');
+const open = !(wrap?.dataset.helpPinned === '1');
+setHelpOpen(wrap, open, open);
+});
+document.addEventListener('pointerover', e => {
+const trigger = e.target.closest?.('[data-help-trigger]');
+const popover = e.target.closest?.('.help-popover');
+const wrap = trigger?.closest('.help-wrap') || popover?.closest('.help-wrap');
+if (wrap) setHelpOpen(wrap, true, wrap.dataset.helpPinned === '1');
+});
+document.addEventListener('pointerout', e => {
+const wrap = e.target.closest?.('.help-wrap');
+if (!wrap || (e.relatedTarget && wrap.contains(e.relatedTarget))) return;
+closeUnpinnedHelp(wrap);
+});
+window.addEventListener('resize', positionOpenHelpPopovers);
+window.addEventListener('scroll', positionOpenHelpPopovers, { passive: true });
+refreshDependencies();
+refreshRecipientChoiceLists();
+const preflight = document.querySelector('.preflight-card');
+let preflightTimer = null;
+const pollPreflight = () => {
+if (!preflight?.open || !preflight.dataset.preflightUrl) return;
+fetch(preflight.dataset.preflightUrl, { headers: { Accept: 'application/json' } })
+.then(r => r.ok ? r.json() : null)
+.then(renderPreflight)
+.catch(() => {});
+};
+const startPreflightPolling = () => {
+if (!preflight || preflightTimer) return;
+pollPreflight();
+preflightTimer = window.setInterval(pollPreflight, 10000);
+};
+const stopPreflightPolling = () => {
+if (!preflightTimer) return;
+window.clearInterval(preflightTimer);
+preflightTimer = null;
+};
+const mobileQuery = window.matchMedia('(max-width: 700px)');
+let savedPreflight = preflight ? localStorage.getItem('totman_preflight_open') : null;
+let preflightPreferenceSet = savedPreflight !== null;
+const applyPreflightDefault = () => {
+if (!preflight || preflightPreferenceSet) return;
+if (mobileQuery.matches) {
+preflight.open = false;
+} else if (preflight.dataset.preflightHasIssues === '1') {
+preflight.open = true;
+}
+};
+if (preflight) {
+if (mobileQuery.matches) {
+preflight.open = savedPreflight === '1';
+} else if (preflight.dataset.preflightHasIssues === '1') {
+preflight.open = true;
+} else if (savedPreflight === '1') {
+preflight.open = true;
+}
+}
+preflight?.addEventListener('toggle', () => {
+preflightPreferenceSet = true;
+localStorage.setItem('totman_preflight_open', preflight.open ? '1' : '0');
+if (preflight.open) {
+startPreflightPolling();
+} else {
+stopPreflightPolling();
+}
+});
+mobileQuery.addEventListener?.('change', applyPreflightDefault);
+const mobileStatus = document.querySelector('.mobile-status-details');
+if (mobileStatus) {
+mobileStatus.open = localStorage.getItem('totman_mobile_status_open') === '1';
+mobileStatus.addEventListener('toggle', () => {
+localStorage.setItem('totman_mobile_status_open', mobileStatus.open ? '1' : '0');
+});
+}
+if (preflight?.open) startPreflightPolling();
+document.addEventListener('submit', e => rememberHmacScroll(e.target));
+let recipientsConfirmPassed = false;
+document.getElementById('view-recipients')?.querySelector('form')?.addEventListener('submit', async e => {
+if (!validateRecipientFileInputs()) {
+e.preventDefault();
+return;
+}
+if (recipientsConfirmPassed) {
+recipientsConfirmPassed = false;
+return;
+}
+const warnings = [];
+const brokenFlag = document.getElementById('allow-broken-message-refs');
+const emptyFlag = document.getElementById('allow-no-recipients');
+if (meaningfulMessagesCount() === 0 && brokenFlag?.value !== '1') warnings.push(uiText.noMessageTemplatesWarning);
+if (meaningfulRecipientsCount() === 0 && emptyFlag?.value !== '1') warnings.push(uiText.noRecipientsWarning);
+if (warnings.length === 0) return;
+e.preventDefault();
+if (await showConfirmModal(warnings.join('\n\n'))) {
+if (brokenFlag && meaningfulMessagesCount() === 0) brokenFlag.value = '1';
+if (emptyFlag && meaningfulRecipientsCount() === 0) emptyFlag.value = '1';
+recipientsConfirmPassed = true;
+e.target.requestSubmit ? e.target.requestSubmit() : e.target.submit();
+}
+});
+document.querySelectorAll('.nav-item').forEach(btn => {
+btn.addEventListener('click', () => switchView('main', btn.dataset.target));
+btn.addEventListener('keydown', e => {
+if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchView('main', btn.dataset.target); }
+if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+e.preventDefault();
+const items = [...document.querySelectorAll('.nav-item')];
+const next = (items.indexOf(btn) + (e.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length;
+items[next].focus();
+switchView('main', items[next].dataset.target);
+}
+});
+});
+document.querySelectorAll('section').forEach(section => {
+section.querySelectorAll('.sub-nav-item').forEach(btn => {
+btn.addEventListener('click', () => switchView('sub', btn.dataset.sub, section.id));
+btn.addEventListener('keydown', e => {
+if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); switchView('sub', btn.dataset.sub, section.id); }
+if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+e.preventDefault();
+const items = [...section.querySelectorAll('.sub-nav-item')];
+const next = (items.indexOf(btn) + (e.key === 'ArrowRight' ? 1 : -1) + items.length) % items.length;
+items[next].focus();
+switchView('sub', items[next].dataset.sub, section.id);
+}
+});
+});
+});
+if (document.querySelector('.nav-item')) {
+const lastMain = localStorage.getItem('totman_active_main') || 'view-config';
+switchView('main', lastMain, null, false);
+}
+['view-config','view-recipients'].forEach(id => {
+const sub = localStorage.getItem(`totman_active_sub_${id}`);
+if (sub) switchView('sub', sub, id, false);
+});
+const hashTargetId = decodeURIComponent(window.location.hash.replace(/^#/, ''));
+const hashTarget = hashTargetId ? document.getElementById(hashTargetId) : null;
+if (hashTarget) {
+const mainSection = hashTarget.closest('main > section');
+if (mainSection?.id) switchView('main', mainSection.id, null, false);
+const subView = hashTarget.closest('.sub-view');
+if (subView?.id && mainSection?.id) switchView('sub', subView.id, mainSection.id, false);
+if (hashTargetId === 'hmac-section') switchView('sub', 'config-general', 'view-config', false);
+window.requestAnimationFrame(() => hashTarget.scrollIntoView({ block: 'start' }));
+} else {
+const restoreScroll = sessionStorage.getItem(restoreScrollKey);
+if (restoreScroll !== null) {
+sessionStorage.removeItem(restoreScrollKey);
+const top = Math.max(0, parseInt(restoreScroll, 10) || 0);
+window.requestAnimationFrame(() => window.requestAnimationFrame(() => window.scrollTo({ top, left: 0, behavior: 'auto' })));
+}
+}
+document.addEventListener('click', async e => {
+const reset = e.target.closest('.reset-unsaved');
+if (reset) {
+if (await showConfirmModal(reset.dataset.resetMessage || uiText.discardUnsavedChanges)) {
+window.location.reload();
+}
+return;
+}
+const passwordToggle = e.target.closest('[data-password-toggle]');
+if (passwordToggle) {
+const field = document.getElementById(passwordToggle.getAttribute('aria-controls') || '');
+if (!(field instanceof HTMLInputElement)) return;
+const reveal = field.type === 'password';
+field.type = reveal ? 'text' : 'password';
+passwordToggle.setAttribute('aria-pressed', reveal ? 'true' : 'false');
+passwordToggle.setAttribute('aria-label', reveal ? (passwordToggle.dataset.hideAria || '') : (passwordToggle.dataset.showAria || ''));
+const label = passwordToggle.querySelector('[data-password-toggle-label]');
+if (label) label.textContent = reveal ? (passwordToggle.dataset.hideLabel || '') : (passwordToggle.dataset.showLabel || '');
+field.focus({ preventScroll: true });
+return;
+}
+const add = e.target.closest('.add-row');
+if (add) {
+const template = document.getElementById(add.dataset.template);
+const target = document.getElementById(add.dataset.target);
+if (template && target) {
+const fragment = template.content.cloneNode(true);
+const index = String(Date.now() + Math.floor(Math.random() * 1000));
+fragment.querySelectorAll('[name],[id],[for],[data-index],[aria-describedby]').forEach(el => {
+['name', 'id', 'for', 'data-index', 'aria-describedby'].forEach(attr => {
+const value = el.getAttribute(attr);
+if (value && value.includes('__INDEX__')) el.setAttribute(attr, value.replaceAll('__INDEX__', index));
+});
+});
+const inserted = fragment.firstElementChild;
+if (add.dataset.insert === 'prepend') {
+target.prepend(fragment);
+} else {
+target.append(fragment);
+}
+target.querySelectorAll('textarea.auto-grow').forEach(autoGrow);
+refreshDependencies();
+refreshRecipientChoiceLists();
+const focusTarget = inserted?.querySelector(add.dataset.focus || 'input:not([type="hidden"]),textarea,select');
+if (focusTarget instanceof HTMLElement) {
+window.requestAnimationFrame(() => {
+focusTarget.focus({ preventScroll: false });
+if (typeof focusTarget.select === 'function') focusTarget.select();
+});
+}
+}
+}
+const undoFileDelete = e.target.closest('[data-undo-file-delete]');
+if (undoFileDelete) {
+const row = undoFileDelete.closest('[data-file-row]');
+const originalAlias = row?.querySelector('input[name="file_original_alias[]"]')?.value || '';
+if (row && originalAlias) {
+row.classList.remove('is-pending-delete');
+row.querySelectorAll('[data-pending-delete-input]').forEach(input => {
+delete input.dataset.pendingDeleteInput;
+input.readOnly = input.dataset.filePathReadonly === '1';
+});
+document.querySelectorAll(`#file-delete-bin [data-file-delete-for="${originalAlias}"]`).forEach(input => input.remove());
+refreshRecipientChoiceLists();
+}
+return;
+}
+const del = e.target.closest('.delete-row');
+if (del) {
+const row = del.closest('[data-file-row]') || del.closest('tr') || del.closest('.card');
+if (!row) return;
+if (del.dataset.deleteKind === 'file') {
+const originalAlias = row.querySelector('input[name="file_original_alias[]"]')?.value || '';
+const originalPath = row.querySelector('input[name="file_original_path[]"]')?.value || '';
+if (originalAlias) {
+const message = `${uiText.deleteFileAlias}\n\n${originalAlias}: ${originalPath}`;
+if (!await showConfirmModal(message)) return;
+const bin = document.getElementById('file-delete-bin');
+if (bin) {
+bin.querySelectorAll(`[data-file-delete-for="${originalAlias}"]`).forEach(input => input.remove());
+const aliasInput = document.createElement('input');
+aliasInput.type = 'hidden';
+aliasInput.name = 'file_delete_alias[]';
+aliasInput.value = originalAlias;
+aliasInput.dataset.fileDeleteFor = originalAlias;
+const pathInput = document.createElement('input');
+pathInput.type = 'hidden';
+pathInput.name = 'file_delete_path[]';
+pathInput.value = originalPath;
+pathInput.dataset.fileDeleteFor = originalAlias;
+bin.append(aliasInput, pathInput);
+}
+row.classList.add('is-pending-delete');
+row.querySelectorAll('input[name="file_alias[]"],input[name="file_path[]"]').forEach(input => {
+input.dataset.pendingDeleteInput = '1';
+input.readOnly = true;
+});
+refreshRecipientChoiceLists();
+return;
+}
+}
+row.remove();
+refreshRecipientChoiceLists();
+}
+});
+});
+})();
+JS;
+    $needle = "'use strict';";
+    $replacement = $needle . "\nconst uiText = {$uiText};";
+    return str_replace($needle, $replacement, $js);
+}
+if (!ui_is_configured($uiConfig)) {
+    $preSetupDisabled = false;
+    $envStateDir = getenv('TOTMAN_STATE_DIR');
+    if (is_string($envStateDir) && trim($envStateDir) !== '') {
+        try {
+            $preSetupDisabled = web_ui_enabled(effective_main_config(rtrim(trim($envStateDir), '/'))) === false;
+        } catch (Throwable) {
+            $preSetupDisabled = false;
+        }
+    }
+    if ($preSetupDisabled) {
+        render_disabled($flash);
+    } else {
+        render_setup($flash);
+    }
+} elseif ($uiDisabled) {
+    render_disabled($flash);
+} elseif (!$authenticated) {
+    render_login($flash);
+} else {
+    render_dashboard((array)$uiConfig, $main, $recips, $stateSummary, $flash, $viewError);
+}
 }

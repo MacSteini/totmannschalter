@@ -20,7 +20,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'fa88cb7',
+  'source_revision' => 'af028cf',
   'source_files' =>
   array (
     0 => 'resources/product-ui/totman-ui.php',
@@ -2949,7 +2949,7 @@ function render_main_config(array $main, array $flash): void
     input('escalate_ack_max_reminds', 'Maximum Receipt Reminders', (string)($cfg['escalate_ack_max_reminds'] ?? 25), 'number', null, '', 'escalate_ack_enabled');
     echo'</div></div></div><div id="config-mail" class="sub-view hidden" role="tabpanel"><div id="config-mail-card" class="card" data-config-scope="config-mail"><h3>' . h(t('Mail Delivery')) . '</h3>';
     render_flash($flash, 'config-mail');
-    echo'<div class="notice file-registry-note spaced-notice">' . h(t('Allowed mailbox formats:')) . '<br><code>user@example.com</code><br><code>Name &lt;user@example.com&gt;</code><br><code>&quot;Name&quot; &lt;user@example.com&gt;</code></div>';
+    echo'<div class="notice file-registry-note spaced-notice">' . h(t('Allowed mailbox formats:')) . '<br>user@example.com<br>Name &lt;user@example.com&gt;<br>&quot;Name&quot; &lt;user@example.com&gt;</div>';
     echo'<div class="form-grid">';
     textarea('to_self', 'Reminder addresses', implode("\n", (array)($cfg['to_self'] ?? [])));
     input('mail_from', 'From Address', (string)($cfg['mail_from'] ?? ''));

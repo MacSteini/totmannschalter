@@ -17,7 +17,8 @@ declare(strict_types=1);
 return [
 // Public base URL (must be HTTPS, WITHOUT endpoint filename).
 // Runtime links are built as: <base_url>/<web_file>?a=confirm|ack|download&...
-'base_url' => 'https://example.com/totman',
+// Example: https://example.com/totman
+'base_url' => '',
 
 // State directory on disk (holds totman.inc.php and/or totman.inc.dist.php, totman-tick.php,
 // your configured lib_file, your configured recipients_file, and runtime files).
@@ -25,7 +26,8 @@ return [
 // - totman-tick.php: ENV TOTMAN_STATE_DIR (or __DIR__)
 // - totman.php: ENV TOTMAN_STATE_DIR (or define('TOTMAN_STATE_DIR', ...))
 // Keep this value aligned with TOTMAN_STATE_DIR purely for clarity.
-'state_dir' => '/var/lib/totman',
+// Example: /var/lib/totman
+'state_dir' => '',
 
 // Runtime file names (filenames only, no paths).
 // Files loaded from state_dir: lib_file, recipients_file, state_file, lock_file, log_file_name
@@ -51,7 +53,8 @@ return [
 // Private directory for downloadable files.
 // Files served through the `download` action must live inside this directory.
 // Keep this OUTSIDE your webroot.
-'download_base_dir' => '/var/lib/totman/downloads',
+// Example: /var/lib/totman/downloads
+'download_base_dir' => '',
 
 // Validity period for every download link (days).
 // This timer starts at the first escalation mail of that escalation event and then applies
@@ -78,7 +81,7 @@ return [
 // Linux/macOS (OpenSSL): openssl rand -hex 32
 // Linux/macOS (no OpenSSL): head -c 32 /dev/urandom | xxd -p -c 256
 // Windows (PowerShell): $b=New-Object byte[] 32;[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($b);-join($b|%{$_.ToString('x2')})
-'hmac_secret_hex' => 'REPLACE_WITH_64_HEX_CHARS',
+'hmac_secret_hex' => '',
 
 // --- Cycle timing model (how the clock works) ---
 //
@@ -173,15 +176,18 @@ return [
 'trusted_proxy_header' => 'X-Forwarded-For',
 
 // Path to sendmail binary (varies by distro/setup).
-'sendmail_path' => '/usr/sbin/sendmail',
+// Example: /usr/sbin/sendmail
+'sendmail_path' => '',
 
 // Reminder address(es) (you).
 // Each list entry must be exactly one mailbox string.
 // Do not put comma-separated mailbox lists into one entry.
-'to_self' => [
-'My Name <myname@example.com>',
-'Fallback Mail <fallback@example.com>',
-],
+// Example:
+// 'to_self' => [
+// 'My Name <myname@example.com>',
+// 'Fallback Mail <fallback@example.com>',
+// ],
+'to_self' => [],
 
 // Mandatory operator warning mails also go to `to_self`.
 // They are sent only for operator-facing setup/runtime problems that would otherwise
@@ -193,11 +199,13 @@ return [
 'operator_alert_interval_hours' => 2,
 
 // Mail From + optional Reply-To.
-'mail_from' => 'totman <totman@example.com>',
+// Example: totman <totman@example.com>
+'mail_from' => '',
 'reply_to' => '',
 
 // Reminder subject.
-'subject_reminder' => '[totman] Please confirm you are safe',
+// Example: [totman] Please confirm you are safe
+'subject_reminder' => '',
 
 // Timezone for human-readable timestamps in emails.
 'mail_timezone' => 'Europe/London',
@@ -211,21 +219,7 @@ return [
 // Placeholders (rendered as human-readable timestamps in `mail_timezone`):
 // - reminder: {CONFIRM_URL}, {DEADLINE_ISO}, {CYCLE_START_ISO}
 // Escalation mail bodies live only in the configured recipient file.
-'body_reminder' => <<<TXT
-Hello,
-
-This is a reminder to confirm that you are safe and able to respond.
-
-Please click this link to confirm:
-{CONFIRM_URL}
-
-You must click the link no later than the confirmation deadline.
-
-Confirmation deadline: {DEADLINE_ISO}
-Current cycle started: {CYCLE_START_ISO}
-
-If you confirm after the deadline, escalation may already have started.
-TXT,
+'body_reminder' => '',
 
 // Logging target mode:
 // - 'none' => no script logging (not recommended)

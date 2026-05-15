@@ -57,7 +57,7 @@ Do not do this:
 ],
 ```
 ## The recipient file at a glance
-Everything recipient-related for escalation delivery lives in the configured `recipients_file` (template default: `totman-recipients.php`; `totman-recipients.dist.php` is also valid if you intentionally keep that filename and replace all template recipients).
+Everything recipient-related for escalation delivery lives in the configured `recipients_file` (template default: `totman-recipients.php`; `totman-recipients.dist.php` is also valid if you intentionally keep that filename and populate the empty template yourself).
 
 The file has exactly 3 top-level areas:
 - `$files` => define each downloadable file once

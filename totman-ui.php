@@ -20,7 +20,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'c232ab8',
+  'source_revision' => '2f2a19e',
   'source_files' =>
   array (
     0 => 'resources/product-ui/totman-ui.php',
@@ -681,11 +681,11 @@ function load_array_file(string $path, string $label): array
 }
 function default_main_config(string $stateDir): array
 {
-    return['base_url' => 'https://example.com/totman','state_dir' => $stateDir,'lib_file' => 'totman-lib.php','l18n_dir_name' => 'l18n','lock_file' => 'totman.lock','log_file_name' => 'totman.log','recipients_file' => 'totman-recipients.php','state_file' => 'totman.json','web_file' => 'totman.php','web_css_file' => 'totman.css','download_base_dir' => $stateDir . '/downloads','download_valid_days' => 180,'download_rate_limit_enabled' => true,'download_rate_limit_max_requests' => 20,'download_rate_limit_window_seconds' => 60,'download_lease_seconds' => 300,'hmac_secret_hex' => 'REPLACE_WITH_64_HEX_CHARS','check_interval_seconds' => 86400,'confirm_window_seconds' => 172800,'remind_every_seconds' => 43200,'escalate_grace_seconds' => 14400,'missed_cycles_before_fire' => 2,'escalate_ack_enabled' => true,'escalate_ack_remind_every_seconds' => 43200,'escalate_ack_max_reminds' => 25,'stealth_neutral_for_invalid' => true,'stealth_level_2_neutral_on_stale' => true,'show_success_details' => true,'rate_limit_enabled' => true,'rate_limit_dir' => null,'rate_limit_max_requests' => 30,'rate_limit_window_seconds' => 60,'ip_mode' => 'remote_addr','trusted_proxies' => ['127.0.0.1','::1'],'trusted_proxy_header' => 'X-Forwarded-For','web_ui_enabled' => false,'sendmail_path' => '/usr/sbin/sendmail','to_self' => ['My Name <myname@example.com>','Fallback Mail <fallback@example.com>',],'operator_alert_interval_hours' => 2,'mail_from' => 'totman <totman@example.com>','reply_to' => '','subject_reminder' => '[totman] Please confirm you are safe','mail_timezone' => 'Europe/London','mail_date_format' => 'j F Y','mail_time_format' => 'H:i:s','mail_datetime_format' => 'l, j F Y, H:i:s e','body_reminder' => "Hello,\n\nThis is a reminder to confirm that you are safe and able to respond.\n\nPlease click this link to confirm:\n{CONFIRM_URL}\n\nYou must click the link no later than the confirmation deadline.\n\nConfirmation deadline: {DEADLINE_ISO}\nCurrent cycle started: {CYCLE_START_ISO}\n\nIf you confirm after the deadline, escalation may already have started.",'log_mode' => 'both','log_file' => null,];
+    return['base_url' => '','state_dir' => $stateDir,'lib_file' => 'totman-lib.php','l18n_dir_name' => 'l18n','lock_file' => 'totman.lock','log_file_name' => 'totman.log','recipients_file' => 'totman-recipients.php','state_file' => 'totman.json','web_file' => 'totman.php','web_css_file' => 'totman.css','download_base_dir' => '','download_valid_days' => 180,'download_rate_limit_enabled' => true,'download_rate_limit_max_requests' => 20,'download_rate_limit_window_seconds' => 60,'download_lease_seconds' => 300,'hmac_secret_hex' => '','check_interval_seconds' => 86400,'confirm_window_seconds' => 172800,'remind_every_seconds' => 43200,'escalate_grace_seconds' => 14400,'missed_cycles_before_fire' => 2,'escalate_ack_enabled' => true,'escalate_ack_remind_every_seconds' => 43200,'escalate_ack_max_reminds' => 25,'stealth_neutral_for_invalid' => true,'stealth_level_2_neutral_on_stale' => true,'show_success_details' => true,'rate_limit_enabled' => true,'rate_limit_dir' => null,'rate_limit_max_requests' => 30,'rate_limit_window_seconds' => 60,'ip_mode' => 'remote_addr','trusted_proxies' => ['127.0.0.1','::1'],'trusted_proxy_header' => 'X-Forwarded-For','web_ui_enabled' => false,'sendmail_path' => '','to_self' => [],'operator_alert_interval_hours' => 2,'mail_from' => '','reply_to' => '','subject_reminder' => '','mail_timezone' => 'Europe/London','mail_date_format' => 'j F Y','mail_time_format' => 'H:i:s','mail_datetime_format' => 'l, j F Y, H:i:s e','body_reminder' => '','log_mode' => 'both','log_file' => null,];
 }
 function default_recipients_config(): array
 {
-    return['files' => ['letter' => 'shared/letter.pdf','contacts' => 'shared/contacts.txt','photos' => 'shared/family-photos.zip',],'messages' => ['default' => ['subject' => '[totman] EXAMPLE TEMPLATE – escalation message','body' => "Hello {RECIPIENT_NAME},\n\nThis is an example escalation message for totman.\nPlease replace it with your own wording before production use.\n\nYou are receiving this message because the sender did not complete the required confirmation in time.\n\n{ACK_BLOCK}\n\n{DOWNLOAD_LINKS}",],'jane' => ['subject' => '[totman] EXAMPLE TEMPLATE – personal message','body' => "Dear {RECIPIENT_NAME},\n\nThis is an example of a more personal escalation message.\nPlease replace it with your own wording before production use.\n\nIf you are reading this, the sender did not complete the required confirmation in time.\n\n{ACK_BLOCK}\n\n{DOWNLOAD_LINKS}",],'john' => ['subject' => '[totman] EXAMPLE TEMPLATE – message with documents','single_use_notice' => 'Please save this file straight away. This download link works only once.','body' => "Hello {RECIPIENT_NAME},\n\nThis is an example escalation message for document delivery.\nPlease replace it with your own wording before production use.\n\nThe files below are included as part of this message.\n\n{ACK_BLOCK}\n\n{DOWNLOAD_LINKS}",],],'recipients' => [['Recipient 1','recipient1@example.com','default'],['Jane Doe','Jane Doe <recipient2@example.com>','jane',['letter','contacts']],['John Doe','<recipient3@example.com>','john',['letter'],['photos']],['Alex Example','alex@example.com','default',['letter']],],];
+    return['files' => [],'messages' => [],'recipients' => [],];
 }
 function ensure_setup_state_dir(string $stateDir): void
 {
@@ -1767,9 +1767,22 @@ function preflight_checks(array $ui, ?array $main, ?array $recips, ?array $state
         $checks[] = config_file_pair_check('Main configuration files', (string)$main['live_path'], (string)$main['dist_path']);
         $secret = (string)($cfg['hmac_secret_hex'] ?? '');
         $checks[] = [hmac_secret_needs_initialisation($secret) ? 'error' : 'ok',t('HMAC secret'),hmac_secret_needs_initialisation($secret) ? t('A real HMAC secret must be generated and rotated before saving live configuration.') : t('Configured.'),t('Secret generation and HMAC rotation are required.')];
-        if (base_url_contains_web_file((string)($cfg['base_url'] ?? ''), (string)($cfg['web_file'] ?? ''))) {
+        $baseUrl = (string)($cfg['base_url'] ?? '');
+        if (!base_url_valid($baseUrl)) {
+            $checks[] = ['error',t('Web address (HTTPS)'),t('Public HTTPS address is missing or invalid.'),t('Set a real HTTPS base address without query string, fragment, username, password, or endpoint filename.')];
+        } elseif (base_url_contains_web_file($baseUrl, (string)($cfg['web_file'] ?? ''))) {
             $checks[] = ['error',t('Web address (HTTPS)'),t('Base URL includes the web endpoint filename: {file}.', ['file' => basename((string)$cfg['web_file'])]),t('{file} must be removed from Base URL. The runtime appends Web Endpoint automatically.', ['file' => basename((string)$cfg['web_file'])])];
         }
+        $mailFrom = (string)($cfg['mail_from'] ?? '');
+        $checks[] = [$mailFrom !== '' && mailbox_valid($mailFrom) ? 'ok' : 'error',t('From Address'),$mailFrom !== '' && mailbox_valid($mailFrom) ? t('Configured.') : t('Sender mailbox is missing or invalid.'),t('Set one sender mailbox, for example totman <totman@example.com>.')];
+        $selfRecipients = array_values(array_filter(array_map('trim', (array)($cfg['to_self'] ?? [])), static fn(string $value): bool=>$value !== ''));
+        $invalidSelfRecipients = array_filter($selfRecipients, static fn(string $value): bool=>!mailbox_valid($value));
+        $checks[] = [$selfRecipients !== [] && $invalidSelfRecipients === [] ? 'ok' : 'error',t('Reminder addresses'),$selfRecipients !== [] && $invalidSelfRecipients === [] ? t('Configured.') : t('At least one reminder mailbox is missing or invalid.'),t('Enter one valid operator mailbox per line.')];
+        $subjectReminder = (string)($cfg['subject_reminder'] ?? '');
+        $bodyReminder = (string)($cfg['body_reminder'] ?? '');
+        $checks[] = [single_line_text_valid($subjectReminder) ? 'ok' : 'error',t('Reminder Template'),single_line_text_valid($subjectReminder) ? t('Subject is configured.') : t('Reminder subject is missing.'),t('Set a short subject for self-reminder e-mails.')];
+        $bodyReady = trim($bodyReminder) !== '' && str_contains($bodyReminder, '{CONFIRM_URL}');
+        $checks[] = [$bodyReady ? 'ok' : 'error',t('Reminder Template'),$bodyReady ? t('Body template is configured.') : t('Reminder body must include {CONFIRM_URL}.'),t('Write the self-reminder body and keep the {CONFIRM_URL} placeholder.')];
         $statePath = rtrim((string)$cfg['state_dir'], '/') . '/' . basename((string)($cfg['state_file'] ?? 'totman.json'));
         $checks[] = [$state ? 'ok' : 'warn',t('Cycle data'),$state ? t('Cycle data is readable.') : t('Cycle data file is not initialised yet: {path}', ['path' => $statePath]),t('Cycle data is created by HMAC rotation or the first confirmation-endpoint request.')];
         $sendmail = (string)($cfg['sendmail_path'] ?? '');
@@ -1793,6 +1806,10 @@ function preflight_checks(array $ui, ?array $main, ?array $recips, ?array $state
     if ($main && $recips) {
         $missing = missing_file_aliases($main['config'], $recips['data']);
         $checks[] = [$missing === [] ? 'ok' : 'error',t('File aliases'),$missing === [] ? t('Configured file aliases resolve to readable files.') : t('Missing or unreadable aliases: {aliases}', ['aliases' => implode(', ', $missing)]),t('Upload the files manually below download_base_dir or adjust the alias paths.')];
+        $hasMessages = (array)($recips['data']['messages'] ?? []) !== [];
+        $hasRecipients = (array)($recips['data']['recipients'] ?? []) !== [];
+        $checks[] = [$hasMessages ? 'ok' : 'error',t('Messages'),$hasMessages ? t('Configured.') : t('No message template is configured.'),t('Create at least one message template before going live.')];
+        $checks[] = [$hasRecipients ? 'ok' : 'error',t('Recipients'),$hasRecipients ? t('Configured.') : t('No recipient is configured.'),t('Create at least one recipient before going live.')];
         $checks[] = config_file_pair_check('Recipient configuration files', (string)$recips['live_path'], (string)$recips['dist_path']);
     }
     return $checks;

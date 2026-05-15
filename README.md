@@ -54,7 +54,7 @@ The release archive is intentionally slim. It contains `README.md`, `LICENCE`, t
 	sudo cp totman.php /var/www/html/totman/totman.php
 	sudo cp totman.css /var/www/html/totman/totman.css
 	```
-	The bootstrap config files must keep their exact supported names: `totman.inc.php` and/or `totman.inc.dist.php`. Names such as `totman.inc.prod.php` are not supported. The recommended operational pattern is to edit `totman.inc.php` and `totman-recipients.php`; if you intentionally keep real values in `.dist.php` files instead, merge updates manually before replacing those files.
+	The bootstrap config files must keep their exact supported names: `totman.inc.php` and/or `totman.inc.dist.php`. Names such as `totman.inc.prod.php` are not supported. The shipped `.dist.php` templates keep operator-specific values empty and show examples only in comments. The recommended operational pattern is to edit `totman.inc.php` and `totman-recipients.php`; if you intentionally keep real values in `.dist.php` files instead, merge updates manually before replacing those files.
 	If you changed configurable runtime names such as `lib_file`, `l18n_dir_name`, `recipients_file`, `web_file`, or `web_css_file` in the effective config, copy/rename only those referenced files accordingly.
 3. Set required config in `/var/lib/totman/totman.inc.php` or, if you intentionally use the `.dist.php` file as your runtime config, in `/var/lib/totman/totman.inc.dist.php`:
 	- `base_url` (real HTTPS base URL without endpoint filename; the runtime appends `web_file` automatically)

@@ -35,7 +35,7 @@ Runtime files created automatically (as needed) in `/var/lib/totman`:
 - `totman.log`
 
 Private download directory (outside webroot):
-- your configured `download_base_dir` (template default: `/var/lib/totman/downloads`)
+- your configured `download_base_dir` (common value: `/var/lib/totman/downloads`)
 
 In your webroot:
 - your configured `web_file` (template default: `totman.php`)
@@ -93,6 +93,8 @@ sudo cp totman.inc.dist.php totman.inc.php
 sudo cp totman-recipients.dist.php totman-recipients.php
 ```
 The bootstrap loader recognises exactly these main-config filenames: `totman.inc.php` and `totman.inc.dist.php`. Alternative names such as `totman.inc.prod.php` are not supported.
+
+The shipped `.dist.php` templates keep operator-specific values empty. Examples live in comments beside the affected fields and blocks, so a fresh manual or Web UI setup does not look as if example recipients, files, or mailboxes are already active.
 
 - Place your configured `web_file` into your webroot (e. g., `/var/www/html/totman/totman.php`):
 ```sh

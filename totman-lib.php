@@ -2446,6 +2446,18 @@ function dm_config_readiness_errors(array $cfg): array
         $errors[] = 'mail_from must be one valid non-placeholder mailbox.';
     }
 
+    $subjectReminder = trim((string)($cfg['subject_reminder'] ?? ''));
+    if ($subjectReminder === '') {
+        $errors[] = 'subject_reminder must be a non-empty subject.';
+    }
+
+    $bodyReminder = trim((string)($cfg['body_reminder'] ?? ''));
+    if ($bodyReminder === '') {
+        $errors[] = 'body_reminder must be a non-empty message body.';
+    } elseif (!str_contains($bodyReminder, '{CONFIRM_URL}')) {
+        $errors[] = 'body_reminder must include the {CONFIRM_URL} placeholder.';
+    }
+
     try {
         $selfRecipients = dm_recipient_entries_runtime((array)($cfg['to_self'] ?? []));
         $usableSelfRecipients = [];

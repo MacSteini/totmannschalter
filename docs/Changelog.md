@@ -18,6 +18,7 @@ This project uses semantic versioning:
 - Added private UI state in `.totman-ui.php` under the resolved state directory, separate from runtime confirmation, ACK, download, mail, and tick processing.
 - Updated Web UI saves to write stable, grouped, runtime-compatible PHP config files while documenting that template comments are not preserved.
 - Added Web UI maintenance actions for HMAC rotation, runtime-state reset, safe log clear, and file-alias deletion behind admin, CSRF, reauthentication, rate-limit, and explicit-confirmation gates.
+- Changed shipped `.dist.php` templates so operator-specific values and recipient registries start empty, with examples kept in comments instead of active configuration.
 ## v3.1.1
 - Changed ACK handling so `GET` opens a localised acknowledgement page and only the submitted `POST` marks receipt and stops ACK reminders.
 - Hardened download links with a signed relative-file binding so old links fail closed if an alias is later changed to another file.

@@ -1381,12 +1381,12 @@ final class FirstRunFieldFormatValidator
             $errors[] = 'mail_from: Enter one valid sender mailbox, for example totman <totman@example.com>.';
         }
 
-        if ($input->operatorMailbox() !== '' && !$this->isEmail($input->operatorMailbox())) {
-            $errors[] = 'to_self: Enter a valid operator email address.';
+        if ($input->operatorMailbox() !== '' && !$this->isMailbox($input->operatorMailbox())) {
+            $errors[] = 'to_self: Enter one valid operator mailbox, for example Operator <operator@example.com>.';
         }
 
-        if ($input->recipientMailbox() !== '' && !$this->isEmail($input->recipientMailbox())) {
-            $errors[] = 'recipient_mailbox: Enter a valid recipient email address.';
+        if ($input->recipientMailbox() !== '' && !$this->isMailbox($input->recipientMailbox())) {
+            $errors[] = 'recipient_mailbox: Enter one valid recipient mailbox, for example Ada <ada@example.com>.';
         }
 
         if ($input->downloadPath() !== '' && !$this->isSafeRelativePath($input->downloadPath())) {
@@ -1432,42 +1432,32 @@ final class FirstRunFieldFormatValidator
             && !isset($parts['pass']);
     }
 
-    private function isEmail(string $value): bool
-    {
-        return filter_var($value, FILTER_VALIDATE_EMAIL) !== false;
-    }
-
     private function isMailbox(string $value): bool
     {
-        $address = $this->extractMailboxAddress($value);
-        if ($address === '') {
+        $value = trim($value);
+        if ($value === '' || preg_match('/[\r\n]/', $value) === 1 || str_contains($value, ',') || str_contains($value, ';')) {
             return false;
         }
 
+        if (preg_match('/^<([^<>\s]+@[^<>\s]+)>$/', $value, $matches) === 1) {
+            return $this->isMailboxAddress($matches[1]);
+        }
+
+        if (preg_match('/^(?:"[^"\r\n<>]+"|[^"<>,;]+)\s+<([^<>\s]+@[^<>\s]+)>$/', $value, $matches) === 1) {
+            return $this->isMailboxAddress($matches[1]);
+        }
+
+        return $this->isMailboxAddress($value);
+    }
+
+    private function isMailboxAddress(string $address): bool
+    {
         if (filter_var($address, FILTER_VALIDATE_EMAIL) !== false) {
             return true;
         }
 
         return str_contains($address, '@')
             && preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $address) === 1;
-    }
-
-    private function extractMailboxAddress(string $value): string
-    {
-        $value = trim(str_replace(["\r", "\n"], '', $value));
-        if ($value === '') {
-            return '';
-        }
-
-        if (preg_match('/^<([^>]+)>$/', $value, $matches) === 1) {
-            return trim($matches[1]);
-        }
-
-        if (preg_match('/^(.*)<([^>]+)>$/', $value, $matches) === 1) {
-            return trim($matches[2]);
-        }
-
-        return $value;
     }
 
     private function isSafeRelativePath(string $value): bool
@@ -4740,15 +4730,15 @@ final class RuntimeUiTextCatalog
             'field.base_url.label' => 'Public URL',
             'field.base_url.hint' => 'Enter the public HTTPS address where recipients will open totman links, for example https://example.com/totman.',
             'field.mail_from.label' => 'Mail from',
-            'field.mail_from.hint' => 'Enter the sender address that should appear on mail sent by totman.',
+            'field.mail_from.hint' => 'Sender address for outgoing mail.',
             'field.sendmail_path.label' => 'Sendmail path',
             'field.sendmail_path.hint' => 'Enter the local mail command used by the server. In Docker or managed hosting this may already be fixed.',
             'field.to_self.label' => 'Operator mailbox',
-            'field.to_self.hint' => 'Enter the address that should receive warnings, test results, and setup diagnostics.',
+            'field.to_self.hint' => 'Operator address for self-reminders, warnings, and setup diagnostics.',
             'field.recipient_name.label' => 'Recipient name',
             'field.recipient_name.hint' => 'Enter the name of the first person who should be contacted if the switch is triggered.',
             'field.recipient_mailbox.label' => 'Recipient mailbox',
-            'field.recipient_mailbox.hint' => 'Enter the email address where this recipient should receive escalation mail.',
+            'field.recipient_mailbox.hint' => 'E-mail address plus optional display name.',
             'field.message_subject.label' => 'Message subject',
             'field.message_subject.hint' => 'Enter the subject line for the first escalation message.',
             'field.message_body.label' => 'Message body',
@@ -10052,7 +10042,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '4ed2864',
+  'source_revision' => '40e5a70',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

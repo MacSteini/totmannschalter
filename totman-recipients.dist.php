@@ -47,8 +47,7 @@
  * - Use field 5 only for the special case where a file must be single-use.
  * - File aliases and message keys must match `^[a-z0-9_-]+$`.
  * - All file paths are relative to `download_base_dir` from the effective config.
- * - With the shipped default, `shared/letter.pdf` means
- *   `/var/lib/totman/files/shared/letter.pdf`.
+ * - With the shipped default, `shared/letter.pdf` means `/var/lib/totman/files/shared/letter.pdf`.
  * - Download validity is global via `download_valid_days` in the effective config.
  *
  * Supported mail placeholders:
@@ -67,26 +66,11 @@
  * - add `single_use_notice` to the message only if that message is used with field 5
  * - the runtime prints `single_use_notice` directly above each affected single-use URL
  *
- * Example file alias:
- *
- * $files = [
- *     'letter' => 'shared/letter.pdf',
- * ];
- *
- * Example message:
- *
- * $messages = [
- *     'default' => [
- *         'subject' => '[totman] Escalation message',
- *         'body' => "Hello {RECIPIENT_NAME},\n\n{ACK_BLOCK}\n\n{DOWNLOAD_LINKS}",
- *     ],
- * ];
- *
- * Example recipient:
- *
- * $recipients = [
- *     ['Jane Doe', 'Jane Doe <jane@example.com>', 'default', ['letter']],
- * ];
+ * Example file alias: `letter` can point to `shared/letter.pdf`.
+ * Example message key: `default` can use subject `[totman] Escalation message`
+ * and body `Hello {RECIPIENT_NAME}, ... {ACK_BLOCK} ... {DOWNLOAD_LINKS}`.
+ * Example recipient: `Jane Doe <jane@example.com>` can use message `default`
+ * and file alias `letter`.
  */
 
 declare(strict_types=1);

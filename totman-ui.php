@@ -2260,7 +2260,7 @@ final class FirstRunViewModelBuilder
             $reviewFields,
             $preflight->checks(),
             $discovered->mainLiveStatus()->loaded() && $discovered->recipientLiveStatus()->loaded(),
-            $errors
+            $this->displayErrors($errors)
         );
     }
 
@@ -2325,11 +2325,62 @@ final class FirstRunViewModelBuilder
             if (str_starts_with($error, $key . ': ')) {
                 $matched[] = substr($error, strlen($key . ': '));
             } elseif (str_starts_with($error, $key . ' ') || str_starts_with($error, $key . '_')) {
-                $matched[] = $error;
+                $matched[] = $this->displayError($error);
             }
         }
 
         return $matched;
+    }
+
+    /**
+     * @param list<string> $errors
+     * @return list<string>
+     */
+    private function displayErrors(array $errors): array
+    {
+        return array_map(fn (string $error): string => $this->displayError($error), $errors);
+    }
+
+    private function displayError(string $error): string
+    {
+        foreach ($this->fieldLabels() as $key => $label) {
+            if (str_starts_with($error, $key . ': ')) {
+                return substr($error, strlen($key . ': '));
+            }
+
+            if (str_starts_with($error, $key . ' ')) {
+                return $label . substr($error, strlen($key));
+            }
+
+            if (str_starts_with($error, $key . '_')) {
+                return ucfirst(str_replace('_', ' ', $error));
+            }
+        }
+
+        if (str_starts_with($error, 'download_alias and download_path ')) {
+            return 'Download alias and download path ' . substr($error, strlen('download_alias and download_path '));
+        }
+
+        return $error;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function fieldLabels(): array
+    {
+        return [
+            'base_url' => $this->text->get('field.base_url.label'),
+            'mail_from' => $this->text->get('field.mail_from.label'),
+            'to_self' => $this->text->get('field.to_self.label'),
+            'sendmail_path' => $this->text->get('field.sendmail_path.label'),
+            'recipient_name' => $this->text->get('field.recipient_name.label'),
+            'recipient_mailbox' => $this->text->get('field.recipient_mailbox.label'),
+            'message_subject' => $this->text->get('field.message_subject.label'),
+            'message_body' => $this->text->get('field.message_body.label'),
+            'download_alias' => $this->text->get('field.download_alias.label'),
+            'download_path' => $this->text->get('field.download_path.label'),
+        ];
     }
 
     /**
@@ -9959,7 +10010,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'dfbea64',
+  'source_revision' => 'cbe60ae',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

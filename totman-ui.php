@@ -282,6 +282,8 @@ function t(string $key, array $params = []): string
         'Make the configured data directory writable by PHP.' => 'Mache das konfigurierte Datenverzeichnis für PHP beschreibbar.',
         'Main configuration files' => 'Hauptkonfigurationsdateien',
         'Recipient configuration files' => 'Empfänger:innen-Konfigurationsdateien',
+        'HMAC secret' => 'HMAC-Secret',
+        'Secret generation and HMAC rotation are required.' => 'Secret-Erzeugung und HMAC-Rotation sind erforderlich.',
         'Public HTTPS address is missing or invalid.' => 'Die öffentliche HTTPS-Adresse fehlt oder ist ungültig.',
         'Set a real HTTPS base address without query string, fragment, username, password, or endpoint filename.' => 'Trage eine echte HTTPS-Adresse ohne Query-String, Fragment, Benutzername, Passwort oder Endpunkt-Dateiname ein.',
         'Sender mailbox is missing or invalid.' => 'Die Absenderadresse fehlt oder ist ungültig.',
@@ -320,6 +322,18 @@ function t(string $key, array $params = []): string
         'Create at least one message template before going live.' => 'Lege mindestens eine Nachrichtenvorlage an, bevor totman produktiv genutzt wird.',
         'No recipient is configured.' => 'Es ist kein:e Empfänger:in konfiguriert.',
         'Create at least one recipient before going live.' => 'Lege mindestens eine:n Empfänger:in an, bevor totman produktiv genutzt wird.',
+        'File & Syslog' => 'Datei & Syslog',
+        'File only' => 'Nur Datei',
+        'Syslog only' => 'Nur Syslog',
+        'None' => 'Aus',
+        'No template selected' => 'Keine Vorlage ausgewählt',
+        'Available placeholders:' => 'Verfügbare Platzhalter:',
+        'Message key' => 'Nachrichtenschlüssel',
+        'Message subject' => 'Nachrichtenbetreff',
+        'Message body' => 'Nachrichtentext',
+        'File alias' => 'Datei-Alias',
+        'unit' => 'Einheit',
+        'Invalid duration unit.' => 'Ungültige Zeiteinheit.',
     ]];
     $text = array_replace(translations()[$lang] ?? [], translation_overrides()[$lang] ?? [], $recent[$lang] ?? [])[$key] ?? $key;
     foreach ($params as $name => $value) {
@@ -2327,7 +2341,9 @@ function pwa_service_worker(): string
 {
     $cacheName = 'totman-pwa-' . pwa_version();
     $staticUrls = json_encode([pwa_url('manifest'),pwa_url('icon-192'),pwa_url('icon-512'),], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES);
-    $offlineHtml = json_encode('<!doctype html><html lang="de"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>totman offline</title><body><main style="font-family:system-ui,sans-serif;margin:2rem;line-height:1.5"><h1>totman</h1><p>Offline. Eine Verbindung zum Server ist erforderlich.</p><p>Offline. A server connection is required.</p></main></body></html>', JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);return<<<JS
+    $offlineLang = current_lang() === 'de' ? 'de' : 'en';
+    $offlineMessage = $offlineLang === 'de' ? 'Offline. Eine Verbindung zum Server ist erforderlich.' : 'Offline. A server connection is required.';
+    $offlineHtml = json_encode('<!doctype html><html lang="' . $offlineLang . '"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>totman offline</title><body><main><h1>totman</h1><p>' . $offlineMessage . '</p></main></body></html>', JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);return<<<JS
 const CACHE_NAME = '{$cacheName}';
 const STATIC_URLS = {$staticUrls};
 const OFFLINE_HTML = {$offlineHtml};

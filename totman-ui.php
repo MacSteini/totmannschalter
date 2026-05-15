@@ -1377,8 +1377,8 @@ final class FirstRunFieldFormatValidator
             $errors[] = 'base_url: Enter a valid HTTPS address, for example https://example.com/totman.';
         }
 
-        if ($input->mailFrom() !== '' && !$this->isEmail($input->mailFrom())) {
-            $errors[] = 'mail_from: Enter a valid sender email address.';
+        if ($input->mailFrom() !== '' && !$this->isMailbox($input->mailFrom())) {
+            $errors[] = 'mail_from: Enter one valid sender mailbox, for example totman <totman@example.com>.';
         }
 
         if ($input->operatorMailbox() !== '' && !$this->isEmail($input->operatorMailbox())) {
@@ -1435,6 +1435,39 @@ final class FirstRunFieldFormatValidator
     private function isEmail(string $value): bool
     {
         return filter_var($value, FILTER_VALIDATE_EMAIL) !== false;
+    }
+
+    private function isMailbox(string $value): bool
+    {
+        $address = $this->extractMailboxAddress($value);
+        if ($address === '') {
+            return false;
+        }
+
+        if (filter_var($address, FILTER_VALIDATE_EMAIL) !== false) {
+            return true;
+        }
+
+        return str_contains($address, '@')
+            && preg_match('/^[^\s@<>",;:]+@[^\s@<>",;:]+\.[^\s@<>",;:]+$/', $address) === 1;
+    }
+
+    private function extractMailboxAddress(string $value): string
+    {
+        $value = trim(str_replace(["\r", "\n"], '', $value));
+        if ($value === '') {
+            return '';
+        }
+
+        if (preg_match('/^<([^>]+)>$/', $value, $matches) === 1) {
+            return trim($matches[1]);
+        }
+
+        if (preg_match('/^(.*)<([^>]+)>$/', $value, $matches) === 1) {
+            return trim($matches[2]);
+        }
+
+        return $value;
     }
 
     private function isSafeRelativePath(string $value): bool
@@ -5587,7 +5620,7 @@ final class MainConfigImporter
     {
         return match ($key) {
             'base_url' => !is_string($value) || !str_starts_with($value, 'https://'),
-            'mail_from' => !is_string($value) || filter_var($value, FILTER_VALIDATE_EMAIL) === false,
+            'mail_from' => !is_string($value) || !$this->hasValidMailbox($value),
             'to_self' => !$this->hasValidMailbox($value),
             'sendmail_path', 'recipients_file', 'state_dir', 'download_base_dir', 'lib_file', 'web_file', 'web_css_file' => !is_string($value) || $value === '',
             'hmac_secret_hex' => !is_string($value) || preg_match('/^[a-f0-9]{64}$/i', $value) !== 1,
@@ -10010,7 +10043,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'cbe60ae',
+  'source_revision' => 'cfb6a77',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

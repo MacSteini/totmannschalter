@@ -7184,8 +7184,8 @@ final class PrototypeRenderer
     ): string {
         $setupCodeField = $showSetupCode ? $this->renderSetupCodeField() : '';
         $steps = $showSteps ? $this->renderSteps($view) : '';
-        $compactSingleFieldStep = $this->compactSingleFieldStep($view);
-        $stepHeading = '<h3 id="setup-current-step"' . ($compactSingleFieldStep ? ' class="sr-only"' : '') . '>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</h3>';
+        $hideStepHeading = $this->text->productMode() || $this->compactSingleFieldStep($view);
+        $stepHeading = '<h3 id="setup-current-step"' . ($hideStepHeading ? ' class="sr-only"' : '') . '>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</h3>';
         $wizard = '<form class="ui-form ui-wizard-form form-grid" method="post">
 <input type="hidden" name="csrf_token" value="' . $this->e($csrfToken) . '">
 ' . $this->renderHiddenFields($view) . '
@@ -7620,7 +7620,9 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .stat-label{font-size:.72rem;font-weight:800;text-transform:uppercase;color:var(--text-muted);letter-spacing:.05em}
 .mode-product .stat-value{font-size:clamp(1rem,.8rem + 1vw,1.35rem);font-weight:900;overflow-wrap:anywhere}
 .mode-product .stat-desc,.mode-product .helper-text,.mode-product .text-muted{color:var(--text-muted);font-size:.85rem}
-.mode-product .section-heading{margin:0 0 clamp(1.5rem,3vw,2.4rem)}
+.mode-product .ui-section{--section-content-width:1200px}
+.mode-product .setup-view{--section-content-width:760px}
+.mode-product .section-heading{width:min(100%,var(--section-content-width));margin:0 auto clamp(1.5rem,3vw,2.4rem)}
 .mode-product .section-kicker{margin:0 0 .25rem;color:var(--accent);font-size:.78rem;font-weight:950;letter-spacing:.08em;text-transform:uppercase}
 .mode-product .section-intro{color:var(--text-muted);max-width:48rem}
 .mode-product .setup-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(18rem,24rem);gap:var(--space-l);align-items:start;margin-top:.25rem}
@@ -7639,6 +7641,7 @@ html[data-theme=dark] .mode-product .stat-icon{background:rgba(148,163,184,.14);
 .mode-product .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:var(--space-m)var(--space-l)}
 .mode-product .full-width,.mode-product fieldset{grid-column:1/-1}
 .mode-product fieldset{border:1px solid var(--border);border-radius:var(--radius-m);padding:var(--space-m);background:var(--bg-surface)}
+.mode-product .setup-fields{border:0;border-radius:0;padding:0;background:transparent}
 .mode-product legend{padding:0 .45rem;font-weight:900;color:var(--text-primary)}
 .mode-product .input-group{margin-bottom:.95rem}
 .mode-product .field-label-row{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.45rem}
@@ -8248,13 +8251,19 @@ if (notificationModal) {
         if ($fields === []) {
             $emptyMessage = $this->text->productMode() ? '' : '<p>' . $this->e($this->text->get('wizard.no_fields')) . '</p>';
 
-            return '<fieldset class="full-width"><legend>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</legend>' . $this->stepDescription($view, $view->currentStep()) . $emptyMessage . '</fieldset>';
+            $legendClass = $this->text->productMode() ? ' class="sr-only"' : '';
+            $fieldsetClass = $this->text->productMode() ? 'full-width setup-fields' : 'full-width';
+            $description = $this->text->productMode() ? '' : $this->stepDescription($view, $view->currentStep());
+
+            return '<fieldset class="' . $fieldsetClass . '"><legend' . $legendClass . '>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</legend>' . $description . $emptyMessage . '</fieldset>';
         }
 
         $compactSingleFieldStep = $this->compactSingleFieldStep($view);
-        $legendClass = $compactSingleFieldStep ? ' class="sr-only"' : '';
-        $description = $compactSingleFieldStep ? '' : $this->stepDescription($view, $view->currentStep());
-        $inputs = '<fieldset class="full-width"><legend' . $legendClass . '>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</legend>' . $description;
+        $hideLegend = $this->text->productMode() || $compactSingleFieldStep;
+        $legendClass = $hideLegend ? ' class="sr-only"' : '';
+        $description = $this->text->productMode() || $compactSingleFieldStep ? '' : $this->stepDescription($view, $view->currentStep());
+        $fieldsetClass = $this->text->productMode() ? 'full-width setup-fields' : 'full-width';
+        $inputs = '<fieldset class="' . $fieldsetClass . '"><legend' . $legendClass . '>' . $this->e($this->stepTitle($view, $view->currentStep())) . '</legend>' . $description;
         foreach ($fields as $field) {
             $inputs .= $this->renderField($field);
         }
@@ -10043,7 +10052,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'cfb6a77',
+  'source_revision' => '4ed2864',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

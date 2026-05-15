@@ -4700,6 +4700,7 @@ final class RuntimeUiTextCatalog
             'status.warning' => 'Ready with warnings. Review the system check before relying on automation.',
             'status.not_ready' => 'Not ready. Fix the blocking items before totman can run safely.',
             'status.no_issues' => 'No blocking issues are currently reported.',
+            'status.no_cycle' => 'No cycle has run yet.',
             'advanced.details' => 'Advanced technical details',
             'configuration.source_help' => 'These values come from the effective runtime configuration. Editing remains available through the setup/configuration flow.',
             'configuration.no_values' => 'No values are available in this section yet.',
@@ -7300,18 +7301,22 @@ final class PrototypeRenderer
         }
 
         $summary = $inspection->summary();
-        $system = '<section id="status-system" class="tab-panel" data-tab-panel="status-system">
-<div class="card">
-<h3>' . $this->e($this->text->get('subnav.system_status')) . '</h3>
-<p class="status-lede status-' . $this->e(strtolower($summary->preflight()->status())) . '">' . $this->e($this->humanPreflightSummary($summary->preflight()->status())) . '</p>
-' . $this->renderSummaryIssues($summary->issues()) . '
+        $statusDetails = $summary->preflight()->status() === 'FAIL'
+            ? $this->renderBlockingPreflightIssues($summary->preflight())
+            : $this->renderSummaryIssues($summary->issues());
+        $technicalDetails = $this->text->productMode() ? '' : '
 <details><summary>' . $this->e($this->text->get('advanced.details')) . '</summary>
 <dl>
 <dt>' . $this->e($this->text->get('summary.mode')) . '</dt><dd>' . $this->e($summary->mode()) . '</dd>
 <dt>' . $this->e($this->text->get('inspection.main_source')) . '</dt><dd>' . $this->e($summary->mainSource()) . '</dd>
 <dt>' . $this->e($this->text->get('inspection.recipient_source')) . '</dt><dd>' . $this->e($summary->recipientSource()) . '</dd>
 </dl>
-</details>
+</details>';
+        $system = '<section id="status-system" class="tab-panel" data-tab-panel="status-system">
+<div class="card">
+<h3>' . $this->e($this->text->get('subnav.system_status')) . '</h3>
+<p class="status-lede status-' . $this->e(strtolower($summary->preflight()->status())) . '">' . $this->e($this->humanPreflightSummary($summary->preflight()->status())) . '</p>
+' . $statusDetails . $technicalDetails . '
 </div>
 </section>';
 
@@ -7322,25 +7327,36 @@ final class PrototypeRenderer
 </div>
 </section>';
 
-        $cycle = '<section id="status-cycle" class="tab-panel" data-tab-panel="status-cycle" hidden>
-<div class="card">
-<h3>' . $this->e($this->text->get('subnav.cycle')) . '</h3>
-<p>' . $this->e($summary->stateFile()->message()) . '</p>
+        $statusTabs = [
+            ['system', $this->text->get('subnav.system_status')],
+            ['preflight', $this->text->get('subnav.preflight')],
+        ];
+        $cycle = '';
+        $showCycle = !$this->text->productMode() || $summary->stateFile()->status() !== 'loaded';
+        if ($showCycle) {
+            $statusTabs[] = ['cycle', $this->text->get('subnav.cycle')];
+            $cycleDetails = $this->text->productMode() ? '' : '
 <details><summary>' . $this->e($this->text->get('advanced.details')) . '</summary>
 <dl><dt>' . $this->e($this->text->get('inspection.state_file')) . '</dt><dd>' . $this->e($summary->stateFile()->status()) . '</dd></dl>
-</details>
+</details>';
+            $cycleMessage = $summary->stateFile()->message();
+            if ($this->text->productMode() && $summary->stateFile()->status() === 'missing') {
+                $cycleMessage = $this->text->get('status.no_cycle');
+            }
+            $cycle = '<section id="status-cycle" class="tab-panel" data-tab-panel="status-cycle" hidden>
+<div class="card">
+<h3>' . $this->e($this->text->get('subnav.cycle')) . '</h3>
+<p>' . $this->e($cycleMessage !== '' ? $cycleMessage : $this->text->get('status.no_cycle')) . '</p>
+' . $cycleDetails . '
 </div>
 </section>';
+        }
 
         return $this->renderMainPanel(
             'status',
             $this->text->get('nav.status'),
             '<div data-tab-scope="status">'
-            . $this->renderSubNavigation('status', [
-                ['system', $this->text->get('subnav.system_status')],
-                ['preflight', $this->text->get('subnav.preflight')],
-                ['cycle', $this->text->get('subnav.cycle')],
-            ], 'system')
+            . $this->renderSubNavigation('status', $statusTabs, 'system')
             . $system
             . $preflight
             . $cycle
@@ -7357,11 +7373,12 @@ final class PrototypeRenderer
 
         $summary = $inspection->summary();
         $config = $summary->redactedConfig();
+        $generalDetails = $this->text->productMode() ? '' : '<details><summary>' . $this->e($this->text->get('advanced.details')) . '</summary><p>' . $this->e($this->text->get('configuration.source_help')) . '</p></details>';
         $general = '<section id="configuration-general" class="tab-panel" data-tab-panel="configuration-general">
 <div class="card">
 <h3>' . $this->e($this->text->get('subnav.general')) . '</h3>
 ' . $this->renderRedactedConfigList($config, ['base_url', 'timezone', 'language']) . '
-<details><summary>' . $this->e($this->text->get('advanced.details')) . '</summary><p>' . $this->e($this->text->get('configuration.source_help')) . '</p></details>
+' . $generalDetails . '
 </div>
 </section>';
         $schedule = '<section id="configuration-schedule" class="tab-panel" data-tab-panel="configuration-schedule" hidden><div class="card"><h3>' . $this->e($this->text->get('subnav.schedule')) . '</h3>' . $this->renderRedactedConfigList($config, ['interval_days', 'grace_days', 'reminder_days']) . '</div></section>';
@@ -7499,10 +7516,39 @@ final class PrototypeRenderer
         return '<ul class="notice neutral">' . $items . '</ul>';
     }
 
+    private function renderBlockingPreflightIssues(\Totman\RuntimeUi\Preflight\PreflightResult $preflight): string
+    {
+        $items = '';
+        foreach ($preflight->checks() as $check) {
+            if ($check->status() !== 'FAIL') {
+                continue;
+            }
+
+            $items .= '<li><strong>' . $this->e($this->preflightLabel($check->code())) . '</strong>'
+                . '<span>' . $this->e($check->message()) . '</span></li>';
+        }
+
+        if ($items === '') {
+            return '<p class="helper-text">' . $this->e($this->text->get('status.no_issues')) . '</p>';
+        }
+
+        return '<ul class="notice error status-blockers">' . $items . '</ul>';
+    }
+
     private function preflightResultItems(\Totman\RuntimeUi\Preflight\PreflightResult $preflight): string
     {
         $checks = '';
         foreach ($preflight->checks() as $check) {
+            if ($this->text->productMode()) {
+                $checks .= '<div class="preflight-item status-' . $this->e(strtolower($check->status())) . '">'
+                    . '<strong>' . $this->e($this->statusLabel($check->status())) . '</strong>'
+                    . '<h4>' . $this->e($this->preflightLabel($check->code())) . '</h4>'
+                    . '<p>' . $this->e($check->message()) . '</p>'
+                    . ($check->fix() !== '' ? '<small>' . $this->e($this->text->get('preflight.fix')) . ': ' . $this->e($check->fix()) . '</small>' : '')
+                    . '</div>';
+                continue;
+            }
+
             $checks .= '<div class="preflight-item status-' . $this->e(strtolower($check->status())) . '"><strong>' . $this->e($this->statusLabel($check->status())) . '</strong> '
                 . '<code>' . $this->e($check->code()) . '</code>: ' . $this->e($check->message())
                 . ($check->fix() !== '' ? ' <small>' . $this->e($this->text->get('preflight.fix')) . ': ' . $this->e($check->fix()) . '</small>' : '')
@@ -8644,7 +8690,7 @@ if (notificationModal) {
     private function preflightLabel(string $code): string
     {
         return match ($code) {
-            'public_url' => 'Public URL',
+            'base_url' => 'Public URL',
             'mail_from' => 'Sender mailbox',
             'operator_mailbox' => 'Operator mailbox',
             'delivery_command' => 'Mail delivery',
@@ -8695,7 +8741,7 @@ final class FirstRunPreflight
     public function check(MainConfigImport $main, RecipientConfigImport $recipients, DeploymentContext $context): PreflightResult
     {
         $checks = [
-            $this->fieldCheck($main->field('base_url'), 'public_url', 'Public URL is usable.', 'Set a real HTTPS public URL.', $context),
+            $this->fieldCheck($main->field('base_url'), 'base_url', 'Public URL is usable.', 'Set a real HTTPS public URL.', $context),
             $this->fieldCheck($main->field('mail_from'), 'mail_from', 'Mail sender identity is usable.', 'Set one real sender mailbox.', $context),
             $this->fieldCheck($main->field('to_self'), 'operator_mailbox', 'Operator mailbox is usable.', 'Set at least one real operator mailbox.', $context),
             $this->fieldCheck($main->field('sendmail_path'), 'delivery_command', 'Mail delivery command is configured.', 'Configure sendmail or SMTP delivery.', $context),
@@ -10252,7 +10298,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '6f7bbe0',
+  'source_revision' => 'd09cad2',
   'source_files' =>
   array (
     0 => 'src/Application/AdminAuthApplicationResult.php',

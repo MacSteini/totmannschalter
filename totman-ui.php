@@ -20,7 +20,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => 'b0dbac5',
+  'source_revision' => '5790d88',
   'source_files' =>
   array (
     0 => 'resources/product-ui/totman-ui.php',
@@ -2838,7 +2838,7 @@ function render_preflight(array $checks): void
     [$state,,$nextTemplate,$first] = go_live_state($checks);
     $item = is_array($first) ? (string)($first[1] ?? '') : '';
     $next = $item !== '' ? t($nextTemplate, ['item' => t($item)]) : t($nextTemplate);
-    echo'<details class="card preflight-card" id="preflight-card" aria-labelledby="preflight-title" data-preflight-status="' . h((string)$state) . '" data-preflight-url="' . h(asset_url_for_query(['ui_api' => 'preflight'])) . '" data-preflight-has-issues="' . ($hasIssues ? '1' : '0') . '"' . ($hasIssues ? ' open' : '') . '><summary class="preflight-summary"><span class="preflight-heading"><strong id="preflight-title"><span class="desktop-disclosure-label">' . h(t('Preflight')) . '</span><span class="mobile-toggle-closed">' . h(t('Preflight')) . '</span><span class="mobile-toggle-open">' . h(t('Preflight')) . '</span></strong><span class="preflight-next">' . h($next) . '</span></span><span class="badge preflight-counts" data-preflight-counts>' . h($summaryText) . '</span></summary><div class="preflight-grid" data-preflight-grid>';
+    echo'<details class="card preflight-card" id="preflight-card" aria-labelledby="preflight-title" data-preflight-status="' . h((string)$state) . '" data-preflight-url="' . h(asset_url_for_query(['ui_api' => 'preflight'])) . '" data-preflight-has-issues="' . ($hasIssues ? '1' : '0') . '"><summary class="preflight-summary"><span class="preflight-heading"><strong id="preflight-title"><span class="desktop-disclosure-label">' . h(t('Preflight')) . '</span><span class="mobile-toggle-closed">' . h(t('Preflight')) . '</span><span class="mobile-toggle-open">' . h(t('Preflight')) . '</span></strong><span class="preflight-next">' . h($next) . '</span></span><span class="badge preflight-counts" data-preflight-counts>' . h($summaryText) . '</span></summary><div class="preflight-grid" data-preflight-grid>';
     foreach ($checks as $check) {
         render_preflight_item($check);
     }
@@ -3906,28 +3906,11 @@ if (!preflightTimer) return;
 window.clearInterval(preflightTimer);
 preflightTimer = null;
 };
-const mobileQuery = window.matchMedia('(max-width: 700px)');
 let savedPreflight = preflight ? localStorage.getItem('totman_preflight_open') : null;
-let preflightPreferenceSet = savedPreflight !== null;
-const applyPreflightDefault = () => {
-if (!preflight || preflightPreferenceSet) return;
-if (mobileQuery.matches) {
-preflight.open = false;
-} else if (preflight.dataset.preflightHasIssues === '1') {
-preflight.open = true;
-}
-};
-if (preflight) {
-if (mobileQuery.matches) {
+if (preflight && savedPreflight !== null) {
 preflight.open = savedPreflight === '1';
-} else if (preflight.dataset.preflightHasIssues === '1') {
-preflight.open = true;
-} else if (savedPreflight === '1') {
-preflight.open = true;
-}
 }
 preflight?.addEventListener('toggle', () => {
-preflightPreferenceSet = true;
 localStorage.setItem('totman_preflight_open', preflight.open ? '1' : '0');
 if (preflight.open) {
 startPreflightPolling();
@@ -3935,7 +3918,6 @@ startPreflightPolling();
 stopPreflightPolling();
 }
 });
-mobileQuery.addEventListener?.('change', applyPreflightDefault);
 const mobileStatus = document.querySelector('.mobile-status-details');
 if (mobileStatus) {
 mobileStatus.open = localStorage.getItem('totman_mobile_status_open') === '1';

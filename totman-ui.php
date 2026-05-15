@@ -107,7 +107,7 @@ if (isset($_GET['lang']) && is_string($_GET['lang'])) {
 if (!isset($_SESSION['ui_lang'])) {
     $_SESSION['ui_lang'] = normalise_lang((string)($uiConfig['ui_lang'] ?? 'en'));
 }
-$asset = (string)($_GET['totman_ui_asset'] ?? $_GET['asset'] ?? '');
+$asset = (string)($_GET['totman_ui_asset'] ?? '');
 if ($asset === 'css') {
     header('Content-Type: text/css; charset=UTF-8');
     header('Cache-Control: no-store, max-age=0');
@@ -577,7 +577,7 @@ function ui_config_file_candidates(?array $cfg = null): array
         $paths[] = $sidecar;
     }
 
-    return $paths === [] ? [$sidecar] : $paths;
+    return $paths;
 }
 function setup_code_configured(): bool
 {

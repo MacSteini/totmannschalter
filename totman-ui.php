@@ -2202,10 +2202,14 @@ function checked(bool $value): string
 }
 function current_script_name(): string
 {
+    $scriptName = (string)($_SERVER['SCRIPT_NAME'] ?? '');
+    if ($scriptName !== '') {
+        return basename($scriptName) ?: UI_DISTRIBUTED_FILE;
+    }
     if (PHP_SAPI === 'cli') {
         return UI_DISTRIBUTED_FILE;
     }
-    return basename((string)($_SERVER['SCRIPT_NAME'] ?? UI_DISTRIBUTED_FILE)) ?: UI_DISTRIBUTED_FILE;
+    return UI_DISTRIBUTED_FILE;
 }
 function asset_url(string $asset): string
 {
@@ -2263,7 +2267,7 @@ function json_response(array $payload, int $status = 200): void
 function pwa_manifest(): array
 {
     $script = current_script_name();
-    return['name' => 'totman','short_name' => 'totman','description' => 'A deadman’s switch for e-mail configuration.','id' => $script,'start_url' => $script,'scope' => './','display' => 'standalone','theme_color' => '#c1121f','background_color' => '#0b0f1a','icons' => [['src' => pwa_url('icon-192'),'sizes' => '192x192','type' => 'image/png','purpose' => 'any maskable',],['src' => pwa_url('icon-512'),'sizes' => '512x512','type' => 'image/png','purpose' => 'any maskable',],],];
+    return['name' => 'totman','short_name' => 'totman','description' => 'A deadman’s switch for e-mail configuration.','id' => $script,'start_url' => $script,'scope' => $script,'display' => 'standalone','theme_color' => '#c1121f','background_color' => '#0b0f1a','icons' => [['src' => pwa_url('icon-192'),'sizes' => '192x192','type' => 'image/png','purpose' => 'any maskable',],['src' => pwa_url('icon-512'),'sizes' => '512x512','type' => 'image/png','purpose' => 'any maskable',],],];
 }
 function pwa_icon_png(int $size): string
 {
@@ -2371,6 +2375,7 @@ self.addEventListener('fetch', event => {
   if (request.method !== 'GET') return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname !== self.location.pathname) return;
   const pwaTarget = url.searchParams.get('pwa');
   if (['manifest', 'icon-192', 'icon-512'].includes(pwaTarget)) {
     event.respondWith(
@@ -2641,7 +2646,7 @@ function render_header(): void
 }
 function render_shell_start(): void
 {
-    echo'<!DOCTYPE html><html lang="' . h(current_lang()) . '" data-pwa-worker="' . h(pwa_url('sw')) . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>totman</title><meta name="theme-color" content="#f1f5f9" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0b0f1a" media="(prefers-color-scheme: dark)"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="totman"><link rel="manifest" href="' . h(pwa_url('manifest')) . '"><link rel="apple-touch-icon" sizes="192x192" href="' . h(pwa_url('icon-192')) . '"><link rel="stylesheet" href="' . h(asset_url('css')) . '"></head><body><div class="container">';
+    echo'<!DOCTYPE html><html lang="' . h(current_lang()) . '" data-pwa-worker="' . h(pwa_url('sw')) . '" data-pwa-scope="' . h(current_script_name()) . '"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><title>totman</title><meta name="theme-color" content="#f1f5f9" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#0b0f1a" media="(prefers-color-scheme: dark)"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="totman"><link rel="manifest" href="' . h(pwa_url('manifest')) . '"><link rel="apple-touch-icon" sizes="192x192" href="' . h(pwa_url('icon-192')) . '"><link rel="stylesheet" href="' . h(asset_url('css')) . '"></head><body><div class="container">';
     render_header();
 }
 function render_shell_end(): void
@@ -3754,7 +3759,21 @@ const registerPwaServiceWorker = () => {
 const workerUrl = document.documentElement.dataset.pwaWorker || '';
 if (!workerUrl || !('serviceWorker' in navigator) || !window.isSecureContext) return;
 window.addEventListener('load', () => {
-navigator.serviceWorker.register(workerUrl, { scope: './' }).catch(error => {
+const worker = new URL(workerUrl, window.location.href);
+const expectedScope = new URL(document.documentElement.dataset.pwaScope || window.location.pathname, window.location.href);
+const register = () => navigator.serviceWorker.register(worker.href, { scope: expectedScope.href });
+const cleanup = typeof navigator.serviceWorker.getRegistrations === 'function'
+? navigator.serviceWorker.getRegistrations().then(registrations => Promise.all(registrations.map(registration => {
+const workerScripts = [registration.active, registration.installing, registration.waiting]
+.map(candidate => candidate && candidate.scriptURL ? new URL(candidate.scriptURL).pathname : '')
+.filter(Boolean);
+if (registration.scope !== expectedScope.href && workerScripts.includes(worker.pathname)) {
+return registration.unregister();
+}
+return Promise.resolve(false);
+})))
+: Promise.resolve();
+cleanup.then(register).catch(error => {
 if (window.console && typeof window.console.warn === 'function') {
 window.console.warn('totman PWA service worker registration failed.', error);
 }

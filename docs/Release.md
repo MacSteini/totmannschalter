@@ -47,7 +47,7 @@ docker compose -p totman_release_check -f compose.yaml -f compose.build.yaml dow
 ```
 
 The Docker image must use the integrated `totman-ui.php`, not a patch script.
-The image must not contain `.git`, local agent paths, `Refactoring/`,
+The image must not contain `.git`, local agent paths, `ui-generator/`,
 `totman-refactor/`, generated reports, logs, runtime state, or private UI files.
 
 ## Tag and GitHub release

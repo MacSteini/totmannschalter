@@ -20,7 +20,7 @@ final class BundleManifest
 array (
   'entry_mode' => 'product bundle',
   'runtime_ui_mode' => 'product',
-  'source_revision' => '5790d88',
+  'source_revision' => 'a6d8d2a',
   'source_files' =>
   array (
     0 => 'resources/product-ui/totman-ui.php',
@@ -2147,7 +2147,7 @@ function apply_main_postback(array $cfg, array $post): array
 function action_flash_scope(string $action): string
 {
     return match ($action) {
-        'save_main'=>'config','save_recipients'=>'recipients','generate_hmac','rotate_hmac'=>'hmac','reset_runtime','clear_activity_log'=>'logs','recover_state_dir'=>'recovery',default=>'global',
+        'save_main'=>'config','save_recipients'=>'recipients','generate_hmac','rotate_hmac'=>'hmac','reset_runtime'=>'maintenance','clear_activity_log'=>'logs','recover_state_dir'=>'recovery',default=>'global',
     };
 }
 function posted_config_flash_scope(): string
@@ -2560,7 +2560,7 @@ try {
         } elseif ($action === 'reset_runtime') {
             $uiConfig = require_reauth_password($uiConfig, 'reset_runtime');
             reset_runtime_state($main['config']);
-            flash('ok', 'Cycle reset.', 'logs');
+            flash('ok', 'Cycle reset.', 'maintenance');
         } elseif ($action === 'clear_activity_log') {
             clear_activity_log($main['config']);
             flash('ok', 'Log cleared.', 'logs');
@@ -3053,7 +3053,7 @@ function render_logs(array $cfg, array $flash): void
 function render_maintenance(array $flash): void
 {
     echo'<section id="view-maintenance" class="hidden view-animate" role="tabpanel" aria-labelledby="tab-maintenance"><div class="card danger-zone maintenance-danger-zone"><h2>' . h(t('Maintenance')) . '</h2><h3>' . h(t('Danger Zone')) . '</h3>';
-    render_flash($flash, 'logs');
+    render_flash($flash, 'maintenance');
     echo'<p class="helper-text">' . h(t('Resetting the cycle starts fresh, creates a new token, clears escalation progress, and removes one-time download leases. Configuration and recipients stay unchanged.')) . '</p><form method="post" id="danger-zone-form" class="danger-zone-form">' . csrf_field() . '<div class="danger-action-row"><div class="input-group reauth-field danger-password-field">' . field_label('logs_reauth_password', 'Password', field_tooltip('logs_reauth_password', 'Password', 'Password required before dangerous maintenance actions.')) . field_detail('logs_reauth_password', 'Password required before dangerous maintenance actions.') . password_control('logs_reauth_password', 'reauth_password', '', 'current-password', described_by('logs_reauth_password'), true, '', 'Password') . '</div><button type="submit" name="action" value="reset_runtime" class="btn-secondary danger" disabled data-requires-password="logs_reauth_password" data-confirm="' . h(t('Really reset the cycle? Existing confirmation links and one-time download leases will stop matching the current cycle.')) . '">' . h(t('Reset Runtime State')) . '</button></div></form></div></section>';
 }
 function input(string $name, string $label, string $value, string $type = 'text', ?string $help = null, string $class = '', string $depends = '', string $autocomplete = 'off'): void

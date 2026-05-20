@@ -1,10 +1,14 @@
 <!-- markdownlint-disable MD041 -->
 
+<div align="center">
+
 ![totman](img/totman-xs.png)
 
 [![GitHub Release](https://img.shields.io/github/v/release/macsteini/totmannschalter?label=Release&color=black)](https://github.com/MacSteini/totmannschalter/releases/latest)
 [![Static Badge](https://img.shields.io/badge/PHP->=v8.0.0-black)](https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md)
 [![Licence: MIT](https://img.shields.io/github/license/macsteini/totmannschalter?label=License&color=black)](LICENCE)
+
+</div>
 
 # totman
 A fully self-hosted “dead man’s switch” for email: it sends periodic confirmation links from your own server, and if you do not confirm within a defined window (plus grace), it escalates to predefined recipients. No third-party services, no vendor lock-in – just `systemd`, PHP, and sendmail on infrastructure you control.

@@ -4,9 +4,9 @@
 
 ![totman](https://github.com/MacSteini/totmannschalter/blob/main/img/totman-xs.png?raw=true)
 
-[![GitHub Release](https://img.shields.io/github/v/release/macsteini/totmannschalter?label=Release&color=black)](https://github.com/MacSteini/totmannschalter/releases/latest)
+[![GitHub Release](https://img.shields.io/github/v/release/MacSteini/totmannschalter?label=Release&color=black)](https://github.com/MacSteini/totmannschalter/releases/latest)
 [![Static Badge](https://img.shields.io/badge/PHP->=v8.0.0-black)](https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md)
-[![Licence: MIT](https://img.shields.io/github/license/macsteini/totmannschalter?label=License&color=black)](LICENCE)
+[![Licence: MIT](https://img.shields.io/github/license/MacSteini/totmannschalter?label=License&color=black)](LICENCE)
 
 </div>
 

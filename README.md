@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![totman](img/totman-xs.png)
+![totman](https://github.com/MacSteini/totmannschalter/blob/main/img/totman-xs.png?raw=true)
 
 [![GitHub Release](https://img.shields.io/github/v/release/macsteini/totmannschalter?label=Release&color=black)](https://github.com/MacSteini/totmannschalter/releases/latest)
 [![Static Badge](https://img.shields.io/badge/PHP->=v8.0.0-black)](https://github.com/MacSteini/totmannschalter/blob/main/docs/Installation.md)

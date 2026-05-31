@@ -7,6 +7,11 @@ This document lists planned next steps.
 - Order is intentionally flexible and may change based on implementation complexity and real-world feedback.
 - Focus remains on operational reliability and predictable behaviour.
 ## Planned items
+### Portable handover and long-term continuity
+- Explore ways to make long-term handover more robust when operational circumstances change.
+- The goal is to improve how operators prepare future access, recipient expectations, and recovery options without weakening the self-hosted model.
+- Broad areas to consider include security, privacy, operational resilience, and practical recipient readiness.
+- This is an exploratory direction, not a commitment to a specific format, workflow, delivery mode, or timeline.
 ### Optional recipient-assisted safety check before final escalation
 - Add an optional intermediate “light escalation” step before final recipient messages are sent.
 - After the normal confirmation window plus grace has expired, the system first sends a short check-in mail to the configured recipients instead of immediately sending the final messages.
